@@ -11,7 +11,7 @@
   "files": [
     {
       "file_pattern": "factLendingBenchmark_{date_range}.tsv",
-      "table_name": "FACTLENDINGBENCHMARK",
+      "table_name": "TEST_CUSTOM_FACTLENDINGBENCHMARK",
       "date_column": "RECORDDATEID",
       "expected_columns": [
         "RECORDDATE",
