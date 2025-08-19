@@ -493,10 +493,9 @@ class SnowflakeLoader:
 
             print("Loading {} to {}...".format(config.file_path, config.table_name))
 
-            # Create internal stage if not exists
-            stage_name = "@~/tsv_stage_{}".format(config.table_name)
-            self.logger.debug("Creating stage: {}".format(stage_name))
-            self.cursor.execute("CREATE STAGE IF NOT EXISTS {}".format(stage_name))
+            # Use user stage with subdirectory (no need to create, @~ always exists)
+            stage_name = "@~/tsv_stage/{}/".format(config.table_name)
+            self.logger.debug("Using stage: {}".format(stage_name))
 
             # Stream compress file
             compressed_file = "{}.gz".format(config.file_path)
