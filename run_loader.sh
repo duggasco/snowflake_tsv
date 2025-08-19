@@ -138,6 +138,12 @@ process_month() {
         cmd="${cmd} ${ANALYZE_ONLY}"
     fi
     
+    # Add --yes flag for automatic processing (especially important for parallel mode)
+    # This prevents the interactive prompt which causes EOF errors in background jobs
+    if [ ${PARALLEL_JOBS} -gt 1 ] || [ -n "${DRY_RUN}" ]; then
+        cmd="${cmd} --yes"
+    fi
+    
     # Create a log file name with timestamp and month
     local log_file="logs/run_${month_dir}_$(date +%Y%m%d_%H%M%S).log"
     

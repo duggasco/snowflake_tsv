@@ -1123,6 +1123,7 @@ def main():
     parser.add_argument('--analyze-only', action='store_true', help='Only analyze files and show estimates')
     parser.add_argument('--check-system', action='store_true', help='Check system capabilities')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging (already on by default)')
+    parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation prompt and proceed automatically')
 
     args = parser.parse_args()
 
@@ -1209,15 +1210,21 @@ def main():
         print("\n[Analysis only mode - not processing files]")
         return 0
 
-    # Ask for confirmation
+    # Ask for confirmation (unless --yes flag is provided)
     print("\n" + "="*60)
     estimated_minutes = analysis_results['estimates']['total'] / 60
-    response = input("Proceed with processing? (estimated {:.1f} minutes) [y/N]: ".format(estimated_minutes))
-
-    if response.lower() != 'y':
-        logger.info("Processing cancelled by user")
-        print("Processing cancelled")
-        return 0
+    
+    if not args.yes:
+        response = input("Proceed with processing? (estimated {:.1f} minutes) [y/N]: ".format(estimated_minutes))
+        
+        if response.lower() != 'y':
+            logger.info("Processing cancelled by user")
+            print("Processing cancelled")
+            return 0
+    else:
+        logger.info("Skipping confirmation prompt (--yes flag provided)")
+        print("Proceeding automatically (--yes flag provided)")
+        print("Estimated time: {:.1f} minutes".format(estimated_minutes))
 
     # Process files
     process_files(
