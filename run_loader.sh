@@ -23,6 +23,7 @@ BATCH_MODE=""
 MONTHS_LIST=""
 CONTINUE_ON_ERROR=""
 DRY_RUN=""
+PARALLEL_JOBS=1  # Default to sequential processing
 
  
 
@@ -38,9 +39,11 @@ usage() {
     echo "  --month YYYY-MM     Single month to process (default: current month)"
     echo "  --months LIST       Comma-separated list of months (e.g., 092022,102022,112022)"
     echo "  --batch              Process all months found in base-path"
+    echo "  --parallel N        Process N months in parallel (default: 1)"
     echo "  --continue-on-error Continue processing if a month fails"
     echo "  --dry-run           Show what would be processed without executing"
     echo "  --max-workers N     Maximum parallel workers (default: auto-detect)"
+    echo "                      With --parallel, workers are divided among parallel jobs"
     echo "  --skip-qc           Skip quality checks (not recommended)"
     echo "  --analyze-only      Only analyze files and show time estimates"
     echo "  --check-system      Check system capabilities and exit"
@@ -55,6 +58,9 @@ usage() {
     echo ""
     echo "  # Process all months in batch mode"
     echo "  $0 --batch --skip-qc --continue-on-error"
+    echo ""
+    echo "  # Process months in parallel (4 at a time)"
+    echo "  $0 --batch --skip-qc --parallel 4 --max-workers 60"
     echo ""
     echo "  # Dry run to see what would be processed"
     echo "  $0 --batch --dry-run"
@@ -92,6 +98,7 @@ find_month_directories() {
 # Function to process a single month
 process_month() {
     local month_dir=$1
+    local workers_for_month=$2  # New parameter for worker allocation
     local month_formatted=$(convert_month_format "$month_dir")
     
     if [ -z "$month_formatted" ]; then
@@ -115,7 +122,11 @@ process_month() {
     cmd="${cmd} --month ${month_formatted}"
     
     # Add optional arguments
-    if [ -n "${MAX_WORKERS}" ]; then
+    # Use provided workers_for_month if set, otherwise use MAX_WORKERS
+    if [ -n "${workers_for_month}" ]; then
+        cmd="${cmd} --max-workers ${workers_for_month}"
+        echo -e "${BLUE}Workers allocated: ${workers_for_month}${NC}"
+    elif [ -n "${MAX_WORKERS}" ]; then
         cmd="${cmd} --max-workers ${MAX_WORKERS}"
     fi
     
@@ -219,6 +230,10 @@ while [[ $# -gt 0 ]]; do
         --batch)
             BATCH_MODE="yes"
             shift
+            ;;
+        --parallel)
+            PARALLEL_JOBS="$2"
+            shift 2
             ;;
         --continue-on-error)
             CONTINUE_ON_ERROR="yes"
@@ -329,40 +344,114 @@ echo -e "Skip QC:           $([ -n "${SKIP_QC}" ] && echo "Yes ⚠️" || echo "
 echo -e "Analyze Only:      $([ -n "${ANALYZE_ONLY}" ] && echo "Yes" || echo "No")"
 echo -e "Continue on Error: $([ -n "${CONTINUE_ON_ERROR}" ] && echo "Yes" || echo "No")"
 echo -e "Dry Run:           $([ -n "${DRY_RUN}" ] && echo "Yes" || echo "No")"
+echo -e "Parallel Jobs:     ${PARALLEL_JOBS}"
 echo -e "${GREEN}========================================${NC}\n"
+
+# Calculate workers per job if using parallel processing
+workers_per_job=""
+if [ ${PARALLEL_JOBS} -gt 1 ] && [ -n "${MAX_WORKERS}" ]; then
+    workers_per_job=$((MAX_WORKERS / PARALLEL_JOBS))
+    echo -e "${BLUE}Distributing ${MAX_WORKERS} workers across ${PARALLEL_JOBS} parallel jobs: ${workers_per_job} workers per month${NC}\n"
+fi
 
 # Process months
 total_months=${#months_to_process[@]}
 successful_months=0
 failed_months=0
 failed_list=()
+declare -A job_pids  # Associative array to track PIDs and their months
+declare -A job_logs  # Track log files for each job
 
 # Start time for total processing
 start_time=$(date +%s)
 
+# Function to wait for a job slot
+wait_for_job_slot() {
+    while [ $(jobs -r | wc -l) -ge ${PARALLEL_JOBS} ]; do
+        sleep 1
+    done
+}
+
+# Function to check completed jobs
+check_completed_jobs() {
+    local temp_pids=()
+    for pid in "${!job_pids[@]}"; do
+        if ! kill -0 $pid 2>/dev/null; then
+            # Job completed, check exit status
+            wait $pid
+            local exit_code=$?
+            local month="${job_pids[$pid]}"
+            
+            if [ ${exit_code} -eq 0 ]; then
+                echo -e "${GREEN}✓ Month $month completed successfully${NC}"
+                ((successful_months++))
+            else
+                echo -e "${RED}✗ Month $month failed with exit code: ${exit_code}${NC}"
+                ((failed_months++))
+                failed_list+=("${month}")
+                
+                if [ -z "${CONTINUE_ON_ERROR}" ] && [ ${PARALLEL_JOBS} -eq 1 ]; then
+                    echo -e "${RED}Stopping due to error. Use --continue-on-error to proceed with remaining months.${NC}"
+                    return 1
+                fi
+            fi
+            unset job_pids[$pid]
+        fi
+    done
+    return 0
+}
+
+# Process months with parallel support
 for i in "${!months_to_process[@]}"; do
     month="${months_to_process[$i]}"
     current_num=$((i + 1))
     
+    # Wait for available job slot if running in parallel
+    if [ ${PARALLEL_JOBS} -gt 1 ]; then
+        wait_for_job_slot
+        check_completed_jobs || break
+    fi
+    
     echo -e "\n${MAGENTA}[${current_num}/${total_months}] Starting month: ${month}${NC}"
     
-    process_month "${month}"
-    exit_code=$?
-    
-    if [ ${exit_code} -eq 0 ]; then
-        ((successful_months++))
-    else
-        ((failed_months++))
-        failed_list+=("${month}")
+    if [ ${PARALLEL_JOBS} -gt 1 ]; then
+        # Run in background for parallel processing
+        {
+            process_month "${month}" "${workers_per_job}"
+        } &
         
-        if [ -z "${CONTINUE_ON_ERROR}" ]; then
-            echo -e "${RED}Stopping due to error. Use --continue-on-error to proceed with remaining months.${NC}"
-            break
+        # Track the background job
+        job_pids[$!]="${month}"
+        echo -e "${BLUE}Month ${month} running in background (PID: $!)${NC}"
+    else
+        # Sequential processing (original behavior)
+        process_month "${month}" "${workers_per_job}"
+        exit_code=$?
+        
+        if [ ${exit_code} -eq 0 ]; then
+            ((successful_months++))
         else
-            echo -e "${YELLOW}Continuing despite error (--continue-on-error enabled)${NC}"
+            ((failed_months++))
+            failed_list+=("${month}")
+            
+            if [ -z "${CONTINUE_ON_ERROR}" ]; then
+                echo -e "${RED}Stopping due to error. Use --continue-on-error to proceed with remaining months.${NC}"
+                break
+            else
+                echo -e "${YELLOW}Continuing despite error (--continue-on-error enabled)${NC}"
+            fi
         fi
     fi
 done
+
+# Wait for all remaining parallel jobs to complete
+if [ ${PARALLEL_JOBS} -gt 1 ]; then
+    echo -e "\n${BLUE}Waiting for all parallel jobs to complete...${NC}"
+    while [ ${#job_pids[@]} -gt 0 ]; do
+        check_completed_jobs
+        sleep 1
+    done
+fi
 
 # Calculate total time
 end_time=$(date +%s)
