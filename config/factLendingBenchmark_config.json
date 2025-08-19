@@ -1,0 +1,61 @@
+{
+  "snowflake": {
+    "account": "blackrock-bfmmuse2sf.privatelink",
+    "user": "svcsla",
+    "password": "11z1d&cieHVI",
+    "warehouse": "PMG_SANDBOX_GLL_S_WH",
+    "database": "PMG_SANDBOX_DB",
+    "schema": "GLL",
+    "role": "GLL_BUSINESS_ROLE"
+  },
+  "files": [
+    {
+      "file_pattern": "factLendingBenchmark_{date_range}.tsv",
+      "table_name": "FACTLENDINGBENCHMARK",
+      "date_column": "RECORDDATEID",
+      "expected_columns": [
+        "RECORDDATE",
+        "RECORDDATEID",
+        "ASSETID",
+        "DXIDENTIFIER",
+        "ISIN",
+        "CUSIP",
+        "SEDOL",
+        "EXCHANGE",
+        "DIVIDENDREQUIREMENT",
+        "FISCALLOCATION",
+        "INDUSTRYSECTOR",
+        "PEERGROUP",
+        "COLLATERALTYPE",
+        "COLLATERALCURRENCY",
+        "SOURCETYPE",
+        "TRADETYPE",
+        "STARTDATE",
+        "ENDDATE",
+        "LENDABLEVALUE",
+        "ACTIVELENDABLEVALUE",
+        "LENDABLEQUANTITY",
+        "ACTIVELENDABLEQUANTITY",
+        "LOANVALUE",
+        "LOANQUANTITY",
+        "REBATE",
+        "REINVESTMENTRATE",
+        "REINVESTMENTRETURN",
+        "FEE",
+        "MINFEE",
+        "MAXFEE",
+        "CLIENTFUNDCODE",
+        "ONLOANTRANSACTIONCOUNT",
+        "EXCHANGERATE",
+        "COLLATERALBENCHMARK",
+        "FEEDBUCKET",
+        "INVESTMENTSTYLE",
+        "DATASOURCETYPE",
+        "XCREATEBY",
+        "XCREATEDATE",
+        "XUPDATEBY",
+        "XUPDATEDATE"
+      ]
+    }
+  ]
+}
