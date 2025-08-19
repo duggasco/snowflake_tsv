@@ -485,6 +485,9 @@ class SnowflakeLoader:
     def load_file_to_stage_and_table(self, config: FileConfig):
         """Load TSV file to Snowflake with streaming compression"""
         self.logger.info("Loading {} to {}".format(config.file_path, config.table_name))
+        
+        compressed_file = None
+        stage_name = None
 
         try:
             # Validate file exists
@@ -493,8 +496,13 @@ class SnowflakeLoader:
 
             print("Loading {} to {}...".format(config.file_path, config.table_name))
 
-            # Use user stage with subdirectory (no need to create, @~ always exists)
-            stage_name = "@~/tsv_stage/{}/".format(config.table_name)
+            # Use user stage with subdirectory including unique identifier to avoid conflicts
+            # This is critical for parallel processing to prevent file corruption
+            import time
+            import os
+            timestamp = int(time.time() * 1000)  # millisecond timestamp
+            file_basename = os.path.basename(config.file_path).replace('.tsv', '')
+            stage_name = "@~/tsv_stage/{}/{}_{}/".format(config.table_name, file_basename, timestamp)
             self.logger.debug("Using stage: {}".format(stage_name))
 
             # Stream compress file
@@ -527,10 +535,12 @@ class SnowflakeLoader:
                 self.logger.debug("Compression completed in {:.1f} seconds".format(compression_time))
 
             # PUT file to stage
+            # Reduce PARALLEL setting to 4 to avoid overwhelming the system during concurrent uploads
+            # This helps prevent corruption when multiple months are processed simultaneously
             print("Uploading to Snowflake stage...")
-            put_command = "PUT file://{} {} AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=8".format(
+            put_command = "PUT file://{} {} AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4".format(
                 compressed_file, stage_name)
-            self.logger.debug("Executing PUT command with PARALLEL=8")
+            self.logger.debug("Executing PUT command with PARALLEL=4")
             self.cursor.execute(put_command)
 
             # COPY INTO table
