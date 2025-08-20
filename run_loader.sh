@@ -578,24 +578,8 @@ if [ ${PARALLEL_JOBS} -gt 1 ] && [ -z "${QUIET_MODE}" ]; then
     echo -e "${YELLOW}Tip: Use --quiet for cleaner output with parallel jobs${NC}\n"
 fi
 
-# Add initial spacing for parallel progress bars
-if [ ${PARALLEL_JOBS} -gt 1 ]; then
-    # Determine lines per job based on whether QC is being performed
-    # 3 lines if doing QC (Files, QC Rows, Compression), 2 lines if not (Files, Compression)
-    if [ -n "${SKIP_QC}" ] || [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
-        lines_per_job=2
-    else
-        lines_per_job=3
-    fi
-    
-    # Create space for progress bars
-    total_lines=$((${PARALLEL_JOBS} * ${lines_per_job}))
-    for ((i=0; i<${total_lines}; i++)); do
-        echo ""
-    done
-    # Move cursor back up
-    tput cuu ${total_lines}
-fi
+# Note: tqdm handles progress bar positioning automatically
+# No need for manual spacing when using position parameter
 
 # Process months
 total_months=${#months_to_process[@]}

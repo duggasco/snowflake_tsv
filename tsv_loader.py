@@ -99,6 +99,8 @@ class ProgressTracker:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.month = month
         self.show_qc_progress = show_qc_progress  # Whether to show row-by-row QC progress
+        self.current_file = None  # Track which file is being processed
+        self.file_sizes = {}  # Store individual file sizes
 
         # Calculate position offset based on month/job ID for parallel processing
         # Use environment variable set by wrapper script for position
@@ -126,39 +128,52 @@ class ProgressTracker:
             desc_prefix = "[{}] ".format(month) if month else ""
             
             # Use position parameter to stack progress bars
-            # Add a header line for the job
-            if month and self.position_offset > 0:
-                # Create a static header for this job
-                print("\n" * self.position_offset, end='', file=sys.stderr)
+            # Note: tqdm handles positioning automatically, no need for manual spacing
             
             self.file_pbar = tqdm(total=total_files, 
                                  desc="{}Files".format(desc_prefix), 
                                  unit="file",
                                  position=self.position_offset,
-                                 leave=True,
+                                 leave=False,  # Clean up after completion
                                  file=sys.stderr)
             
             # Only show rows progress bar if doing file-based QC
             if self.show_qc_progress:
                 self.row_pbar = tqdm(total=total_rows, 
-                                    desc="{}QC Rows".format(desc_prefix),  # Clarify this is for QC
+                                    desc="{}QC Progress".format(desc_prefix),  # Clarify this is for QC
                                     unit="rows", 
                                     unit_scale=True,
                                     position=self.position_offset + 1,
-                                    leave=True,
+                                    leave=False,  # Clean up after completion
                                     file=sys.stderr)
             else:
                 self.row_pbar = None  # No row progress when skipping QC
                 
-            self.compress_pbar = tqdm(total=self.total_size_mb, 
-                                     desc="{}Compression".format(desc_prefix), 
-                                     unit="MB", 
-                                     unit_scale=True,
-                                     position=self.position_offset + 2 if self.show_qc_progress else self.position_offset + 1,
-                                     leave=True,
-                                     file=sys.stderr)
+            # Create a placeholder for compression bar - will update per file
+            self.compress_pbar = None
+            self.compress_position = self.position_offset + 2 if self.show_qc_progress else self.position_offset + 1
+            self.desc_prefix = desc_prefix
             self.logger.debug("Progress bars initialized with position offset {}".format(self.position_offset))
 
+    def start_file_compression(self, filename: str, file_size_mb: float):
+        """Start compression progress for a specific file"""
+        import os
+        with self.lock:
+            self.current_file = filename
+            if TQDM_AVAILABLE:
+                # Close previous compression bar if exists
+                if self.compress_pbar:
+                    self.compress_pbar.close()
+                # Create new compression bar for this file
+                self.compress_pbar = tqdm(total=file_size_mb,
+                                        desc="{}Compressing {}".format(self.desc_prefix, os.path.basename(filename)),
+                                        unit="MB",
+                                        unit_scale=True,
+                                        position=self.compress_position,
+                                        leave=False,  # Clear after each file
+                                        file=sys.stderr,
+                                        ncols=100)
+    
     def update(self, files: int = 0, rows: int = 0, compressed_mb: float = 0):
         """Update progress"""
         with self.lock:
@@ -171,7 +186,7 @@ class ProgressTracker:
                     self.file_pbar.update(files)
                 if rows > 0 and self.row_pbar:
                     self.row_pbar.update(rows)
-                if compressed_mb > 0:
+                if compressed_mb > 0 and self.compress_pbar:
                     self.compress_pbar.update(compressed_mb)
 
             self.logger.debug("Progress: {}/{} files, {}/{} rows, {:.1f}/{:.1f} MB compressed".format(
@@ -195,7 +210,8 @@ class ProgressTracker:
             self.file_pbar.close()
             if self.row_pbar:
                 self.row_pbar.close()
-            self.compress_pbar.close()
+            if self.compress_pbar:
+                self.compress_pbar.close()
         self.logger.debug("Progress tracker closed")
 
 class FileAnalyzer:
@@ -834,7 +850,12 @@ class SnowflakeLoader:
                 
                 # Stream compression with progress
                 file_size = os.path.getsize(config.file_path)
+                file_size_mb = file_size / (1024 * 1024)
                 bytes_processed = 0
+                
+                # Start compression progress for this specific file
+                if self.progress_tracker:
+                    self.progress_tracker.start_file_compression(config.file_path, file_size_mb)
 
                 with open(config.file_path, 'rb') as f_in:
                     with gzip.open(compressed_file, 'wb', compresslevel=1) as f_out:  # Level 1 for speed
