@@ -150,8 +150,8 @@ class FileAnalyzer:
     BENCHMARKS = {
         'row_count': 500_000,         # Can count 500K rows/second (simple line counting)
         'quality_check': 50_000,      # Can QC 50K rows/second WITH date parsing/validation
-        'compression': 25_000_000,    # Can compress 25MB/second (gzip level 6)
-        'upload': 5_000_000,          # Can upload 5MB/second (typical network)
+        'compression': 25_000_000,    # Can compress 25MB/second = 25,000,000 bytes/second (gzip level 1)
+        'upload': 5_000_000,          # Can upload 5MB/second = 5,000,000 bytes/second (typical network)
         'snowflake_copy': 100_000     # Snowflake processes 100K rows/second (includes parsing)
     }
 
@@ -261,13 +261,16 @@ class FileAnalyzer:
         estimates['quality_checks'] = row_count / qc_rate if row_count > 0 else 0
 
         # Compression - somewhat parallel but disk I/O bound
-        compression_rate = FileAnalyzer.BENCHMARKS['compression'] * min(parallel_factor, 4)
-        estimates['compression'] = (file_size_gb * 1024) / compression_rate if file_size_gb > 0 else 0
+        # Convert compression rate from bytes/sec to MB/sec
+        compression_rate_mb = (FileAnalyzer.BENCHMARKS['compression'] / (1024 * 1024)) * min(parallel_factor, 4)
+        file_size_mb = file_size_gb * 1024
+        estimates['compression'] = file_size_mb / compression_rate_mb if file_size_mb > 0 else 0
 
         # Upload to Snowflake - limited by network, not very parallel
         compressed_size_mb = file_size_gb * 1024 * 0.15  # Assume 15% compression ratio
-        upload_rate = FileAnalyzer.BENCHMARKS['upload'] * min(parallel_factor, 8)
-        estimates['upload'] = compressed_size_mb / upload_rate if compressed_size_mb > 0 else 0
+        # Convert upload rate from bytes/sec to MB/sec
+        upload_rate_mb = (FileAnalyzer.BENCHMARKS['upload'] / (1024 * 1024)) * min(parallel_factor, 8)
+        estimates['upload'] = compressed_size_mb / upload_rate_mb if compressed_size_mb > 0 else 0
 
         # Snowflake COPY operation - limited parallelism on Snowflake side
         copy_rate = FileAnalyzer.BENCHMARKS['snowflake_copy'] * min(parallel_factor, 4)
