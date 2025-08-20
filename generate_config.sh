@@ -265,58 +265,14 @@ if __name__ == "__main__":
     query_columns(sys.argv[1], sys.argv[2])
 EOPYTHON
     
-    # Execute Python script using venv if available
+    # Execute Python script - just use python3 like the other scripts do
     if [[ "$VERBOSE" == true ]]; then
         print_color "$BLUE" "Querying Snowflake table: $table_name"
     fi
     
-    # Try multiple Python environments in order of preference
-    local python_cmd=""
-    
-    # 1. Check for test_venv in script directory
-    if [[ -d "$SCRIPT_DIR/test_venv" ]]; then
-        python_cmd="$SCRIPT_DIR/test_venv/bin/python3"
-        if [[ "$VERBOSE" == true ]]; then
-            print_color "$BLUE" "Using test_venv Python"
-        fi
-    # 2. Check if we're already in a virtual environment
-    elif [[ -n "$VIRTUAL_ENV" ]]; then
-        python_cmd="$VIRTUAL_ENV/bin/python3"
-        if [[ "$VERBOSE" == true ]]; then
-            print_color "$BLUE" "Using current virtual environment: $VIRTUAL_ENV"
-        fi
-    # 3. Check for conda environment
-    elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
-        # Use conda's python directly - it should have the right packages
-        if [[ -n "$CONDA_PREFIX" ]]; then
-            python_cmd="$CONDA_PREFIX/bin/python"
-        elif command -v conda &> /dev/null; then
-            python_cmd="$(conda info --base)/envs/$CONDA_DEFAULT_ENV/bin/python"
-        else
-            python_cmd="python"  # Use 'python' not 'python3' in conda
-        fi
-        if [[ "$VERBOSE" == true ]]; then
-            print_color "$BLUE" "Using conda environment: $CONDA_DEFAULT_ENV (python: $python_cmd)"
-        fi
-    # 4. Fall back to system python3
-    else
-        python_cmd="python3"
-        if [[ "$VERBOSE" == true ]]; then
-            print_color "$YELLOW" "Using system Python (snowflake module may not be available)"
-        fi
-    fi
-    
-    # Test if snowflake module is available in this Python
-    if [[ "$VERBOSE" == true ]]; then
-        if $python_cmd -c "import snowflake.connector" 2>/dev/null; then
-            print_color "$GREEN" "Snowflake module found in Python environment"
-        else
-            print_color "$RED" "WARNING: Snowflake module NOT found in Python environment"
-            print_color "$YELLOW" "Try: $python_cmd -m pip install snowflake-connector-python"
-        fi
-    fi
-    
-    local result=$($python_cmd "$python_script" "$creds_file" "$table_name" 2>&1)
+    # Just use python3 directly - this works in run_loader.sh and tsv_loader.py
+    # The environment should already be set up correctly
+    local result=$(python3 "$python_script" "$creds_file" "$table_name" 2>&1)
     rm -f "$python_script"
     
     if [[ "$result" == ERROR:* ]]; then
@@ -408,8 +364,11 @@ with open('$SNOWFLAKE_CREDS', 'r') as f:
             columns="${columns}]"
         elif [[ -n "$TABLE_NAME" ]] && [[ -n "$SNOWFLAKE_CREDS" ]]; then
             # Query Snowflake for columns
-            local sf_columns=$(query_snowflake_columns "$TABLE_NAME" "$SNOWFLAKE_CREDS")
-            if [[ -n "$sf_columns" ]] && [[ "$sf_columns" != ERROR:* ]] && [[ "$sf_columns" != *"Traceback"* ]]; then
+            local sf_columns
+            sf_columns=$(query_snowflake_columns "$TABLE_NAME" "$SNOWFLAKE_CREDS")
+            local query_status=$?
+            
+            if [[ $query_status -eq 0 ]] && [[ -n "$sf_columns" ]] && [[ "$sf_columns" != ERROR:* ]] && [[ "$sf_columns" != *"Traceback"* ]]; then
                 IFS=',' read -ra cols <<< "$sf_columns"
                 columns="["
                 for i in "${!cols[@]}"; do
