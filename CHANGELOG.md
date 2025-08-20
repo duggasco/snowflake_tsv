@@ -1,5 +1,44 @@
 # CHANGELOG.md
 
+## [2025-08-20] - Parallel Progress Bar Improvements
+
+### Added
+- **Stacked Progress Bars for Parallel Processing**:
+  - Each parallel job gets its own set of non-overlapping progress bars
+  - Progress bars are labeled with month identifier (e.g., `[2024-01] Files`)
+  - Position offset calculated using `TSV_JOB_POSITION` environment variable
+  - Automatic spacing adjustment prevents visual overlap
+
+- **Context-Aware Progress Display**:
+  - Shows 3 progress bars when doing file-based QC (Files, QC Rows, Compression)
+  - Shows only 2 progress bars when skipping QC (Files, Compression)
+  - "QC Rows" bar only appears when actually performing row-by-row quality checks
+  - Adaptive spacing based on processing mode
+
+### Enhanced
+- **ProgressTracker Class**:
+  - Added `show_qc_progress` parameter to control QC progress bar visibility
+  - Position calculation adapts to number of progress bars per job
+  - Month identifier passed for job labeling
+
+- **Bash Script Updates**:
+  - Sets `TSV_JOB_POSITION` environment variable for each parallel job
+  - Calculates initial spacing based on QC mode (2 or 3 lines per job)
+  - Improved parallel job tracking with position indicators
+
+### Technical Implementation
+- Progress bars use tqdm's `position` parameter for vertical stacking
+- Each job's position offset = job_number × lines_per_job
+- Lines per job: 3 with QC, 2 without QC
+- All progress bars write to stderr for quiet mode compatibility
+
+### Benefits
+- Cleaner visual output during parallel processing
+- No more overlapping or overwritten progress bars
+- Clear identification of which month each progress bar belongs to
+- Reduced screen clutter when QC is skipped
+- Better user experience for batch processing
+
 ## [2025-08-20] - Direct File Processing and Config Generator
 
 ### Added - Direct File Processing

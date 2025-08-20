@@ -47,9 +47,17 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 
 #### ProgressTracker
 - Real-time progress bars using tqdm (when available)
-- Tracks files processed, rows processed, and provides ETA
+- Tracks files processed, rows processed (during QC), and compression progress
 - Progress bars write to stderr and are visible even in quiet mode
-- Multiple simultaneous progress bars for parallel processing
+- **Parallel Processing Support**:
+  - Stacked progress bars for each parallel job
+  - Each job's bars are labeled with month identifier (e.g., `[2024-01] Files`)
+  - Position offset calculated from `TSV_JOB_POSITION` environment variable
+  - Bars don't overwrite each other - each job has dedicated display lines
+- **Context-Aware Display**:
+  - Shows 3 progress bars when doing file-based QC (Files, QC Rows, Compression)
+  - Shows 2 progress bars when skipping QC (Files, Compression only)
+  - Automatically adjusts spacing based on processing mode
 
 ## Development Commands
 
@@ -268,6 +276,28 @@ Based on testing with mock data:
 - 1B rows: ~35ms
 - 10B rows: ~300ms
 - 100B rows: ~1.5s
+
+## Implementation Details
+
+### Parallel Progress Bar Architecture
+
+The parallel progress bar system uses environment variables and position offsets to prevent overlapping:
+
+1. **Environment Variable**: `TSV_JOB_POSITION` is set by `run_loader.sh` for each parallel job (0, 1, 2, ...)
+2. **Position Calculation**: 
+   - With QC: position_offset = job_position * 3 (3 progress bars per job)
+   - Without QC: position_offset = job_position * 2 (2 progress bars per job)
+3. **tqdm Parameters**:
+   - `position`: Sets the line position for each progress bar
+   - `leave=True`: Keeps progress bars visible after completion
+   - `file=sys.stderr`: Ensures progress bars work in quiet mode
+
+### Context-Aware Progress Display
+
+The `ProgressTracker` class adapts based on the `show_qc_progress` parameter:
+- Determined by: `show_qc_progress = not skip_qc and not validate_in_snowflake`
+- When False, the QC Rows progress bar is set to None and not displayed
+- Compression bar position adjusts accordingly (position + 1 instead of position + 2)
 
 ## Testing Approach
 

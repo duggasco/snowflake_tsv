@@ -86,7 +86,7 @@ class FileConfig:
 class ProgressTracker:
     """Track and display progress across multiple files"""
 
-    def __init__(self, total_files: int, total_rows: int, total_size_gb: float):
+    def __init__(self, total_files: int, total_rows: int, total_size_gb: float, month: str = None, show_qc_progress: bool = True):
         self.total_files = total_files
         self.total_rows = total_rows
         self.total_size_gb = total_size_gb
@@ -97,13 +97,67 @@ class ProgressTracker:
         self.start_time = time.time()
         self.lock = threading.Lock()
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.month = month
+        self.show_qc_progress = show_qc_progress  # Whether to show row-by-row QC progress
+
+        # Calculate position offset based on month/job ID for parallel processing
+        # Use environment variable set by wrapper script for position
+        self.position_offset = 0
+        try:
+            import os
+            # Try to get job position from environment variable
+            job_position = os.environ.get('TSV_JOB_POSITION', '')
+            if job_position:
+                # 3 lines per job if showing QC progress, 2 lines if not
+                lines_per_job = 3 if self.show_qc_progress else 2
+                self.position_offset = int(job_position) * lines_per_job
+            elif month:
+                # Fallback: extract numeric part from month (e.g., "2024-01" -> 1)
+                month_num = int(month.split('-')[-1])
+                lines_per_job = 3 if self.show_qc_progress else 2
+                self.position_offset = (month_num - 1) * lines_per_job
+        except:
+            # Default: no offset
+            self.position_offset = 0
 
         # Progress bars if tqdm available
         if TQDM_AVAILABLE:
-            self.file_pbar = tqdm(total=total_files, desc="Files", unit="file")
-            self.row_pbar = tqdm(total=total_rows, desc="Rows", unit="rows", unit_scale=True)
-            self.compress_pbar = tqdm(total=self.total_size_mb, desc="Compression", unit="MB", unit_scale=True)
-            self.logger.debug("Progress bars initialized")
+            # Add month prefix to descriptions if provided
+            desc_prefix = "[{}] ".format(month) if month else ""
+            
+            # Use position parameter to stack progress bars
+            # Add a header line for the job
+            if month and self.position_offset > 0:
+                # Create a static header for this job
+                print("\n" * self.position_offset, end='', file=sys.stderr)
+            
+            self.file_pbar = tqdm(total=total_files, 
+                                 desc="{}Files".format(desc_prefix), 
+                                 unit="file",
+                                 position=self.position_offset,
+                                 leave=True,
+                                 file=sys.stderr)
+            
+            # Only show rows progress bar if doing file-based QC
+            if self.show_qc_progress:
+                self.row_pbar = tqdm(total=total_rows, 
+                                    desc="{}QC Rows".format(desc_prefix),  # Clarify this is for QC
+                                    unit="rows", 
+                                    unit_scale=True,
+                                    position=self.position_offset + 1,
+                                    leave=True,
+                                    file=sys.stderr)
+            else:
+                self.row_pbar = None  # No row progress when skipping QC
+                
+            self.compress_pbar = tqdm(total=self.total_size_mb, 
+                                     desc="{}Compression".format(desc_prefix), 
+                                     unit="MB", 
+                                     unit_scale=True,
+                                     position=self.position_offset + 2 if self.show_qc_progress else self.position_offset + 1,
+                                     leave=True,
+                                     file=sys.stderr)
+            self.logger.debug("Progress bars initialized with position offset {}".format(self.position_offset))
 
     def update(self, files: int = 0, rows: int = 0, compressed_mb: float = 0):
         """Update progress"""
@@ -115,7 +169,7 @@ class ProgressTracker:
             if TQDM_AVAILABLE:
                 if files > 0:
                     self.file_pbar.update(files)
-                if rows > 0:
+                if rows > 0 and self.row_pbar:
                     self.row_pbar.update(rows)
                 if compressed_mb > 0:
                     self.compress_pbar.update(compressed_mb)
@@ -139,7 +193,8 @@ class ProgressTracker:
         """Close progress bars"""
         if TQDM_AVAILABLE:
             self.file_pbar.close()
-            self.row_pbar.close()
+            if self.row_pbar:
+                self.row_pbar.close()
             self.compress_pbar.close()
         self.logger.debug("Progress tracker closed")
 
@@ -201,7 +256,18 @@ class FileAnalyzer:
         bytes_read = 0
 
         if show_progress and TQDM_AVAILABLE:
-            pbar = tqdm(total=file_size, unit='B', unit_scale=True, desc="Counting rows")
+            # Get position offset from environment for parallel jobs
+            position_offset = 0
+            try:
+                import os
+                # Try to get job position from environment variable set by wrapper script
+                job_position = os.environ.get('TSV_JOB_POSITION', '0')
+                position_offset = int(job_position) * 4  # 4 lines per job
+            except:
+                position_offset = 0
+            
+            pbar = tqdm(total=file_size, unit='B', unit_scale=True, desc="Counting rows", 
+                       position=position_offset + 3, leave=False, file=sys.stderr)
 
         with open(filepath, 'rb') as f:
             while True:
@@ -1258,7 +1324,7 @@ def analyze_files(file_configs: List[FileConfig], max_workers: int = 4) -> Dict:
 
 def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                  max_workers: int, skip_qc: bool, analysis_results: Dict,
-                 validate_in_snowflake: bool = False, validate_only: bool = False) -> Dict:
+                 validate_in_snowflake: bool = False, validate_only: bool = False, month: str = None) -> Dict:
     """Process files with streaming quality checks and loading"""
     logger.info("="*60)
     logger.info("Starting file processing (STREAMING MODE)")
@@ -1276,10 +1342,14 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
     # Initialize progress tracker if available
     tracker = None
     if analysis_results and TQDM_AVAILABLE:
+        # Determine if we're showing QC progress (only if doing file-based QC)
+        show_qc_progress = not skip_qc and not validate_in_snowflake
         tracker = ProgressTracker(
             len(file_configs),
             analysis_results['total_rows'],
-            analysis_results['total_size_gb']
+            analysis_results['total_size_gb'],
+            month=month,  # Pass month for job identification
+            show_qc_progress=show_qc_progress  # Show QC progress only if doing file-based QC
         )
 
     try:
@@ -1687,7 +1757,8 @@ def main():
         skip_qc=args.skip_qc or args.validate_in_snowflake,  # Skip file QC if validating in Snowflake
         analysis_results=analysis_results,
         validate_in_snowflake=args.validate_in_snowflake,
-        validate_only=args.validate_only
+        validate_only=args.validate_only,
+        month=args.month  # Pass month for progress bar identification
     )
     
     # Save validation results to file if requested

@@ -322,12 +322,12 @@ process_month() {
         # Redirect stdout to log, stderr (progress bars) stays on terminal
         # Also capture stderr to log file using process substitution
         exec 3>&1
-        ${cmd} > "${log_file}" 2> >(tee -a "${log_file}" >&2)
+        TSV_JOB_POSITION="${job_position}" ${cmd} > "${log_file}" 2> >(tee -a "${log_file}" >&2)
         local exit_code=$?
         exec 3>&-
     else
         # Verbose mode - show output and save to log
-        ${cmd} 2>&1 | tee "${log_file}"
+        TSV_JOB_POSITION="${job_position}" ${cmd} 2>&1 | tee "${log_file}"
         # Capture exit code
         local exit_code=${PIPESTATUS[0]}
     fi
@@ -498,6 +498,9 @@ fi
 # Determine which months to process
 declare -a months_to_process=()
 
+# Track job position for parallel progress bars
+job_position_counter=0
+
 if [ -n "${BATCH_MODE}" ]; then
     # Batch mode: find all month directories
     echo -e "${MAGENTA}Batch mode: Finding all month directories...${NC}"
@@ -575,6 +578,25 @@ if [ ${PARALLEL_JOBS} -gt 1 ] && [ -z "${QUIET_MODE}" ]; then
     echo -e "${YELLOW}Tip: Use --quiet for cleaner output with parallel jobs${NC}\n"
 fi
 
+# Add initial spacing for parallel progress bars
+if [ ${PARALLEL_JOBS} -gt 1 ]; then
+    # Determine lines per job based on whether QC is being performed
+    # 3 lines if doing QC (Files, QC Rows, Compression), 2 lines if not (Files, Compression)
+    if [ -n "${SKIP_QC}" ] || [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
+        lines_per_job=2
+    else
+        lines_per_job=3
+    fi
+    
+    # Create space for progress bars
+    total_lines=$((${PARALLEL_JOBS} * ${lines_per_job}))
+    for ((i=0; i<${total_lines}; i++)); do
+        echo ""
+    done
+    # Move cursor back up
+    tput cuu ${total_lines}
+fi
+
 # Process months
 total_months=${#months_to_process[@]}
 successful_months=0
@@ -638,15 +660,17 @@ for i in "${!months_to_process[@]}"; do
     if [ ${PARALLEL_JOBS} -gt 1 ]; then
         # Run in background for parallel processing
         {
-            process_month "${month}" "${workers_per_job}"
+            process_month "${month}" "${workers_per_job}" "${job_position_counter}"
         } &
         
         # Track the background job
         job_pids[$!]="${month}"
-        echo -e "${BLUE}Month ${month} running in background (PID: $!)${NC}"
+        echo -e "${BLUE}Month ${month} running in background (PID: $!, position: ${job_position_counter})${NC}"
+        # Increment position counter for next job
+        job_position_counter=$((job_position_counter + 1))
     else
         # Sequential processing (original behavior)
-        process_month "${month}" "${workers_per_job}"
+        process_month "${month}" "${workers_per_job}" "0"
         exit_code=$?
         
         if [ ${exit_code} -eq 0 ]; then

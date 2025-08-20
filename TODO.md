@@ -30,6 +30,26 @@
 - [ ] Test full pipeline with production data
 
 ## Completed Today (2025-08-20) ✓
+- [x] Implement parallel progress bar improvements - DONE
+  - [x] Add stacked progress bars for parallel processing
+  - [x] Each job gets non-overlapping progress bars
+  - [x] Label progress bars with month identifier
+  - [x] Use TSV_JOB_POSITION environment variable for positioning
+- [x] Add context-aware progress display - DONE
+  - [x] Show QC Rows bar only when doing file-based QC
+  - [x] Hide QC Rows bar when using --skip-qc or --validate-in-snowflake
+  - [x] Automatically adjust spacing (3 lines with QC, 2 without)
+  - [x] Update ProgressTracker class with show_qc_progress parameter
+- [x] Update bash script for parallel progress tracking - DONE
+  - [x] Set TSV_JOB_POSITION for each parallel job
+  - [x] Calculate initial spacing based on QC mode
+  - [x] Track job positions for proper stacking
+- [x] Test parallel progress bar display - DONE
+  - [x] Created test scripts for with/without QC modes
+  - [x] Verified proper stacking and no overlap
+  - [x] Confirmed month labels appear correctly
+
+## Previously Completed Today (2025-08-20) ✓
 - [x] Create config generator tool (generate_config.sh) - DONE
   - [x] Basic TSV analysis and pattern detection
   - [x] Snowflake table inspection for column headers

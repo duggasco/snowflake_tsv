@@ -10,7 +10,10 @@ A high-performance ETL pipeline for loading large TSV files (up to 50GB) into Sn
   - File-based validation with date completeness checks
   - Snowflake-based validation for faster processing of large files
   - Schema validation and type inference
-- **Progress Tracking**: Real-time progress bars with ETA calculations
+- **Progress Tracking**: 
+  - Real-time progress bars with ETA calculations
+  - Stacked progress bars for parallel processing
+  - Context-aware display (shows QC progress only when performing file-based QC)
 - **Flexible Date Patterns**: Supports both date range (YYYYMMDD-YYYYMMDD) and month (YYYY-MM) formats
 - **Batch Processing**: Process multiple months in parallel with comprehensive error handling
 - **Performance Optimized**: Utilizes Snowflake's bulk loading features with compression
@@ -135,8 +138,9 @@ The pipeline offers three validation modes:
 # Batch process all months found
 ./run_loader.sh --batch --continue-on-error
 
-# Quiet mode for cleaner output
+# Quiet mode for cleaner output (recommended for parallel processing)
 ./run_loader.sh --batch --parallel 4 --quiet
+# Progress bars remain visible in quiet mode, only console output is suppressed
 
 # Dry run to preview actions
 ./run_loader.sh --batch --dry-run
@@ -201,11 +205,48 @@ snowflake/
     └── test_edge_cases.py
 ```
 
+## Progress Tracking
+
+### Progress Bar Types
+
+The pipeline displays different progress bars based on the processing mode:
+
+**With File-based QC** (default):
+- **Files**: Number of TSV files being processed
+- **QC Rows**: Row-by-row quality check progress (date validation, schema checking)
+- **Compression**: Megabytes compressed during gzip compression
+
+**Without QC** (`--skip-qc` or `--validate-in-snowflake`):
+- **Files**: Number of TSV files being processed
+- **Compression**: Megabytes compressed during gzip compression
+- *(QC Rows bar is hidden as no row-by-row processing occurs)*
+
+### Parallel Processing Display
+
+When processing multiple months in parallel:
+- Each job gets its own set of stacked progress bars
+- Progress bars are labeled with the month being processed (e.g., `[2024-01] Files`)
+- Bars don't overwrite each other - each job has its own display area
+- Automatic spacing adjustment based on number of parallel jobs
+
+Example with 3 parallel jobs:
+```
+[2024-01] Files: 100%|██████████| 10/10 [00:02<00:00, 4.99file/s]
+[2024-01] QC Rows: 100%|██████████| 1000/1000 [00:02<00:00, 498.58rows/s]
+[2024-01] Compression: 100%|██████████| 100/100 [00:02<00:00, 49.86MB/s]
+[2024-02] Files: 100%|██████████| 10/10 [00:02<00:00, 4.99file/s]
+[2024-02] QC Rows: 100%|██████████| 1000/1000 [00:02<00:00, 498.55rows/s]
+[2024-02] Compression: 100%|██████████| 100/100 [00:02<00:00, 49.86MB/s]
+[2024-03] Files: 100%|██████████| 10/10 [00:02<00:00, 4.99file/s]
+[2024-03] QC Rows: 100%|██████████| 1000/1000 [00:02<00:00, 498.55rows/s]
+[2024-03] Compression: 100%|██████████| 100/100 [00:02<00:00, 49.86MB/s]
+```
+
 ## Logging
 
 - **Console Output**: Normal operational messages
 - **Debug Log**: Detailed execution trace in `logs/tsv_loader_debug.log`
-- **Quiet Mode**: Suppress console output while keeping progress bars
+- **Quiet Mode**: Suppress console output while keeping progress bars visible
 - **Run Logs**: Individual logs for each run in `logs/run_*.log`
 
 ## Error Handling
