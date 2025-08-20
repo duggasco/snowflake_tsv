@@ -566,14 +566,53 @@ try:
             table = r.get('table_name', 'Unknown')
             if r.get('error'):
                 status = '✗ ERROR: ' + r['error']
+                print(f'  {table}: {status}')
             elif r.get('valid'):
                 stats = r.get('statistics', {})
                 status = f'✓ VALID ({stats.get(\"total_rows\", 0):,} rows, {stats.get(\"unique_dates\", 0)} dates)'
+                print(f'  {table}: {status}')
             else:
                 stats = r.get('statistics', {})
                 missing = stats.get('missing_dates', 0)
+                date_range = r.get('date_range', {})
+                gaps = r.get('gaps', [])
+                
+                # Build status with more detail
                 status = f'✗ INVALID ({missing} dates missing)'
-            print(f'  {table}: {status}')
+                print(f'  {table}: {status}')
+                
+                # Show date range info
+                actual_min = date_range.get('actual_min', 'N/A')
+                actual_max = date_range.get('actual_max', 'N/A')
+                requested_start = date_range.get('requested_start', 'N/A')
+                requested_end = date_range.get('requested_end', 'N/A')
+                
+                if actual_min != 'N/A' and actual_max != 'N/A':
+                    print(f'    Expected: {requested_start} to {requested_end}')
+                    print(f'    Found:    {actual_min} to {actual_max}')
+                
+                # Show first few gaps
+                if gaps:
+                    print(f'    Missing date ranges:')
+                    for i, gap in enumerate(gaps[:3], 1):
+                        gap_from = gap.get('from', 'N/A')
+                        gap_to = gap.get('to', 'N/A')
+                        missing_days = gap.get('missing_days', 0)
+                        if gap_from != 'N/A' and gap_to != 'N/A':
+                            # Calculate actual missing dates (gap_from is last date before gap, gap_to is first date after)
+                            from datetime import datetime, timedelta
+                            try:
+                                start_missing = datetime.strptime(gap_from, '%Y-%m-%d') + timedelta(days=1)
+                                end_missing = datetime.strptime(gap_to, '%Y-%m-%d') - timedelta(days=1)
+                                if start_missing == end_missing:
+                                    print(f'      • {start_missing.strftime(\"%Y-%m-%d\")} (1 day)')
+                                else:
+                                    print(f'      • {start_missing.strftime(\"%Y-%m-%d\")} to {end_missing.strftime(\"%Y-%m-%d\")} ({missing_days} days)')
+                            except:
+                                # Fallback to original display if date parsing fails
+                                print(f'      • Gap between {gap_from} and {gap_to} ({missing_days} days)')
+                    if len(gaps) > 3:
+                        print(f'      • ... and {len(gaps) - 3} more gaps')
 except Exception as e:
     print(f'  Error reading {vfile}: {e}', file=sys.stderr)
 " 2>/dev/null
