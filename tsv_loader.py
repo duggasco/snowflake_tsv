@@ -505,6 +505,10 @@ class SnowflakeDataValidator:
         
         try:
             # Query 1: Get date range summary
+            # Convert date strings to YYYYMMDD format for comparison
+            start_yyyymmdd = start_date.replace('-', '')
+            end_yyyymmdd = end_date.replace('-', '')
+            
             range_query = """
             SELECT 
                 MIN({date_col}) as min_date,
@@ -516,8 +520,8 @@ class SnowflakeDataValidator:
             """.format(
                 date_col=date_column,
                 table=table_name,
-                start=start_date,
-                end=end_date
+                start=start_yyyymmdd,
+                end=end_yyyymmdd
             )
             
             self.logger.debug("Executing range query: {}".format(range_query))
@@ -552,8 +556,8 @@ class SnowflakeDataValidator:
             """.format(
                 date_col=date_column,
                 table=table_name,
-                start=start_date,
-                end=end_date
+                start=start_yyyymmdd,
+                end=end_yyyymmdd
             )
             
             self.logger.debug("Executing distribution query")
@@ -561,6 +565,7 @@ class SnowflakeDataValidator:
             daily_counts = self.cursor.fetchall()
             
             # Query 3: Find gaps in date sequence
+            # For YYYYMMDD format, we need to convert to dates for DATEDIFF
             gap_query = """
             WITH date_sequence AS (
                 SELECT 
@@ -575,16 +580,22 @@ class SnowflakeDataValidator:
             SELECT 
                 prev_date,
                 date_value,
-                DATEDIFF(day, prev_date, date_value) as gap_days
+                DATEDIFF(day, 
+                    TO_DATE(prev_date::VARCHAR, 'YYYYMMDD'), 
+                    TO_DATE(date_value::VARCHAR, 'YYYYMMDD')
+                ) as gap_days
             FROM date_sequence
-            WHERE DATEDIFF(day, prev_date, date_value) > 1
+            WHERE DATEDIFF(day, 
+                TO_DATE(prev_date::VARCHAR, 'YYYYMMDD'), 
+                TO_DATE(date_value::VARCHAR, 'YYYYMMDD')
+            ) > 1
             ORDER BY prev_date
             LIMIT 100
             """.format(
                 date_col=date_column,
                 table=table_name,
-                start=start_date,
-                end=end_date
+                start=start_yyyymmdd,
+                end=end_yyyymmdd
             )
             
             self.logger.debug("Executing gap detection query")
@@ -596,6 +607,13 @@ class SnowflakeDataValidator:
             end_dt = datetime.strptime(end_date, '%Y-%m-%d')
             expected_days = (end_dt - start_dt).days + 1
             
+            # Helper function to format YYYYMMDD to YYYY-MM-DD
+            def format_yyyymmdd(date_val):
+                if date_val and len(str(date_val)) == 8:
+                    date_str = str(date_val)
+                    return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                return str(date_val)
+            
             # Compile validation results
             validation_result = {
                 'valid': len(gaps) == 0 and unique_dates == expected_days,
@@ -604,8 +622,8 @@ class SnowflakeDataValidator:
                 'date_range': {
                     'requested_start': start_date,
                     'requested_end': end_date,
-                    'actual_min': str(min_date),
-                    'actual_max': str(max_date)
+                    'actual_min': format_yyyymmdd(min_date),
+                    'actual_max': format_yyyymmdd(max_date)
                 },
                 'statistics': {
                     'total_rows': total_rows,
@@ -616,14 +634,14 @@ class SnowflakeDataValidator:
                 },
                 'gaps': [
                     {
-                        'from': str(gap[0]) if gap and len(gap) > 0 else '',
-                        'to': str(gap[1]) if gap and len(gap) > 1 else '',
+                        'from': format_yyyymmdd(gap[0]) if gap and len(gap) > 0 else '',
+                        'to': format_yyyymmdd(gap[1]) if gap and len(gap) > 1 else '',
                         'missing_days': gap[2] - 1 if gap and len(gap) > 2 else 0
                     } for gap in gaps[:10] if gap and len(gap) >= 3  # Limit to first 10 gaps
                 ],
                 'daily_sample': [
                     {
-                        'date': str(row[0]) if row and len(row) > 0 else '',
+                        'date': format_yyyymmdd(row[0]) if row and len(row) > 0 else '',
                         'count': row[1] if row and len(row) > 1 else 0
                     } for row in daily_counts[:30] if row and len(row) >= 2  # First 30 days sample
                 ]
