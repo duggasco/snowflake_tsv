@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## [2025-08-20] - Critical Bug Fix: OS Module Import Scope
+
+### Fixed
+- **Critical Issue**: Fixed 'local variable os referenced before assignment' error in SnowflakeLoader
+- **Root Cause**: os and time modules were imported inside try block, making them unavailable in finally block
+- **Solution**: Moved imports to beginning of load_file_to_stage_and_table method
+- **Impact**: This was preventing all file uploads to Snowflake, causing processes to fail immediately
+
+### Discovered
+- Issue manifested as suspiciously fast completion times (0.6-0.8 seconds instead of expected ~5 minutes)
+- Error occurred consistently across all parallel month processing attempts
+- Affected line 594 in tsv_loader.py where os.remove() was called in finally block
+
+### Technical Details
+- Moved `import os` and `import time` from lines 501-502 to lines 487-488
+- Ensures modules are available throughout entire method scope
+- Critical for proper cleanup of compressed files after upload
+
 ## [2025-08-19] - factLendingBenchmark Configuration
 
 ### Added

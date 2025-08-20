@@ -8,9 +8,12 @@
 - [x] Add Snowflake credentials from generated_config.json
 - [x] Configure RECORDDATEID as the date column (YYYYMMDD format)
 - [x] Add Gemini MCP tool for collaborative planning
+- [x] Fix critical os module import scope error in SnowflakeLoader (BUG-001)
+- [x] Update parallel processing to handle multiple months simultaneously
+- [x] Add automatic worker distribution in run_loader.sh
 
 ## In Progress 🔄
-- [ ] Test ETL pipeline with factLendingBenchmark configuration
+- [ ] Test ETL pipeline with factLendingBenchmark configuration on remote server
 
 ## Pending Tasks 📋
 - [ ] Run tsv_loader.py with the new configuration
