@@ -169,50 +169,59 @@ class ProgressTracker:
         with self.lock:
             self.current_file = filename
             if TQDM_AVAILABLE:
-                # Close previous compression bar if exists
-                if self.compress_pbar:
-                    self.compress_pbar.close()
-                # Create new compression bar for this file
-                self.compress_pbar = tqdm(total=file_size_mb,
-                                        desc="{}Compressing {}".format(self.desc_prefix, os.path.basename(filename)),
-                                        unit="MB",
-                                        unit_scale=True,
-                                        position=self.compress_position,
-                                        leave=False,  # Clear after each file
-                                        file=sys.stderr)  # No ncols limit - use full terminal width
+                if self.compress_pbar is None:
+                    # First time - create the bar
+                    self.compress_pbar = tqdm(total=file_size_mb,
+                                            desc="{}Compressing {}".format(self.desc_prefix, os.path.basename(filename)),
+                                            unit="MB",
+                                            unit_scale=True,
+                                            position=self.compress_position,
+                                            leave=True,  # Keep bar for reuse
+                                            file=sys.stderr)
+                else:
+                    # Reuse existing bar - reset it for the new file
+                    self.compress_pbar.reset(total=file_size_mb)
+                    self.compress_pbar.set_description("{}Compressing {}".format(self.desc_prefix, os.path.basename(filename)))
+                    self.compress_pbar.refresh()
     
     def start_file_upload(self, filename: str, file_size_mb: float):
         """Start upload progress for a specific file"""
         import os
         with self.lock:
             if TQDM_AVAILABLE:
-                # Close previous upload bar if exists
-                if self.upload_pbar:
-                    self.upload_pbar.close()
-                # Create new upload bar for this file
-                self.upload_pbar = tqdm(total=file_size_mb,
-                                      desc="{}Uploading {}".format(self.desc_prefix, os.path.basename(filename)),
-                                      unit="MB",
-                                      unit_scale=True,
-                                      position=self.upload_position,
-                                      leave=False,
-                                      file=sys.stderr)
+                if self.upload_pbar is None:
+                    # First time - create the bar
+                    self.upload_pbar = tqdm(total=file_size_mb,
+                                          desc="{}Uploading {}".format(self.desc_prefix, os.path.basename(filename)),
+                                          unit="MB",
+                                          unit_scale=True,
+                                          position=self.upload_position,
+                                          leave=True,  # Keep bar for reuse
+                                          file=sys.stderr)
+                else:
+                    # Reuse existing bar - reset it for the new file
+                    self.upload_pbar.reset(total=file_size_mb)
+                    self.upload_pbar.set_description("{}Uploading {}".format(self.desc_prefix, os.path.basename(filename)))
+                    self.upload_pbar.refresh()
     
     def start_copy_operation(self, table_name: str, row_count: int):
         """Start COPY progress for Snowflake operation"""
         with self.lock:
             if TQDM_AVAILABLE:
-                # Close previous copy bar if exists
-                if self.copy_pbar:
-                    self.copy_pbar.close()
-                # Create new copy bar for this table
-                self.copy_pbar = tqdm(total=row_count,
-                                    desc="{}Loading into {}".format(self.desc_prefix, table_name),
-                                    unit="rows",
-                                    unit_scale=True,
-                                    position=self.copy_position,
-                                    leave=False,
-                                    file=sys.stderr)
+                if self.copy_pbar is None:
+                    # First time - create the bar
+                    self.copy_pbar = tqdm(total=row_count,
+                                        desc="{}Loading into {}".format(self.desc_prefix, table_name),
+                                        unit="rows",
+                                        unit_scale=True,
+                                        position=self.copy_position,
+                                        leave=True,  # Keep bar for reuse
+                                        file=sys.stderr)
+                else:
+                    # Reuse existing bar - reset it for the new table
+                    self.copy_pbar.reset(total=row_count)
+                    self.copy_pbar.set_description("{}Loading into {}".format(self.desc_prefix, table_name))
+                    self.copy_pbar.refresh()
     
     def update(self, files: int = 0, rows: int = 0, compressed_mb: float = 0, 
                 uploaded_mb: float = 0, copied_rows: int = 0):
@@ -249,18 +258,35 @@ class ProgressTracker:
             return str(timedelta(seconds=int(eta_seconds)))
         return "Unknown"
 
+    def clear_file_bars(self):
+        """Clear file-specific progress bars between files"""
+        with self.lock:
+            if TQDM_AVAILABLE:
+                # Clear the bars from display but keep them for reuse
+                if self.compress_pbar:
+                    self.compress_pbar.clear()
+                if self.upload_pbar:
+                    self.upload_pbar.clear()
+                if self.copy_pbar:
+                    self.copy_pbar.clear()
+    
     def close(self):
         """Close progress bars"""
         if TQDM_AVAILABLE:
+            # Clear all bars first to remove from display
+            if self.compress_pbar:
+                self.compress_pbar.clear()
+                self.compress_pbar.close()
+            if self.upload_pbar:
+                self.upload_pbar.clear()
+                self.upload_pbar.close()
+            if self.copy_pbar:
+                self.copy_pbar.clear()
+                self.copy_pbar.close()
+            # Close the main bars
             self.file_pbar.close()
             if self.row_pbar:
                 self.row_pbar.close()
-            if self.compress_pbar:
-                self.compress_pbar.close()
-            if self.upload_pbar:
-                self.upload_pbar.close()
-            if self.copy_pbar:
-                self.copy_pbar.close()
         self.logger.debug("Progress tracker closed")
 
 class FileAnalyzer:
