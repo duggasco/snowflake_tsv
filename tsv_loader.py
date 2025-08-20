@@ -484,6 +484,9 @@ class SnowflakeLoader:
 
     def load_file_to_stage_and_table(self, config: FileConfig):
         """Load TSV file to Snowflake with streaming compression"""
+        import time
+        import os
+        
         self.logger.info("Loading {} to {}".format(config.file_path, config.table_name))
         
         compressed_file = None
@@ -498,8 +501,6 @@ class SnowflakeLoader:
 
             # Use user stage with subdirectory including unique identifier to avoid conflicts
             # This is critical for parallel processing to prevent file corruption
-            import time
-            import os
             timestamp = int(time.time() * 1000)  # millisecond timestamp
             file_basename = os.path.basename(config.file_path).replace('.tsv', '')
             stage_name = "@~/tsv_stage/{}/{}_{}/".format(config.table_name, file_basename, timestamp)
