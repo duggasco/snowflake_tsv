@@ -23,6 +23,7 @@ BATCH_MODE=""
 MONTHS_LIST=""
 CONTINUE_ON_ERROR=""
 DRY_RUN=""
+QUIET_MODE=""
 PARALLEL_JOBS=1  # Default to sequential processing
 
  
@@ -46,6 +47,7 @@ usage() {
     echo "                      With --parallel, workers are divided among parallel jobs"
     echo "  --skip-qc           Skip quality checks (not recommended)"
     echo "  --analyze-only      Only analyze files and show time estimates"
+    echo "  --quiet             Suppress output, log to files only (useful for parallel)"
     echo "  --check-system      Check system capabilities and exit"
     echo "  --help              Show this help message"
     echo ""
@@ -155,11 +157,17 @@ process_month() {
         return 0
     fi
     
-    # Execute the command with tee to show output and save to log
-    ${cmd} 2>&1 | tee "${log_file}"
-    
-    # Capture exit code
-    local exit_code=${PIPESTATUS[0]}
+    # Execute the command - redirect to log file, optionally show output
+    if [ -n "${QUIET_MODE}" ]; then
+        # Quiet mode - only log to file
+        ${cmd} > "${log_file}" 2>&1
+        local exit_code=$?
+    else
+        # Verbose mode - show output and save to log
+        ${cmd} 2>&1 | tee "${log_file}"
+        # Capture exit code
+        local exit_code=${PIPESTATUS[0]}
+    fi
     
     if [ ${exit_code} -eq 0 ]; then
         echo -e "${GREEN}✓ Month $month_dir processed successfully${NC}"
@@ -261,6 +269,10 @@ while [[ $# -gt 0 ]]; do
             ANALYZE_ONLY="--analyze-only"
             shift
             ;;
+        --quiet)
+            QUIET_MODE="yes"
+            shift
+            ;;
         --check-system)
             CHECK_SYSTEM="--check-system"
             shift
@@ -358,6 +370,11 @@ workers_per_job=""
 if [ ${PARALLEL_JOBS} -gt 1 ] && [ -n "${MAX_WORKERS}" ]; then
     workers_per_job=$((MAX_WORKERS / PARALLEL_JOBS))
     echo -e "${BLUE}Distributing ${MAX_WORKERS} workers across ${PARALLEL_JOBS} parallel jobs: ${workers_per_job} workers per month${NC}\n"
+fi
+
+# Suggest quiet mode for parallel processing
+if [ ${PARALLEL_JOBS} -gt 1 ] && [ -z "${QUIET_MODE}" ]; then
+    echo -e "${YELLOW}Tip: Use --quiet for cleaner output with parallel jobs${NC}\n"
 fi
 
 # Process months
