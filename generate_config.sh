@@ -187,22 +187,39 @@ def query_columns(config_file, table_name):
         
         cursor = conn.cursor()
         
-        # Query column information
+        # Query column information - include database and schema for precision
+        database = sf_config.get('database')
+        schema = sf_config.get('schema')
+        
+        # First try with full qualification
         query = f"""
         SELECT column_name, data_type, ordinal_position
         FROM information_schema.columns
         WHERE UPPER(table_name) = UPPER('{table_name}')
+          AND UPPER(table_schema) = UPPER('{schema}')
+          AND UPPER(table_catalog) = UPPER('{database}')
         ORDER BY ordinal_position
         """
         
         cursor.execute(query)
         columns = cursor.fetchall()
         
+        # If no results, try without database/schema filters (backwards compatibility)
+        if not columns:
+            query = f"""
+            SELECT column_name, data_type, ordinal_position
+            FROM information_schema.columns
+            WHERE UPPER(table_name) = UPPER('{table_name}')
+            ORDER BY ordinal_position
+            """
+            cursor.execute(query)
+            columns = cursor.fetchall()
+        
         if columns:
             column_names = [col[0] for col in columns]
             print(','.join(column_names))
         else:
-            print("ERROR: Table not found or no columns")
+            print(f"ERROR: Table '{table_name}' not found in {database}.{schema} or no columns")
             sys.exit(1)
         
         cursor.close()
@@ -221,6 +238,10 @@ if __name__ == "__main__":
 EOPYTHON
     
     # Execute Python script using venv if available
+    if [[ "$VERBOSE" == true ]]; then
+        print_color "$BLUE" "Querying Snowflake table: $table_name"
+    fi
+    
     if [[ -d "$SCRIPT_DIR/test_venv" ]]; then
         local result=$("$SCRIPT_DIR/test_venv/bin/python3" "$python_script" "$creds_file" "$table_name" 2>&1)
     else
@@ -229,10 +250,17 @@ EOPYTHON
     rm -f "$python_script"
     
     if [[ "$result" == ERROR:* ]]; then
+        print_color "$YELLOW" "Warning: ${result#ERROR: }"
         if [[ "$VERBOSE" == true ]]; then
-            print_color "$YELLOW" "Warning: Could not query Snowflake: ${result#ERROR: }"
+            print_color "$YELLOW" "Tip: Check that table exists in the specified database/schema"
+            print_color "$YELLOW" "     Or use -h flag to manually specify column names"
         fi
         return 1
+    fi
+    
+    if [[ "$VERBOSE" == true ]] && [[ -n "$result" ]]; then
+        local col_count=$(echo "$result" | tr ',' '\n' | wc -l)
+        print_color "$GREEN" "Found $col_count columns from Snowflake"
     fi
     
     echo "$result"
