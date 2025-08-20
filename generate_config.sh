@@ -17,6 +17,7 @@ SNOWFLAKE_CREDS=""
 BASE_PATH="."
 DATE_COLUMN="RECORDDATEID"
 VERBOSE=false
+GENERATE_CREDS_ONLY=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -48,12 +49,16 @@ OPTIONS:
     -c, --creds CONFIG          Use Snowflake credentials from existing config
     -b, --base-path PATH        Base path for file patterns (default: .)
     -d, --date-column NAME      Date column name (default: RECORDDATEID)
+    --generate-creds            Generate only Snowflake credentials config
     --dry-run                   Show what would be generated without creating files
     -v, --verbose               Verbose output
     --help                      Show this help message
     --version                   Show version
 
 EXAMPLES:
+    # Generate Snowflake credentials only
+    $SCRIPT_NAME --generate-creds -o config/snowflake_creds.json
+
     # Analyze TSV file and generate config
     $SCRIPT_NAME data/file_20240101-20240131.tsv
 
@@ -384,6 +389,41 @@ EOF
     SNOWFLAKE_CREDS="$temp_config"
 }
 
+# Function to generate credentials config only
+generate_credentials_only() {
+    print_color "$BLUE" "=== Generate Snowflake Credentials Config ==="
+    print_color "$YELLOW" "Enter your Snowflake connection details:"
+    echo
+    
+    read -p "Snowflake Account (e.g., mycompany.us-east-1): " sf_account
+    read -p "Snowflake User: " sf_user
+    read -s -p "Snowflake Password: " sf_password
+    echo
+    read -p "Snowflake Warehouse (e.g., COMPUTE_WH): " sf_warehouse
+    read -p "Snowflake Database: " sf_database
+    read -p "Snowflake Schema (e.g., PUBLIC): " sf_schema
+    read -p "Snowflake Role (optional, press Enter to skip): " sf_role
+    
+    # Build the credentials JSON
+    local creds_json='{
+  "snowflake": {
+    "account": "'$sf_account'",
+    "user": "'$sf_user'",
+    "password": "'$sf_password'",
+    "warehouse": "'$sf_warehouse'",
+    "database": "'$sf_database'",
+    "schema": "'$sf_schema'"'
+    
+    # Add role if provided
+    if [[ -n "$sf_role" ]]; then
+        creds_json="${creds_json},"$'\n    "role": "'$sf_role'"'
+    fi
+    
+    creds_json="${creds_json}"$'\n  }\n}'
+    
+    echo "$creds_json"
+}
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -419,6 +459,10 @@ while [[ $# -gt 0 ]]; do
             DATE_COLUMN="$2"
             shift 2
             ;;
+        --generate-creds)
+            GENERATE_CREDS_ONLY=true
+            shift
+            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -446,7 +490,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check for files
+# Handle generate-creds-only mode
+if [[ "$GENERATE_CREDS_ONLY" == true ]]; then
+    creds_json=$(generate_credentials_only)
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        print_color "$YELLOW" "=== DRY RUN - Generated Credentials Config ==="
+        echo "$creds_json" | python3 -m json.tool
+    elif [[ -n "$OUTPUT_FILE" ]]; then
+        echo "$creds_json" | python3 -m json.tool > "$OUTPUT_FILE"
+        print_color "$GREEN" "Credentials config saved to: $OUTPUT_FILE"
+    else
+        echo "$creds_json" | python3 -m json.tool
+    fi
+    
+    print_color "$GREEN" "Done!"
+    exit 0
+fi
+
+# Check for files (only if not generating creds)
 if [[ $# -eq 0 ]]; then
     print_color "$RED" "Error: No files specified"
     usage
