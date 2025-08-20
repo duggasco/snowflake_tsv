@@ -171,8 +171,7 @@ class ProgressTracker:
                                         unit_scale=True,
                                         position=self.compress_position,
                                         leave=False,  # Clear after each file
-                                        file=sys.stderr,
-                                        ncols=100)
+                                        file=sys.stderr)  # No ncols limit - use full terminal width
     
     def update(self, files: int = 0, rows: int = 0, compressed_mb: float = 0):
         """Update progress"""
