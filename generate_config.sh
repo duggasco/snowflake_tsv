@@ -287,15 +287,32 @@ EOPYTHON
         fi
     # 3. Check for conda environment
     elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
-        python_cmd="python3"
+        # Use conda's python directly - it should have the right packages
+        if [[ -n "$CONDA_PREFIX" ]]; then
+            python_cmd="$CONDA_PREFIX/bin/python"
+        elif command -v conda &> /dev/null; then
+            python_cmd="$(conda info --base)/envs/$CONDA_DEFAULT_ENV/bin/python"
+        else
+            python_cmd="python"  # Use 'python' not 'python3' in conda
+        fi
         if [[ "$VERBOSE" == true ]]; then
-            print_color "$BLUE" "Using conda environment: $CONDA_DEFAULT_ENV"
+            print_color "$BLUE" "Using conda environment: $CONDA_DEFAULT_ENV (python: $python_cmd)"
         fi
     # 4. Fall back to system python3
     else
         python_cmd="python3"
         if [[ "$VERBOSE" == true ]]; then
             print_color "$YELLOW" "Using system Python (snowflake module may not be available)"
+        fi
+    fi
+    
+    # Test if snowflake module is available in this Python
+    if [[ "$VERBOSE" == true ]]; then
+        if $python_cmd -c "import snowflake.connector" 2>/dev/null; then
+            print_color "$GREEN" "Snowflake module found in Python environment"
+        else
+            print_color "$RED" "WARNING: Snowflake module NOT found in Python environment"
+            print_color "$YELLOW" "Try: $python_cmd -m pip install snowflake-connector-python"
         fi
     fi
     

@@ -69,7 +69,12 @@ if [[ -n "$VIRTUAL_ENV" ]]; then
     PYTHON_CMD="$VIRTUAL_ENV/bin/python3"
 elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
     echo "Using conda environment: $CONDA_DEFAULT_ENV"
-    PYTHON_CMD="python3"
+    if [[ -n "$CONDA_PREFIX" ]]; then
+        PYTHON_CMD="$CONDA_PREFIX/bin/python"
+    else
+        PYTHON_CMD="python"  # In conda, 'python' is usually the right one
+    fi
+    echo "Python path: $PYTHON_CMD"
 else
     echo "Using system Python"
     PYTHON_CMD="python3"
