@@ -27,6 +27,7 @@ QUIET_MODE=""
 VALIDATE_IN_SNOWFLAKE=""
 VALIDATE_ONLY=""
 PARALLEL_JOBS=1  # Default to sequential processing
+DIRECT_FILES=""  # Direct TSV file paths
 
  
 
@@ -39,6 +40,7 @@ usage() {
     echo "Options:"
     echo "  --config FILE       Configuration file (default: config/config.json)"
     echo "  --base-path PATH    Base path for TSV files (default: ./data)"
+    echo "  --direct-file FILE  Process specific TSV file(s) directly (comma-separated)"
     echo "  --month YYYY-MM     Single month to process (default: current month)"
     echo "  --months LIST       Comma-separated list of months (e.g., 092022,102022,112022)"
     echo "  --batch              Process all months found in base-path"
@@ -58,6 +60,9 @@ usage() {
     echo "Examples:"
     echo "  # Process single month"
     echo "  $0 --month 2024-09 --base-path ./data"
+    echo ""
+    echo "  # Process specific TSV files directly"
+    echo "  $0 --direct-file /path/to/file1.tsv,/path/to/file2.tsv"
     echo ""
     echo "  # Process specific months with skip-qc"
     echo "  $0 --months 092022,102022,112022 --skip-qc"
@@ -105,6 +110,128 @@ find_month_directories() {
     done
     
     echo "${months[@]}"
+}
+
+# Function to process direct TSV files
+process_direct_files() {
+    local files="$1"
+    local workers_for_job=$2
+    
+    echo -e "\n${CYAN}========================================${NC}"
+    echo -e "${CYAN}Processing Direct TSV Files${NC}"
+    echo -e "${CYAN}========================================${NC}"
+    
+    # Build the Python command for direct files
+    local cmd="python3 tsv_loader.py"
+    cmd="${cmd} --config ${CONFIG_FILE}"
+    
+    # Convert comma-separated files to array
+    IFS=',' read -ra file_array <<< "$files"
+    
+    # For direct files, we need to set base-path to the directory containing the files
+    # and ensure the config matches the file pattern
+    if [ ${#file_array[@]} -gt 0 ]; then
+        # Get the directory of the first file
+        local first_file="${file_array[0]}"
+        local file_dir=$(dirname "$first_file")
+        local file_name=$(basename "$first_file")
+        
+        echo -e "${BLUE}Processing file: ${first_file}${NC}"
+        echo -e "${BLUE}Directory: ${file_dir}${NC}"
+        echo -e "${BLUE}Filename: ${file_name}${NC}"
+        
+        # Set base-path to the directory containing the file
+        cmd="${cmd} --base-path ${file_dir}"
+        
+        # Note for user about config matching
+        echo -e "${YELLOW}Note: Ensure your config.json file_pattern matches the filename pattern${NC}"
+        echo -e "${YELLOW}      File: ${file_name}${NC}"
+    fi
+    
+    # Use the month from the first file if not specified
+    if [ -z "${MONTH}" ] && [ -z "${VALIDATE_ONLY}" ]; then
+        # Try to extract month from filename
+        for file in ${file_list}; do
+            if [[ $(basename "$file") =~ ([0-9]{4})-([0-9]{2}) ]]; then
+                MONTH="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+                echo -e "${BLUE}Detected month from filename: ${MONTH}${NC}"
+                break
+            elif [[ $(basename "$file") =~ ([0-9]{8})-([0-9]{8}) ]]; then
+                # Extract month from date range (use start date)
+                local start_date="${BASH_REMATCH[1]}"
+                MONTH="${start_date:0:4}-${start_date:4:2}"
+                echo -e "${BLUE}Detected month from date range: ${MONTH}${NC}"
+                break
+            fi
+        done
+    fi
+    
+    if [ -n "${MONTH}" ]; then
+        cmd="${cmd} --month ${MONTH}"
+    fi
+    
+    # Add optional arguments
+    if [ -n "${workers_for_job}" ]; then
+        cmd="${cmd} --max-workers ${workers_for_job}"
+        echo -e "${BLUE}Workers allocated: ${workers_for_job}${NC}"
+    elif [ -n "${MAX_WORKERS}" ]; then
+        cmd="${cmd} --max-workers ${MAX_WORKERS}"
+    fi
+    
+    if [ -n "${SKIP_QC}" ]; then
+        cmd="${cmd} ${SKIP_QC}"
+    fi
+    
+    if [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
+        cmd="${cmd} ${VALIDATE_IN_SNOWFLAKE}"
+    fi
+    
+    if [ -n "${VALIDATE_ONLY}" ]; then
+        cmd="${cmd} ${VALIDATE_ONLY}"
+        # Save validation results to a JSON file
+        local validation_file="logs/validation_direct_$(date +%Y%m%d_%H%M%S).json"
+        cmd="${cmd} --validation-output ${validation_file}"
+    fi
+    
+    if [ -n "${ANALYZE_ONLY}" ]; then
+        cmd="${cmd} ${ANALYZE_ONLY}"
+    fi
+    
+    # Add --yes flag for automatic processing
+    if [ ${PARALLEL_JOBS} -gt 1 ] || [ -n "${DRY_RUN}" ]; then
+        cmd="${cmd} --yes"
+    fi
+    
+    # Create a log file name with timestamp
+    local log_file="logs/run_direct_$(date +%Y%m%d_%H%M%S).log"
+    
+    echo -e "${BLUE}Command: ${cmd}${NC}"
+    echo -e "${BLUE}Log file: ${log_file}${NC}"
+    
+    if [ -n "${DRY_RUN}" ]; then
+        echo -e "${YELLOW}[DRY RUN] Would execute above command${NC}"
+        return 0
+    fi
+    
+    # Execute the command
+    if [ -n "${QUIET_MODE}" ]; then
+        cmd="${cmd} --quiet"
+        exec 3>&1
+        ${cmd} > "${log_file}" 2> >(tee -a "${log_file}" >&2)
+        local exit_code=$?
+        exec 3>&-
+    else
+        ${cmd} 2>&1 | tee "${log_file}"
+        local exit_code=${PIPESTATUS[0]}
+    fi
+    
+    if [ ${exit_code} -eq 0 ]; then
+        echo -e "${GREEN}✓ Direct files processed successfully${NC}"
+        return 0
+    else
+        echo -e "${RED}✗ Direct files failed with exit code: ${exit_code}${NC}"
+        return ${exit_code}
+    fi
 }
 
 # Function to process a single month
@@ -263,6 +390,10 @@ while [[ $# -gt 0 ]]; do
             BASE_PATH="$2"
             shift 2
             ;;
+        --direct-file)
+            DIRECT_FILES="$2"
+            shift 2
+            ;;
         --month)
             MONTH="$2"
             shift 2
@@ -336,6 +467,23 @@ fi
 
 # Check prerequisites
 check_prerequisites
+
+# Handle direct file processing
+if [ -n "${DIRECT_FILES}" ]; then
+    echo -e "${MAGENTA}Direct file mode: Processing specified TSV files${NC}"
+    
+    # Process the direct files
+    process_direct_files "${DIRECT_FILES}" "${MAX_WORKERS}"
+    exit_code=$?
+    
+    if [ ${exit_code} -ne 0 ] && [ -z "${CONTINUE_ON_ERROR}" ]; then
+        echo -e "${RED}Processing failed. Exiting.${NC}"
+        exit ${exit_code}
+    fi
+    
+    echo -e "${GREEN}Direct file processing complete${NC}"
+    exit ${exit_code}
+fi
 
 # Determine which months to process
 declare -a months_to_process=()

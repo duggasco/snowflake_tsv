@@ -1,5 +1,61 @@
 # CHANGELOG.md
 
+## [2025-08-20] - Direct File Processing and Config Generator
+
+### Added - Direct File Processing
+- Added `--direct-file` flag to `run_loader.sh` for processing specific TSV files directly
+  - Accepts comma-separated list of TSV file paths
+  - Automatically extracts directory and sets appropriate base-path
+  - Detects month from filename patterns (YYYY-MM or YYYYMMDD-YYYYMMDD)
+  - Supports all existing flags (--skip-qc, --validate-in-snowflake, etc.)
+  - Provides helpful note about config.json file_pattern matching
+
+### Usage Example
+```bash
+# Process specific TSV file directly
+./run_loader.sh --direct-file /path/to/file.tsv --skip-qc
+
+# Process multiple files
+./run_loader.sh --direct-file file1.tsv,file2.tsv --validate-in-snowflake
+```
+
+## [2025-08-20] - Config Generator Tool
+
+### Added
+- Created `generate_config.sh` - comprehensive config generator script
+  - Auto-detects file patterns ({date_range} vs {month})
+  - Extracts table names from filenames
+  - Queries Snowflake for column information (when connected)
+  - Supports manual column header specification
+  - Interactive mode for Snowflake credentials
+  - Dry-run mode for testing
+  - Generates configs in exact required JSON format
+  - Uses test_venv Python for Snowflake connectivity
+  - Handles both headerless and header-containing TSV files
+
+### Features
+- Pattern detection automatically identifies date formats in filenames
+- Table name extraction from file naming conventions
+- Column schema retrieval from Snowflake information_schema
+- Credential reuse from existing config files
+- Batch processing of multiple TSV files
+- Proper JSON escaping and formatting
+
+### Usage Examples
+```bash
+# Basic usage with file pattern detection
+./generate_config.sh data/file_20240101-20240131.tsv
+
+# With Snowflake table for column names
+./generate_config.sh -t MY_TABLE -c config/existing.json data/*.tsv
+
+# With manual column headers
+./generate_config.sh -h "col1,col2,col3" data/file.tsv
+
+# Interactive mode for credentials
+./generate_config.sh -i -o config/new.json data/*.tsv
+```
+
 ## [2025-08-20] - Documentation and Bash Script Updates
 
 ### Added

@@ -14,6 +14,8 @@ A high-performance ETL pipeline for loading large TSV files (up to 50GB) into Sn
 - **Flexible Date Patterns**: Supports both date range (YYYYMMDD-YYYYMMDD) and month (YYYY-MM) formats
 - **Batch Processing**: Process multiple months in parallel with comprehensive error handling
 - **Performance Optimized**: Utilizes Snowflake's bulk loading features with compression
+- **Config Generator**: Automatically generate configuration files from TSV files and Snowflake schemas
+- **Direct File Processing**: Process specific TSV files directly without directory structure requirements
 
 ## Installation
 
@@ -82,8 +84,27 @@ python tsv_loader.py --config config/config.json --base-path ./data --analyze-on
 # Process a single month
 ./run_loader.sh --month 2024-01 --base-path ./data
 
+# Process specific TSV files directly
+./run_loader.sh --direct-file /path/to/file.tsv --skip-qc
+
 # Process multiple months in parallel
 ./run_loader.sh --months 2024-01,2024-02,2024-03 --parallel 3
+```
+
+### Config Generation
+
+```bash
+# Generate config from TSV files
+./generate_config.sh data/file_20240101-20240131.tsv
+
+# Use Snowflake table for column names
+./generate_config.sh -t TABLE_NAME -c config/existing.json data/*.tsv
+
+# With manual column headers
+./generate_config.sh -h "col1,col2,col3" -o config/new.json data/file.tsv
+
+# Interactive mode for credentials
+./generate_config.sh -i -o config/my_config.json data/*.tsv
 ```
 
 ### Validation Options

@@ -25,29 +25,30 @@
 - [x] Update CHANGELOG.md with all recent changes
 
 ## In Progress 🔄
-- [ ] Create config generator tool (generate_config.sh)
 - [ ] Monitor production runs with new validation features
 - [ ] Gather performance metrics from real-world usage
+- [ ] Test full pipeline with production data
 
-## Pending Tasks 📋
-
-### Config Generator (High Priority for Next Session)
-- [ ] Create generate_config.sh script with basic TSV analysis
-- [ ] Add Snowflake table inspection for column headers and types
-- [ ] Implement pattern detection from filenames ({month} vs {date_range})
-- [ ] Add interactive mode for Snowflake credentials
-- [ ] Support batch processing of multiple TSV files
-- [ ] Add validation and error handling
-- [ ] Create documentation and usage examples
-- [ ] Test with existing TSV files and Snowflake tables
-
-### Config Generator Features
-- [ ] Query Snowflake information_schema for column metadata
-- [ ] Auto-detect date columns from Snowflake schema
-- [ ] Generate complete config.json with proper patterns
-- [ ] Support merging with existing configs
-- [ ] Add dry-run mode for testing
-- [ ] Handle headerless TSV files using Snowflake schema
+## Completed Today (2025-08-20) ✓
+- [x] Create config generator tool (generate_config.sh) - DONE
+  - [x] Basic TSV analysis and pattern detection
+  - [x] Snowflake table inspection for column headers
+  - [x] Pattern detection from filenames ({month} vs {date_range})
+  - [x] Interactive mode for Snowflake credentials
+  - [x] Support for batch processing of multiple TSV files
+  - [x] Validation and error handling
+  - [x] Dry-run mode for testing
+  - [x] Handle headerless TSV files using column headers option
+- [x] Add --direct-file flag to run_loader.sh - DONE
+  - [x] Process specific TSV files directly
+  - [x] Auto-extract directory for base-path
+  - [x] Detect month from filename patterns
+  - [x] Support comma-separated file lists
+- [x] Update all documentation with new features - DONE
+  - [x] README.md updated with config generator and direct file examples
+  - [x] CLAUDE.md updated with new commands
+  - [x] CHANGELOG.md updated with all recent changes
+  - [x] CONTEXT_HANDOVER.md prepared for next session
 
 ## Pending Tasks 📋
 - [ ] Run tsv_loader.py with the new configuration

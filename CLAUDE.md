@@ -62,6 +62,25 @@ pip install snowflake-connector-python pandas numpy
 pip install tqdm psutil
 ```
 
+### Config Generation
+
+```bash
+# Generate config from TSV files automatically
+./generate_config.sh data/file_20240101-20240131.tsv
+
+# Query Snowflake table for column names
+./generate_config.sh -t FACTLENDINGBENCHMARK -c config/existing.json data/*.tsv
+
+# Provide column headers manually for headerless TSVs
+./generate_config.sh -h "RECORDDATE,RECORDDATEID,ASSETID,..." data/file.tsv
+
+# Interactive mode for Snowflake credentials
+./generate_config.sh -i -o config/my_config.json data/*.tsv
+
+# Dry run to preview generated config
+./generate_config.sh --dry-run data/file.tsv
+```
+
 ### Running the Pipeline
 
 ```bash
@@ -91,6 +110,10 @@ python tsv_loader.py --config config/config.json --base-path ./data --month 2024
 
 # Using the bash wrapper (recommended)
 ./run_loader.sh --month 2024-01 --base-path ./data
+
+# Process specific TSV files directly
+./run_loader.sh --direct-file /path/to/file.tsv --skip-qc
+./run_loader.sh --direct-file file1.tsv,file2.tsv --validate-in-snowflake
 
 # Process with Snowflake validation instead of file QC
 ./run_loader.sh --month 2024-01 --validate-in-snowflake
