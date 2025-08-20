@@ -28,6 +28,7 @@ VALIDATE_IN_SNOWFLAKE=""
 VALIDATE_ONLY=""
 PARALLEL_JOBS=1  # Default to sequential processing
 DIRECT_FILES=""  # Direct TSV file paths
+INTERACTIVE_MODE=""  # Allow interactive prompts if explicitly requested
 
  
 
@@ -54,6 +55,7 @@ usage() {
     echo "  --validate-only     Only validate existing data in Snowflake (no loading)"
     echo "  --analyze-only      Only analyze files and show time estimates"
     echo "  --quiet             Suppress output, log to files only (useful for parallel)"
+    echo "  --interactive       Allow interactive prompts (default: auto-yes)"
     echo "  --check-system      Check system capabilities and exit"
     echo "  --help              Show this help message"
     echo ""
@@ -197,8 +199,8 @@ process_direct_files() {
         cmd="${cmd} ${ANALYZE_ONLY}"
     fi
     
-    # Add --yes flag for automatic processing
-    if [ ${PARALLEL_JOBS} -gt 1 ] || [ -n "${DRY_RUN}" ]; then
+    # Add --yes flag for automatic processing unless interactive mode is requested
+    if [ -z "${INTERACTIVE_MODE}" ]; then
         cmd="${cmd} --yes"
     fi
     
@@ -215,12 +217,15 @@ process_direct_files() {
     
     # Execute the command
     if [ -n "${QUIET_MODE}" ]; then
+        # Quiet mode - pass --quiet to Python, redirect stdout only (keep stderr for progress bars)
         cmd="${cmd} --quiet"
+        # Redirect stdout to log, stderr (progress bars) stays on terminal
         exec 3>&1
         ${cmd} > "${log_file}" 2> >(tee -a "${log_file}" >&2)
         local exit_code=$?
         exec 3>&-
     else
+        # Verbose mode - show output and save to log
         ${cmd} 2>&1 | tee "${log_file}"
         local exit_code=${PIPESTATUS[0]}
     fi
@@ -291,9 +296,10 @@ process_month() {
         cmd="${cmd} ${ANALYZE_ONLY}"
     fi
     
-    # Add --yes flag for automatic processing (especially important for parallel mode)
-    # This prevents the interactive prompt which causes EOF errors in background jobs
-    if [ ${PARALLEL_JOBS} -gt 1 ] || [ -n "${DRY_RUN}" ]; then
+    # Add --yes flag for automatic processing unless interactive mode is requested
+    # By default, always add --yes when running from script to prevent interactive prompts
+    # This is essential for both parallel and single-job modes
+    if [ -z "${INTERACTIVE_MODE}" ]; then
         cmd="${cmd} --yes"
     fi
     
@@ -440,6 +446,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --quiet)
             QUIET_MODE="yes"
+            shift
+            ;;
+        --interactive)
+            INTERACTIVE_MODE="yes"
             shift
             ;;
         --check-system)
