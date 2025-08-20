@@ -25,7 +25,7 @@ def check_table(config_file, table_name):
     try:
         conn = snowflake.connector.connect(**sf_config)
         cursor = conn.cursor()
-        print("✓ Connected successfully")
+        print("[OK] Connected successfully")
         
         # Get current database/schema
         cursor.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")

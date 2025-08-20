@@ -231,10 +231,10 @@ process_direct_files() {
     fi
     
     if [ ${exit_code} -eq 0 ]; then
-        echo -e "${GREEN}✓ Direct files processed successfully${NC}"
+        echo -e "${GREEN}[OK] Direct files processed successfully${NC}"
         return 0
     else
-        echo -e "${RED}✗ Direct files failed with exit code: ${exit_code}${NC}"
+        echo -e "${RED}[FAILED] Direct files failed with exit code: ${exit_code}${NC}"
         return ${exit_code}
     fi
 }
@@ -333,10 +333,10 @@ process_month() {
     fi
     
     if [ ${exit_code} -eq 0 ]; then
-        echo -e "${GREEN}✓ Month $month_dir processed successfully${NC}"
+        echo -e "${GREEN}[OK] Month $month_dir processed successfully${NC}"
         return 0
     else
-        echo -e "${RED}✗ Month $month_dir failed with exit code: ${exit_code}${NC}"
+        echo -e "${RED}[FAILED] Month $month_dir failed with exit code: ${exit_code}${NC}"
         return ${exit_code}
     fi
 }
@@ -554,8 +554,8 @@ else
     echo -e "Max Workers:       Auto-detect"
 fi
 
-echo -e "Skip QC:           $([ -n "${SKIP_QC}" ] && echo "Yes ⚠️" || echo "No ✓")"
-echo -e "Validate in SF:    $([ -n "${VALIDATE_IN_SNOWFLAKE}" ] && echo "Yes ✓" || echo "No")"
+echo -e "Skip QC:           $([ -n "${SKIP_QC}" ] && echo "Yes [WARNING]" || echo "No [OK]")"
+echo -e "Validate in SF:    $([ -n "${VALIDATE_IN_SNOWFLAKE}" ] && echo "Yes [OK]" || echo "No")"
 echo -e "Validate Only:     $([ -n "${VALIDATE_ONLY}" ] && echo "Yes" || echo "No")"
 echo -e "Analyze Only:      $([ -n "${ANALYZE_ONLY}" ] && echo "Yes" || echo "No")"
 echo -e "Continue on Error: $([ -n "${CONTINUE_ON_ERROR}" ] && echo "Yes" || echo "No")"
@@ -604,10 +604,10 @@ check_completed_jobs() {
             local month="${job_pids[$pid]}"
             
             if [ ${exit_code} -eq 0 ]; then
-                echo -e "${GREEN}✓ Month $month completed successfully${NC}"
+                echo -e "${GREEN}[OK] Month $month completed successfully${NC}"
                 ((successful_months++))
             else
-                echo -e "${RED}✗ Month $month failed with exit code: ${exit_code}${NC}"
+                echo -e "${RED}[FAILED] Month $month failed with exit code: ${exit_code}${NC}"
                 ((failed_months++))
                 failed_list+=("${month}")
                 
@@ -686,8 +686,8 @@ echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}BATCH PROCESSING SUMMARY${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo -e "Total Months:      ${total_months}"
-echo -e "Successful:        ${successful_months} $([ ${successful_months} -gt 0 ] && echo "✓" || echo "")"
-echo -e "Failed:            ${failed_months} $([ ${failed_months} -gt 0 ] && echo "✗" || echo "")"
+echo -e "Successful:        ${successful_months} $([ ${successful_months} -gt 0 ] && echo "[OK]" || echo "")"
+echo -e "Failed:            ${failed_months} $([ ${failed_months} -gt 0 ] && echo "[FAILED]" || echo "")"
 
 if [ ${#failed_list[@]} -gt 0 ]; then
     echo -e "Failed Months:     ${failed_list[*]}"
@@ -723,11 +723,11 @@ try:
         for r in results:
             table = r.get('table_name', 'Unknown')
             if r.get('error'):
-                status = '✗ ERROR: ' + r['error']
+                status = '[ERROR] ' + r['error']
                 print(f'  {table}: {status}')
             elif r.get('valid'):
                 stats = r.get('statistics', {})
-                status = f'✓ VALID ({stats.get(\"total_rows\", 0):,} rows, {stats.get(\"unique_dates\", 0)} dates)'
+                status = f'[VALID] ({stats.get(\"total_rows\", 0):,} rows, {stats.get(\"unique_dates\", 0)} dates)'
                 print(f'  {table}: {status}')
             else:
                 stats = r.get('statistics', {})
@@ -736,7 +736,7 @@ try:
                 gaps = r.get('gaps', [])
                 
                 # Build status with more detail
-                status = f'✗ INVALID ({missing} dates missing)'
+                status = f'[INVALID] ({missing} dates missing)'
                 print(f'  {table}: {status}')
                 
                 # Show date range info
@@ -763,14 +763,14 @@ try:
                                 start_missing = datetime.strptime(gap_from, '%Y-%m-%d') + timedelta(days=1)
                                 end_missing = datetime.strptime(gap_to, '%Y-%m-%d') - timedelta(days=1)
                                 if start_missing == end_missing:
-                                    print(f'      • {start_missing.strftime(\"%Y-%m-%d\")} (1 day)')
+                                    print(f'      - {start_missing.strftime(\"%Y-%m-%d\")} (1 day)')
                                 else:
-                                    print(f'      • {start_missing.strftime(\"%Y-%m-%d\")} to {end_missing.strftime(\"%Y-%m-%d\")} ({missing_days} days)')
+                                    print(f'      - {start_missing.strftime(\"%Y-%m-%d\")} to {end_missing.strftime(\"%Y-%m-%d\")} ({missing_days} days)')
                             except:
                                 # Fallback to original display if date parsing fails
-                                print(f'      • Gap between {gap_from} and {gap_to} ({missing_days} days)')
+                                print(f'      - Gap between {gap_from} and {gap_to} ({missing_days} days)')
                     if len(gaps) > 3:
-                        print(f'      • ... and {len(gaps) - 3} more gaps')
+                        print(f'      - ... and {len(gaps) - 3} more gaps')
 except Exception as e:
     print(f'  Error reading {vfile}: {e}', file=sys.stderr)
 " 2>/dev/null

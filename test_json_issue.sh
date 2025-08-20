@@ -20,9 +20,9 @@ echo ""
 # Check if it's valid JSON
 echo "Validating JSON structure..."
 if python3 -m json.tool "$CONFIG_FILE" > /dev/null 2>&1; then
-    echo "✓ Valid JSON"
+    echo "[OK] Valid JSON"
 else
-    echo "✗ Invalid JSON"
+    echo "[ERROR] Invalid JSON"
     echo ""
     echo "First 5 lines of file:"
     head -5 "$CONFIG_FILE"
@@ -42,7 +42,7 @@ try:
         config = json.load(f)
     
     if 'snowflake' in config:
-        print("✓ Snowflake section found")
+        print("[OK] Snowflake section found")
         sf = config['snowflake']
         required = ['account', 'user', 'password', 'warehouse', 'database', 'schema']
         for field in required:
@@ -54,7 +54,7 @@ try:
             else:
                 print(f"  - {field}: MISSING")
     else:
-        print("✗ No 'snowflake' section in config")
+        print("[ERROR] No 'snowflake' section in config")
         
 except Exception as e:
     print(f"Error: {e}")
@@ -62,4 +62,17 @@ EOF
 
 echo ""
 echo "Testing snowflake module..."
-python3 -c "import snowflake.connector; print('✓ snowflake-connector-python is installed')" 2>&1 || echo "✗ snowflake-connector-python NOT installed"
+
+# Detect Python environment
+if [[ -n "$VIRTUAL_ENV" ]]; then
+    echo "Using virtual environment: $VIRTUAL_ENV"
+    PYTHON_CMD="$VIRTUAL_ENV/bin/python3"
+elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+    echo "Using conda environment: $CONDA_DEFAULT_ENV"
+    PYTHON_CMD="python3"
+else
+    echo "Using system Python"
+    PYTHON_CMD="python3"
+fi
+
+$PYTHON_CMD -c "import snowflake.connector; print('[OK] snowflake-connector-python is installed')" 2>&1 || echo "[ERROR] snowflake-connector-python NOT installed"

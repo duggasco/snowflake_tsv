@@ -270,11 +270,36 @@ EOPYTHON
         print_color "$BLUE" "Querying Snowflake table: $table_name"
     fi
     
+    # Try multiple Python environments in order of preference
+    local python_cmd=""
+    
+    # 1. Check for test_venv in script directory
     if [[ -d "$SCRIPT_DIR/test_venv" ]]; then
-        local result=$("$SCRIPT_DIR/test_venv/bin/python3" "$python_script" "$creds_file" "$table_name" 2>&1)
+        python_cmd="$SCRIPT_DIR/test_venv/bin/python3"
+        if [[ "$VERBOSE" == true ]]; then
+            print_color "$BLUE" "Using test_venv Python"
+        fi
+    # 2. Check if we're already in a virtual environment
+    elif [[ -n "$VIRTUAL_ENV" ]]; then
+        python_cmd="$VIRTUAL_ENV/bin/python3"
+        if [[ "$VERBOSE" == true ]]; then
+            print_color "$BLUE" "Using current virtual environment: $VIRTUAL_ENV"
+        fi
+    # 3. Check for conda environment
+    elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+        python_cmd="python3"
+        if [[ "$VERBOSE" == true ]]; then
+            print_color "$BLUE" "Using conda environment: $CONDA_DEFAULT_ENV"
+        fi
+    # 4. Fall back to system python3
     else
-        local result=$(python3 "$python_script" "$creds_file" "$table_name" 2>&1)
+        python_cmd="python3"
+        if [[ "$VERBOSE" == true ]]; then
+            print_color "$YELLOW" "Using system Python (snowflake module may not be available)"
+        fi
     fi
+    
+    local result=$($python_cmd "$python_script" "$creds_file" "$table_name" 2>&1)
     rm -f "$python_script"
     
     if [[ "$result" == ERROR:* ]]; then
@@ -578,6 +603,18 @@ fi
 
 # Generate config
 print_color "$GREEN" "Analyzing files..."
+
+# Show Python environment if verbose
+if [[ "$VERBOSE" == true ]]; then
+    if [[ -n "$VIRTUAL_ENV" ]]; then
+        print_color "$BLUE" "Python environment: Virtual env at $VIRTUAL_ENV"
+    elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+        print_color "$BLUE" "Python environment: Conda env '$CONDA_DEFAULT_ENV'"
+    else
+        print_color "$BLUE" "Python environment: System Python"
+    fi
+fi
+
 config_json=$(generate_config "$@")
 
 # Merge with existing config if specified
