@@ -1263,7 +1263,7 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
             
             try:
                 # Create progress bar for validation
-                if tqdm_available:
+                if TQDM_AVAILABLE:
                     pbar = tqdm(
                         total=len(file_configs),
                         desc="Validating tables",
