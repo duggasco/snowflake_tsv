@@ -13,6 +13,12 @@
 - [x] Add automatic worker distribution in run_loader.sh
 - [x] Add --quiet mode to suppress console logging while keeping progress bars
 - [x] Fix progress bars not showing in quiet mode
+- [x] Implement SnowflakeDataValidator for in-database validation
+- [x] Add --validate-in-snowflake flag to skip memory-intensive file QC
+- [x] Add --validate-only flag for checking existing Snowflake data
+- [x] Create comprehensive test suite for Snowflake validator
+- [x] Test with mock billion+ row table scenarios
+- [x] Fix global logger declaration issue in main function
 
 ## In Progress 🔄
 - [ ] Test ETL pipeline with factLendingBenchmark configuration on remote server

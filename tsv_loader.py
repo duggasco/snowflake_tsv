@@ -479,6 +479,212 @@ class StreamingDataQualityChecker:
                 continue
         return False
 
+class SnowflakeDataValidator:
+    """Validates data completeness directly in Snowflake tables"""
+    
+    def __init__(self, connection_params: Dict):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.debug("Initializing Snowflake validator")
+        try:
+            self.conn = snowflake.connector.connect(**connection_params)
+            self.cursor = self.conn.cursor()
+            self.logger.info("Snowflake validator connection established")
+        except Exception as e:
+            self.logger.error("Failed to connect to Snowflake: {}".format(e))
+            raise
+    
+    def validate_date_completeness(self, table_name: str, date_column: str, 
+                                  start_date: str, end_date: str, 
+                                  expected_daily_rows: int = None) -> Dict:
+        """
+        Efficiently validate date completeness in Snowflake table.
+        Uses aggregated queries to minimize data scanning.
+        """
+        self.logger.info("Validating date completeness for {} from {} to {}".format(
+            table_name, start_date, end_date))
+        
+        try:
+            # Query 1: Get date range summary
+            range_query = """
+            SELECT 
+                MIN({date_col}) as min_date,
+                MAX({date_col}) as max_date,
+                COUNT(DISTINCT {date_col}) as unique_dates,
+                COUNT(*) as total_rows
+            FROM {table}
+            WHERE {date_col} BETWEEN '{start}' AND '{end}'
+            """.format(
+                date_col=date_column,
+                table=table_name,
+                start=start_date,
+                end=end_date
+            )
+            
+            self.logger.debug("Executing range query: {}".format(range_query))
+            self.cursor.execute(range_query)
+            range_result = self.cursor.fetchone()
+            
+            if not range_result or range_result[3] == 0:
+                return {
+                    'valid': False,
+                    'error': 'No data found in specified date range',
+                    'total_rows': 0
+                }
+            
+            min_date, max_date, unique_dates, total_rows = range_result
+            
+            # Query 2: Get daily distribution (limited to avoid memory issues)
+            distribution_query = """
+            SELECT 
+                {date_col} as date_value,
+                COUNT(*) as row_count
+            FROM {table}
+            WHERE {date_col} BETWEEN '{start}' AND '{end}'
+            GROUP BY {date_col}
+            ORDER BY {date_col}
+            LIMIT 1000
+            """.format(
+                date_col=date_column,
+                table=table_name,
+                start=start_date,
+                end=end_date
+            )
+            
+            self.logger.debug("Executing distribution query")
+            self.cursor.execute(distribution_query)
+            daily_counts = self.cursor.fetchall()
+            
+            # Query 3: Find gaps in date sequence
+            gap_query = """
+            WITH date_sequence AS (
+                SELECT 
+                    {date_col} as date_value,
+                    LAG({date_col}) OVER (ORDER BY {date_col}) as prev_date
+                FROM (
+                    SELECT DISTINCT {date_col}
+                    FROM {table}
+                    WHERE {date_col} BETWEEN '{start}' AND '{end}'
+                )
+            )
+            SELECT 
+                prev_date,
+                date_value,
+                DATEDIFF(day, prev_date, date_value) as gap_days
+            FROM date_sequence
+            WHERE DATEDIFF(day, prev_date, date_value) > 1
+            ORDER BY prev_date
+            LIMIT 100
+            """.format(
+                date_col=date_column,
+                table=table_name,
+                start=start_date,
+                end=end_date
+            )
+            
+            self.logger.debug("Executing gap detection query")
+            self.cursor.execute(gap_query)
+            gaps = self.cursor.fetchall()
+            
+            # Calculate expected dates
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            expected_days = (end_dt - start_dt).days + 1
+            
+            # Compile validation results
+            validation_result = {
+                'valid': len(gaps) == 0 and unique_dates == expected_days,
+                'table_name': table_name,
+                'date_column': date_column,
+                'date_range': {
+                    'requested_start': start_date,
+                    'requested_end': end_date,
+                    'actual_min': str(min_date),
+                    'actual_max': str(max_date)
+                },
+                'statistics': {
+                    'total_rows': total_rows,
+                    'unique_dates': unique_dates,
+                    'expected_dates': expected_days,
+                    'missing_dates': expected_days - unique_dates,
+                    'avg_rows_per_day': total_rows / unique_dates if unique_dates > 0 else 0
+                },
+                'gaps': [
+                    {
+                        'from': str(gap[0]) if gap and len(gap) > 0 else '',
+                        'to': str(gap[1]) if gap and len(gap) > 1 else '',
+                        'missing_days': gap[2] - 1 if gap and len(gap) > 2 else 0
+                    } for gap in gaps[:10] if gap and len(gap) >= 3  # Limit to first 10 gaps
+                ],
+                'daily_sample': [
+                    {
+                        'date': str(row[0]) if row and len(row) > 0 else '',
+                        'count': row[1] if row and len(row) > 1 else 0
+                    } for row in daily_counts[:30] if row and len(row) >= 2  # First 30 days sample
+                ]
+            }
+            
+            # Add warnings if issues detected
+            if validation_result['statistics']['missing_dates'] > 0:
+                validation_result['warnings'] = []
+                validation_result['warnings'].append(
+                    "Missing {} dates out of {} expected".format(
+                        validation_result['statistics']['missing_dates'],
+                        expected_days
+                    )
+                )
+            
+            self.logger.info("Validation complete: {} dates found, {} expected".format(
+                unique_dates, expected_days))
+            
+            return validation_result
+            
+        except Exception as e:
+            self.logger.error("Error validating date completeness: {}".format(e))
+            self.logger.error(traceback.format_exc())
+            return {
+                'valid': False,
+                'error': str(e)
+            }
+    
+    def get_table_stats(self, table_name: str) -> Dict:
+        """Get basic table statistics for monitoring"""
+        try:
+            stats_query = """
+            SELECT 
+                COUNT(*) as row_count,
+                COUNT(DISTINCT {cols}) as distinct_count
+            FROM {table}
+            LIMIT 1
+            """.format(
+                cols="*",  # This will be refined based on actual needs
+                table=table_name
+            )
+            
+            # Simpler query for large tables
+            count_query = "SELECT COUNT(*) FROM {} LIMIT 1".format(table_name)
+            
+            self.logger.debug("Getting table stats for {}".format(table_name))
+            self.cursor.execute(count_query)
+            row_count = self.cursor.fetchone()[0]
+            
+            return {
+                'table_name': table_name,
+                'row_count': row_count,
+                'checked_at': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error("Error getting table stats: {}".format(e))
+            return {'error': str(e)}
+    
+    def close(self):
+        """Close the connection"""
+        if hasattr(self, 'cursor'):
+            self.cursor.close()
+        if hasattr(self, 'conn'):
+            self.conn.close()
+        self.logger.debug("Validator connection closed")
+
 class SnowflakeLoader:
     """Snowflake loading with streaming compression"""
     
@@ -999,13 +1205,16 @@ def analyze_files(file_configs: List[FileConfig], max_workers: int = 4) -> Dict:
 
 
 def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
-                 max_workers: int, skip_qc: bool, analysis_results: Dict) -> None:
+                 max_workers: int, skip_qc: bool, analysis_results: Dict,
+                 validate_in_snowflake: bool = False, validate_only: bool = False) -> None:
     """Process files with streaming quality checks and loading"""
     logger.info("="*60)
     logger.info("Starting file processing (STREAMING MODE)")
     logger.info("  Files: {}".format(len(file_configs)))
     logger.info("  Workers: {}".format(max_workers))
     logger.info("  Skip QC: {}".format(skip_qc))
+    logger.info("  Validate in Snowflake: {}".format(validate_in_snowflake))
+    logger.info("  Validate Only: {}".format(validate_only))
     logger.info("="*60)
 
     start_time = time.time()
@@ -1022,6 +1231,51 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
         )
 
     try:
+        # If validate_only mode, skip to validation
+        if validate_only:
+            print("\n=== Validate Only Mode - Checking Existing Snowflake Tables ===")
+            validator = SnowflakeDataValidator(snowflake_params)
+            
+            try:
+                for config in file_configs:
+                    print("\nValidating {}: ".format(config.table_name))
+                    
+                    # Convert date range to strings
+                    start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
+                    end_date = config.expected_date_range[1].strftime('%Y-%m-%d')
+                    
+                    validation_result = validator.validate_date_completeness(
+                        table_name=config.table_name,
+                        date_column=config.date_column,
+                        start_date=start_date,
+                        end_date=end_date
+                    )
+                    
+                    # Display results
+                    if validation_result.get('valid'):
+                        print("  ✓ VALID - All {} dates present".format(
+                            validation_result['statistics']['unique_dates']))
+                    else:
+                        print("  ✗ INVALID - {} dates missing".format(
+                            validation_result['statistics']['missing_dates']))
+                        if validation_result.get('gaps'):
+                            print("  First gap: {} to {}".format(
+                                validation_result['gaps'][0]['from'],
+                                validation_result['gaps'][0]['to']))
+                    
+                    print("  Total rows: {:,}".format(validation_result['statistics']['total_rows']))
+                    print("  Avg rows/day: {:,.0f}".format(
+                        validation_result['statistics']['avg_rows_per_day']))
+            finally:
+                validator.close()
+            
+            return
+        
+        # Skip file-based QC if validating in Snowflake
+        if validate_in_snowflake:
+            skip_qc = True
+            print("\n=== Skipping file-based QC (will validate in Snowflake) ===")
+        
         # Run quality checks if not skipped
         if not skip_qc:
             print("\n=== Running Streaming Data Quality Checks ===")
@@ -1116,6 +1370,53 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                 except Exception as e:
                     logger.error("Failed to load {}: {}".format(config.table_name, e))
                     print("Failed to load {}: {}".format(config.table_name, e))
+        
+        # Validate in Snowflake if requested
+        if validate_in_snowflake:
+            print("\n=== Validating Data Completeness in Snowflake ===")
+            validator = SnowflakeDataValidator(snowflake_params)
+            
+            try:
+                validation_failed = False
+                for config in file_configs:
+                    print("\nValidating {}: ".format(config.table_name))
+                    
+                    # Convert date range to strings
+                    start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
+                    end_date = config.expected_date_range[1].strftime('%Y-%m-%d')
+                    
+                    validation_result = validator.validate_date_completeness(
+                        table_name=config.table_name,
+                        date_column=config.date_column,
+                        start_date=start_date,
+                        end_date=end_date
+                    )
+                    
+                    # Display results
+                    if validation_result.get('valid'):
+                        print("  ✓ VALID - All {} dates present".format(
+                            validation_result['statistics']['unique_dates']))
+                        logger.info("{} passed Snowflake validation".format(config.table_name))
+                    else:
+                        print("  ✗ INVALID - {} dates missing".format(
+                            validation_result['statistics'].get('missing_dates', 'Unknown')))
+                        if validation_result.get('gaps'):
+                            print("  Gaps found:")
+                            for gap in validation_result['gaps'][:3]:  # Show first 3 gaps
+                                print("    - {} to {} ({} days missing)".format(
+                                    gap['from'], gap['to'], gap['missing_days']))
+                        validation_failed = True
+                        logger.error("{} failed Snowflake validation".format(config.table_name))
+                    
+                    print("  Total rows: {:,}".format(
+                        validation_result.get('statistics', {}).get('total_rows', 0)))
+                    print("  Avg rows/day: {:,.0f}".format(
+                        validation_result.get('statistics', {}).get('avg_rows_per_day', 0)))
+                
+                if validation_failed:
+                    print("\n⚠ WARNING: Some tables have incomplete date ranges")
+            finally:
+                validator.close()
 
     finally:
         if tracker:
@@ -1134,8 +1435,8 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
     logger.info("Processing complete in {:.1f} seconds".format(elapsed))
 
 def main():
-    logger.info("Main function starting")
-
+    global logger
+    
     parser = argparse.ArgumentParser(description='Load TSV files to Snowflake with progress tracking')
     parser.add_argument('--config', type=str, help='Path to configuration JSON file')
     parser.add_argument('--base-path', type=str, default='.', help='Base path for TSV files')
@@ -1147,11 +1448,14 @@ def main():
     parser.add_argument('--debug', action='store_true', help='Enable debug logging (already on by default)')
     parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation prompt and proceed automatically')
     parser.add_argument('--quiet', action='store_true', help='Suppress console output (keep progress bars and file logging)')
+    parser.add_argument('--validate-in-snowflake', action='store_true', 
+                       help='Validate date completeness in Snowflake after loading (skip file-based QC)')
+    parser.add_argument('--validate-only', action='store_true',
+                       help='Only validate existing data in Snowflake tables (no loading)')
 
     args = parser.parse_args()
 
     # Setup logging based on quiet mode
-    global logger
     logger = setup_logging(quiet_mode=args.quiet)
 
     # Debug logging is already on by default
@@ -1258,8 +1562,10 @@ def main():
         file_configs=file_configs,
         snowflake_params=config.get('snowflake', {}),
         max_workers=args.max_workers,
-        skip_qc=args.skip_qc,
-        analysis_results=analysis_results
+        skip_qc=args.skip_qc or args.validate_in_snowflake,  # Skip file QC if validating in Snowflake
+        analysis_results=analysis_results,
+        validate_in_snowflake=args.validate_in_snowflake,
+        validate_only=args.validate_only
     )
 
     logger.info("Main function complete")
