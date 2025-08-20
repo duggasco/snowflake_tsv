@@ -207,8 +207,10 @@ process_direct_files() {
     # Create a log file name with timestamp
     local log_file="logs/run_direct_$(date +%Y%m%d_%H%M%S).log"
     
-    echo -e "${BLUE}Command: ${cmd}${NC}"
-    echo -e "${BLUE}Log file: ${log_file}${NC}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "${BLUE}Command: ${cmd}${NC}"
+        echo -e "${BLUE}Log file: ${log_file}${NC}"
+    fi
     
     if [ -n "${DRY_RUN}" ]; then
         echo -e "${YELLOW}[DRY RUN] Would execute above command${NC}"
@@ -250,9 +252,11 @@ process_month() {
         return 1
     fi
     
-    echo -e "\n${CYAN}========================================${NC}"
-    echo -e "${CYAN}Processing Month: $month_dir (${month_formatted})${NC}"
-    echo -e "${CYAN}========================================${NC}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "\n${CYAN}========================================${NC}"
+        echo -e "${CYAN}Processing Month: $month_dir (${month_formatted})${NC}"
+        echo -e "${CYAN}========================================${NC}"
+    fi
     
     # Build the Python command
     local cmd="python3 tsv_loader.py"
@@ -262,7 +266,9 @@ process_month() {
     if [ -z "${VALIDATE_ONLY}" ]; then
         # Append the month directory to the base path
         local month_base_path="${BASE_PATH%/}/${month_dir}"
-        echo -e "${BLUE}Data Path: ${month_base_path}${NC}"
+        if [ -z "${QUIET_MODE}" ]; then
+            echo -e "${BLUE}Data Path: ${month_base_path}${NC}"
+        fi
         cmd="${cmd} --base-path ${month_base_path}"
     fi
     
@@ -306,8 +312,10 @@ process_month() {
     # Create a log file name with timestamp and month
     local log_file="logs/run_${month_dir}_$(date +%Y%m%d_%H%M%S).log"
     
-    echo -e "${BLUE}Command: ${cmd}${NC}"
-    echo -e "${BLUE}Log file: ${log_file}${NC}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "${BLUE}Command: ${cmd}${NC}"
+        echo -e "${BLUE}Log file: ${log_file}${NC}"
+    fi
     
     if [ -n "${DRY_RUN}" ]; then
         echo -e "${YELLOW}[DRY RUN] Would execute above command${NC}"
@@ -333,17 +341,23 @@ process_month() {
     fi
     
     if [ ${exit_code} -eq 0 ]; then
-        echo -e "${GREEN}[OK] Month $month_dir processed successfully${NC}"
+        if [ -z "${QUIET_MODE}" ]; then
+            echo -e "${GREEN}[OK] Month $month_dir processed successfully${NC}"
+        fi
         return 0
     else
-        echo -e "${RED}[FAILED] Month $month_dir failed with exit code: ${exit_code}${NC}"
+        if [ -z "${QUIET_MODE}" ]; then
+            echo -e "${RED}[FAILED] Month $month_dir failed with exit code: ${exit_code}${NC}"
+        fi
         return ${exit_code}
     fi
 }
 
 # Function to check prerequisites
 check_prerequisites() {
-    echo -e "${BLUE}Checking prerequisites...${NC}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "${BLUE}Checking prerequisites...${NC}"
+    fi
  
     # Check if Python is installed
     if ! command -v python3 &> /dev/null; then
@@ -353,7 +367,9 @@ check_prerequisites() {
  
     # Check Python version
     python_version=$(python3 --version 2>&1 | awk '{print $2}')
-    echo -e "  Python version: ${python_version}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "  Python version: ${python_version}"
+    fi
  
     # Check if required Python packages are installed
     missing_packages=""
@@ -365,22 +381,30 @@ check_prerequisites() {
     done
  
     if [ -n "${missing_packages}" ]; then
-        echo -e "${YELLOW}Warning: Missing Python packages:${missing_packages}${NC}"
-        echo -e "${YELLOW}Install with: pip install${missing_packages}${NC}"
+        if [ -z "${QUIET_MODE}" ]; then
+            echo -e "${YELLOW}Warning: Missing Python packages:${missing_packages}${NC}"
+            echo -e "${YELLOW}Install with: pip install${missing_packages}${NC}"
+        fi
     fi
  
     # Check if config file exists
     if [ ! -f "${CONFIG_FILE}" ]; then
-        echo -e "${YELLOW}Warning: Config file not found: ${CONFIG_FILE}${NC}"
+        if [ -z "${QUIET_MODE}" ]; then
+            echo -e "${YELLOW}Warning: Config file not found: ${CONFIG_FILE}${NC}"
+        fi
     fi
  
     # Check if logs directory exists
     if [ ! -d "logs" ]; then
-        echo -e "${BLUE}Creating logs directory...${NC}"
+        if [ -z "${QUIET_MODE}" ]; then
+            echo -e "${BLUE}Creating logs directory...${NC}"
+        fi
         mkdir -p logs
     fi
  
-    echo -e "${GREEN}Prerequisites check complete${NC}\n"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "${GREEN}Prerequisites check complete${NC}\n"
+    fi
 }
 
  
@@ -518,7 +542,9 @@ if [ -n "${BATCH_MODE}" ]; then
 elif [ -n "${MONTHS_LIST}" ]; then
     # Specific months provided
     IFS=',' read -ra months_to_process <<< "${MONTHS_LIST}"
-    echo -e "${MAGENTA}Processing specific months: ${months_to_process[*]}${NC}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "${MAGENTA}Processing specific months: ${months_to_process[*]}${NC}"
+    fi
     
 else
     # Single month mode (backward compatibility)
@@ -534,37 +560,39 @@ else
     fi
 fi
 
-# Display configuration
-echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}TSV to Snowflake Loader Configuration${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo -e "Config File:       ${CONFIG_FILE}"
-echo -e "Base Path:         ${BASE_PATH}"
+# Display configuration (unless in quiet mode)
+if [ -z "${QUIET_MODE}" ]; then
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}TSV to Snowflake Loader Configuration${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "Config File:       ${CONFIG_FILE}"
+    echo -e "Base Path:         ${BASE_PATH}"
 
-if [ ${#months_to_process[@]} -gt 1 ]; then
-    echo -e "Months to Process: ${#months_to_process[@]} months"
-    echo -e "                   ${months_to_process[*]}"
-elif [ ${#months_to_process[@]} -eq 1 ]; then
-    echo -e "Month:             ${months_to_process[0]}"
-else
-    echo -e "Month:             Current ($(date +%m%Y))"
-    months_to_process=("$(date +%m%Y)")
+    if [ ${#months_to_process[@]} -gt 1 ]; then
+        echo -e "Months to Process: ${#months_to_process[@]} months"
+        echo -e "                   ${months_to_process[*]}"
+    elif [ ${#months_to_process[@]} -eq 1 ]; then
+        echo -e "Month:             ${months_to_process[0]}"
+    else
+        echo -e "Month:             Current ($(date +%m%Y))"
+        months_to_process=("$(date +%m%Y)")
+    fi
+
+    if [ -n "${MAX_WORKERS}" ]; then
+        echo -e "Max Workers:       ${MAX_WORKERS}"
+    else
+        echo -e "Max Workers:       Auto-detect"
+    fi
+
+    echo -e "Skip QC:           $([ -n "${SKIP_QC}" ] && echo "Yes [WARNING]" || echo "No [OK]")"
+    echo -e "Validate in SF:    $([ -n "${VALIDATE_IN_SNOWFLAKE}" ] && echo "Yes [OK]" || echo "No")"
+    echo -e "Validate Only:     $([ -n "${VALIDATE_ONLY}" ] && echo "Yes" || echo "No")"
+    echo -e "Analyze Only:      $([ -n "${ANALYZE_ONLY}" ] && echo "Yes" || echo "No")"
+    echo -e "Continue on Error: $([ -n "${CONTINUE_ON_ERROR}" ] && echo "Yes" || echo "No")"
+    echo -e "Dry Run:           $([ -n "${DRY_RUN}" ] && echo "Yes" || echo "No")"
+    echo -e "Parallel Jobs:     ${PARALLEL_JOBS}"
+    echo -e "${GREEN}========================================${NC}\n"
 fi
-
-if [ -n "${MAX_WORKERS}" ]; then
-    echo -e "Max Workers:       ${MAX_WORKERS}"
-else
-    echo -e "Max Workers:       Auto-detect"
-fi
-
-echo -e "Skip QC:           $([ -n "${SKIP_QC}" ] && echo "Yes [WARNING]" || echo "No [OK]")"
-echo -e "Validate in SF:    $([ -n "${VALIDATE_IN_SNOWFLAKE}" ] && echo "Yes [OK]" || echo "No")"
-echo -e "Validate Only:     $([ -n "${VALIDATE_ONLY}" ] && echo "Yes" || echo "No")"
-echo -e "Analyze Only:      $([ -n "${ANALYZE_ONLY}" ] && echo "Yes" || echo "No")"
-echo -e "Continue on Error: $([ -n "${CONTINUE_ON_ERROR}" ] && echo "Yes" || echo "No")"
-echo -e "Dry Run:           $([ -n "${DRY_RUN}" ] && echo "Yes" || echo "No")"
-echo -e "Parallel Jobs:     ${PARALLEL_JOBS}"
-echo -e "${GREEN}========================================${NC}\n"
 
 # Calculate workers per job if using parallel processing
 workers_per_job=""
@@ -610,10 +638,14 @@ check_completed_jobs() {
             local month="${job_pids[$pid]}"
             
             if [ ${exit_code} -eq 0 ]; then
-                echo -e "${GREEN}[OK] Month $month completed successfully${NC}"
+                if [ -z "${QUIET_MODE}" ]; then
+                    echo -e "${GREEN}[OK] Month $month completed successfully${NC}"
+                fi
                 ((successful_months++))
             else
-                echo -e "${RED}[FAILED] Month $month failed with exit code: ${exit_code}${NC}"
+                if [ -z "${QUIET_MODE}" ]; then
+                    echo -e "${RED}[FAILED] Month $month failed with exit code: ${exit_code}${NC}"
+                fi
                 ((failed_months++))
                 failed_list+=("${month}")
                 
@@ -639,7 +671,9 @@ for i in "${!months_to_process[@]}"; do
         check_completed_jobs || break
     fi
     
-    echo -e "\n${MAGENTA}[${current_num}/${total_months}] Starting month: ${month}${NC}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "\n${MAGENTA}[${current_num}/${total_months}] Starting month: ${month}${NC}"
+    fi
     
     if [ ${PARALLEL_JOBS} -gt 1 ]; then
         # Run in background for parallel processing
@@ -649,7 +683,9 @@ for i in "${!months_to_process[@]}"; do
         
         # Track the background job
         job_pids[$!]="${month}"
-        echo -e "${BLUE}Month ${month} running in background (PID: $!, position: ${job_position_counter})${NC}"
+        if [ -z "${QUIET_MODE}" ]; then
+            echo -e "${BLUE}Month ${month} running in background (PID: $!, position: ${job_position_counter})${NC}"
+        fi
         # Increment position counter for next job
         job_position_counter=$((job_position_counter + 1))
     else
@@ -675,7 +711,9 @@ done
 
 # Wait for all remaining parallel jobs to complete
 if [ ${PARALLEL_JOBS} -gt 1 ]; then
-    echo -e "\n${BLUE}Waiting for all parallel jobs to complete...${NC}"
+    if [ -z "${QUIET_MODE}" ]; then
+        echo -e "\n${BLUE}Waiting for all parallel jobs to complete...${NC}"
+    fi
     while [ ${#job_pids[@]} -gt 0 ]; do
         check_completed_jobs
         sleep 1
@@ -690,19 +728,21 @@ minutes=$(((total_time % 3600) / 60))
 seconds=$((total_time % 60))
 
 # Final summary
-echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}BATCH PROCESSING SUMMARY${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo -e "Total Months:      ${total_months}"
-echo -e "Successful:        ${successful_months} $([ ${successful_months} -gt 0 ] && echo "[OK]" || echo "")"
-echo -e "Failed:            ${failed_months} $([ ${failed_months} -gt 0 ] && echo "[FAILED]" || echo "")"
+if [ -z "${QUIET_MODE}" ]; then
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}BATCH PROCESSING SUMMARY${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "Total Months:      ${total_months}"
+    echo -e "Successful:        ${successful_months} $([ ${successful_months} -gt 0 ] && echo "[OK]" || echo "")"
+    echo -e "Failed:            ${failed_months} $([ ${failed_months} -gt 0 ] && echo "[FAILED]" || echo "")"
 
-if [ ${#failed_list[@]} -gt 0 ]; then
-    echo -e "Failed Months:     ${failed_list[*]}"
+    if [ ${#failed_list[@]} -gt 0 ]; then
+        echo -e "Failed Months:     ${failed_list[*]}"
+    fi
+
+    echo -e "Total Time:        ${hours}h ${minutes}m ${seconds}s"
+    echo -e "${GREEN}========================================${NC}"
 fi
-
-echo -e "Total Time:        ${hours}h ${minutes}m ${seconds}s"
-echo -e "${GREEN}========================================${NC}"
 
 # Display aggregate validation results if in validate-only mode
 if [ -n "${VALIDATE_ONLY}" ]; then
