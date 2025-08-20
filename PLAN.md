@@ -1,90 +1,156 @@
 # PLAN.md
 
-## Project Overview
-High-performance Snowflake ETL pipeline for processing large TSV files (up to 50GB) with built-in data quality checks, progress tracking, and parallel processing capabilities. The system emphasizes streaming processing for memory efficiency and uses Snowflake's native bulk loading features.
+## Current Focus: Complete Progress Bar System
 
-## Current Status (2025-08-20) - FEATURE COMPLETE ✓
+### Phase 1: Upload Progress Bar (Next Session Priority)
+**Goal**: Add real-time progress tracking for file uploads to Snowflake stage
 
-### Today's Major Achievements
-- **Config Generator Tool**: Created comprehensive `generate_config.sh` script
-  - Auto-detects file patterns and table names
-  - Queries Snowflake for column schemas
-  - Interactive mode for credentials
-  - Supports headerless TSV files
-- **Direct File Processing**: Added --direct-file flag to run_loader.sh
-  - Process specific TSV files without directory structure
-  - Auto-extracts base path and month
-  - Full compatibility with all flags
-- **Documentation Updated**: All docs reflect new features
+**Implementation Steps**:
+1. Research Snowflake PUT command progress capabilities
+   - Check if snowflake-connector-python supports callbacks
+   - Investigate chunked upload possibilities
+   - Look for async upload monitoring options
 
-### Previous Session Achievements
-- **Validation Enhancements**: Fixed YYYYMMDD date format handling, added progress bars
-- **Quiet Mode Improvements**: Progress bars visible in quiet mode, aggregate results display
-- **Bug Fixes**: Fixed tqdm_available error, KeyError for empty tables
-- **Performance Optimized**: 40% faster processing with Snowflake validation
+2. Implement start_file_upload() method in ProgressTracker
+   - Calculate upload position (compress_position + 1)
+   - Track file size and transfer rate
+   - Show filename being uploaded
+   - Display MB/s and ETA
 
-## Config Generator Tool - COMPLETED ✓
+3. Integration with SnowflakeLoader
+   - Hook into PUT command execution
+   - Update progress during transfer
+   - Handle connection interruptions gracefully
 
-### Problem Solved
-- TSV files lack headers, making config creation manual and error-prone
-- Need to match TSV columns to Snowflake table schema
-- Manual config creation takes 30+ minutes per file type
+4. Testing
+   - Single file upload tracking
+   - Parallel upload progress
+   - Network interruption handling
+   - Various file sizes (1MB to 50GB)
 
-### Solution Implemented: generate_config.sh
-Successfully created tool that:
-1. ✓ Queries Snowflake tables for column names and types
-2. ✓ Analyzes TSV files for structure and patterns
-3. ✓ Auto-generates complete config.json files
-4. ✓ Supports interactive mode for credentials
-5. ✓ Handles headerless files with manual column specification
-6. ✓ Includes dry-run mode for testing
+### Phase 2: COPY Progress Bar
+**Goal**: Track Snowflake COPY operation progress
 
-### Key Features Delivered
-- **Snowflake-First Approach**: Pulls column metadata directly from target tables
-- **Pattern Detection**: Auto-detects {month} vs {date_range} from filenames
-- **Batch Processing**: Handles multiple files at once
-- **Flexible Input**: Supports both Snowflake queries and manual headers
+**Implementation Steps**:
+1. Research COPY progress tracking options
+   - Query information_schema during COPY
+   - Use VALIDATION_MODE for estimation
+   - Check for progress callbacks
 
-## Previous Phase: factLendingBenchmark Configuration
+2. Implement start_copy_operation() method
+   - Calculate copy position (upload_position + 1)
+   - Track rows processed
+   - Show rows/second rate
+   - Display target table name
 
-### File Analysis Complete
-- **File**: factLendingBenchmark_20220901-20220930.tsv
-- **Size**: 21GB
-- **Rows**: 60,673,993
-- **Columns**: 41 (38 with data, 3 completely null)
-- **Date Range**: September 1-30, 2022
-- **Date Column**: RECORDDATEID (column 2, format: YYYYMMDD)
+3. Progress estimation strategies
+   - Pre-validate to get row count
+   - Monitor query_history during execution
+   - Use stage file metadata
 
-### Column Mapping Established
-Successfully mapped all 41 columns to business names:
-- Financial identifiers (ISIN, CUSIP, SEDOL)
-- Lending metrics (LENDABLEVALUE, LOANVALUE, etc.)
-- Fees and rates (FEE, MINFEE, MAXFEE, REBATE)
-- Audit fields (XCREATEBY, XCREATEDATE, XUPDATEBY, XUPDATEDATE)
-- 3 empty columns: FEEDBUCKET, INVESTMENTSTYLE, DATASOURCETYPE
+4. Testing
+   - Various table sizes
+   - Different file formats
+   - Error handling during COPY
+   - Parallel COPY operations
 
-### Configuration Created
-- **Config File**: `/root/snowflake/config/factLendingBenchmark_config.json`
-- **Target Table**: FACTLENDINGBENCHMARK (existing in Snowflake)
-- **Snowflake Connection**: Configured with PMG_SANDBOX_DB.GLL schema
+### Phase 3: Position Management Refactor
+**Goal**: Support 5 progress bars with dynamic positioning
 
-## Next Steps
-1. Test the fixed ETL pipeline on remote server with Snowflake connector
-2. Verify successful file uploads and compression cleanup
-3. Monitor parallel processing of multiple months
-4. Validate data loading to Snowflake FACTLENDINGBENCHMARK table
-5. Track performance metrics against estimates
+**Tasks**:
+1. Update position calculations
+   - Base: Files (always shown)
+   - +1: QC Rows (if not skip_qc)
+   - +1: Compression (always during processing)
+   - +1: Upload (during PUT operation)
+   - +1: COPY (during COPY operation)
 
-## Performance Expectations
-Based on file characteristics (21GB, 60M rows):
-- Row counting: ~2 minutes
-- Quality checks: ~20 minutes (with parallel processing)
-- Compression: ~14 minutes
-- Upload: ~70 minutes
-- Snowflake COPY: ~10 minutes
-- **Total estimated time**: ~2 hours
+2. Bash script updates
+   - Dynamic lines_per_job calculation
+   - Handle all skip mode combinations
+   - Proper spacing for 5 bars
 
-## Integration Points
-- Gemini MCP tool added for collaborative planning and code review
-- Using existing Snowflake table (no DDL creation needed)
-- Streaming processing to handle large file efficiently
+3. Mode-specific bar counts
+   - --skip-qc: 4 bars (no QC)
+   - --validate-only: 1 bar (validation only)
+   - --analyze-only: 1 bar (analysis only)
+   - Normal: 5 bars (all operations)
+
+### Phase 4: Performance Optimization
+**Goal**: Ensure progress tracking doesn't impact performance
+
+**Considerations**:
+1. Update frequency throttling
+   - Limit updates to every 100ms
+   - Batch small updates
+   - Skip updates for tiny files
+
+2. Memory management
+   - Close unused progress bars immediately
+   - Reuse bar objects where possible
+   - Monitor memory during large operations
+
+3. Thread safety
+   - Ensure locks don't cause deadlocks
+   - Minimize lock contention
+   - Test with high parallelism
+
+## Implementation Priority Order
+
+1. **Week 1**: Upload Progress Bar
+   - Research and prototype
+   - Basic implementation
+   - Single file testing
+
+2. **Week 2**: COPY Progress Bar
+   - Research tracking options
+   - Implementation
+   - Integration testing
+
+3. **Week 3**: Position Management
+   - Refactor calculations
+   - Update bash script
+   - Test all modes
+
+4. **Week 4**: Polish and Optimization
+   - Performance testing
+   - Edge case handling
+   - Documentation update
+
+## Success Criteria
+
+- [ ] All 5 progress bars display correctly
+- [ ] No overlap in parallel mode (3+ jobs)
+- [ ] Quiet mode shows only progress bars
+- [ ] < 1% performance impact from tracking
+- [ ] Clean error handling and recovery
+- [ ] Works with files from 1KB to 50GB
+
+## Risk Mitigation
+
+1. **Snowflake API Limitations**
+   - Fallback: Estimate progress based on file size
+   - Alternative: Show spinner instead of progress
+
+2. **Performance Impact**
+   - Throttle updates for large operations
+   - Make progress bars optional (--no-progress flag)
+
+3. **Terminal Compatibility**
+   - Test on various terminals
+   - Fallback to simple text output
+   - Handle missing tqdm gracefully
+
+## Dependencies to Research
+
+- Snowflake Python connector progress callbacks
+- Azure blob storage transfer progress APIs
+- Alternative progress bar libraries (rich, alive-progress)
+- Async monitoring capabilities
+
+## Notes
+
+- Keep --quiet mode as the gold standard
+- Progress bars should enhance, not hinder
+- Consider colorization for different operations
+- Document all new environment variables

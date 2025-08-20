@@ -24,6 +24,22 @@
 - [x] Update CLAUDE.md with new command examples
 - [x] Update CHANGELOG.md with all recent changes
 
+## Next Session Priority 🎯
+- [ ] Add Upload Progress Bar for Azure/Snowflake stage
+  - [ ] Implement start_file_upload() method
+  - [ ] Track PUT command progress
+  - [ ] Show MB/s upload speed
+  - [ ] Handle parallel uploads
+- [ ] Add COPY Progress Bar for Snowflake operations
+  - [ ] Implement start_copy_operation() method
+  - [ ] Track row insertion progress
+  - [ ] Show rows/second rate
+  - [ ] Handle large table operations
+- [ ] Update position calculations for 5 progress bars
+  - [ ] Adjust lines_per_job in bash script
+  - [ ] Handle different skip modes
+  - [ ] Test with all combinations
+
 ## In Progress 🔄
 - [ ] Monitor production runs with new validation features
 - [ ] Gather performance metrics from real-world usage

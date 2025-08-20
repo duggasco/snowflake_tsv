@@ -1,168 +1,199 @@
-# Context Handover Document
-*Last Updated: 2025-08-20*
+# CONTEXT HANDOVER - Snowflake TSV Loader Project
 
-## Project Overview
-High-performance Snowflake ETL pipeline for loading large TSV files (up to 50GB) with data quality validation, progress tracking, and parallel processing capabilities.
+## Session Date: 2025-08-20
 
-## Recent Session Accomplishments (2025-08-20)
+## Current State Summary
 
-### 1. Config Generator Tool - COMPLETED ✓
-- Created `generate_config.sh` with full functionality:
-  - Auto-detects file patterns ({date_range} vs {month})
-  - Extracts table names from filenames
-  - Queries Snowflake for column information
-  - Supports manual column header specification
-  - Interactive mode for credentials
-  - Dry-run mode for testing
-  - Uses test_venv for Snowflake connectivity
+The Snowflake TSV Loader is a production-ready ETL pipeline for loading large TSV files (up to 50GB) into Snowflake. The system now has fully functional parallel processing with clean progress bar display, especially optimized for `--quiet` mode.
 
-### 2. Direct File Processing - COMPLETED ✓
-- Added `--direct-file` flag to `run_loader.sh`:
-  - Process specific TSV files directly
-  - Accepts comma-separated list of file paths
-  - Auto-extracts directory for base-path
-  - Detects month from filename patterns
-  - Full compatibility with all existing flags
+## Recent Accomplishments
 
-## Recent Session Accomplishments (Previous)
+### 1. Progress Bar System Overhaul
+- **Parallel Progress Bars**: Each parallel job gets its own set of non-overlapping progress bars
+- **Context-Aware Display**: Shows QC Rows bar only when performing file-based quality checks
+- **Per-File Compression**: Each file shows its own compression progress with filename
+- **Full Width Bars**: Fixed compression bar width to match other progress bars
+- **Position Management**: Uses TSV_JOB_POSITION environment variable for proper stacking
 
-### 1. Validation System Improvements
-- **Fixed YYYYMMDD Date Format**: Updated SQL queries to handle dates stored as YYYYMMDD integers (e.g., 20220901)
-- **Progress Bars for Validation**: Added tqdm progress bars that display in stderr (visible in quiet mode)
-- **Aggregate Validation Results**: Batch jobs now show consolidated validation summary at the end
-- **Detailed Failure Reasons**: Invalid validations now show specific missing date ranges
+### 2. Quiet Mode Implementation
+- **Complete Suppression**: ALL bash script outputs wrapped with quiet mode checks
+- **Progress-Only Display**: In --quiet mode, ONLY progress bars are shown (via stderr)
+- **Log Preservation**: All logs still written to files for debugging
+- **Parallel Optimization**: Perfect for parallel processing without terminal clutter
 
-### 2. Quiet Mode Enhancement
-- **--quiet flag**: Suppresses console output while preserving progress bars
-- **Validation Results**: Saved to JSON files for aggregation
-- **Batch Summary**: Shows validation details after all months complete
+### 3. Technical Improvements
+- Fixed tqdm positioning issues with parallel execution
+- Removed manual spacing that caused display artifacts
+- Implemented proper cleanup with leave=False for completed bars
+- Added file-specific tracking to ProgressTracker class
 
-### 3. Bug Fixes
-- Fixed `tqdm_available` NameError (changed to `TQDM_AVAILABLE`)
-- Fixed KeyError 'statistics' for empty Snowflake tables
-- Fixed --validate-only mode to work without file paths
+## Current Architecture
 
-## Next Session Priority
+### Progress Bar Hierarchy (per job)
+1. **Files Progress** - Overall file processing (always shown)
+2. **QC Rows Progress** - Quality check progress (only with file-based QC)
+3. **Compression Progress** - Per-file compression with filename
+4. **[PENDING] Upload Progress** - Azure blob/Snowflake stage upload
+5. **[PENDING] COPY Progress** - Snowflake COPY operation
 
-### Production Testing & Monitoring
-1. **Test full pipeline** with real production data
-2. **Monitor performance** metrics with 50GB+ files
-3. **Validate Snowflake data** completeness after loads
-4. **Document any issues** or optimization opportunities
+### Key Files Modified
+- `tsv_loader.py` - ProgressTracker class with position management
+- `run_loader.sh` - Quiet mode checks throughout, TSV_JOB_POSITION setting
 
-### Potential Enhancements
-1. **Enhanced error recovery**: Resume failed loads from checkpoint
-2. **Data profiling**: Generate statistics about loaded data
-3. **Notification system**: Email/Slack alerts on completion/failure
-4. **Archive management**: Auto-archive processed TSV files
+## Next Session Tasks
 
-## Current Tools & Scripts
+### High Priority - Additional Progress Bars
 
-### Core Scripts
-1. **tsv_loader.py** - Main ETL script with validation
-2. **run_loader.sh** - Enhanced bash wrapper with parallel processing and direct file support
-3. **generate_config.sh** - Comprehensive config generator with Snowflake integration
-4. **tsv_sampler.sh** - Basic TSV analyzer (generates config snippets)
+1. **Azure Blob/Snowflake Stage Upload Progress**
+   - Track PUT command progress
+   - Show MB/s upload speed
+   - Display estimated time remaining
+   - Handle parallel uploads properly
 
-### Key Features
-- Parallel processing (month and file level)
-- Snowflake-based validation (faster than file-based)
-- Progress tracking with tqdm
-- Batch processing with aggregated results
+2. **Snowflake COPY Operation Progress**
+   - Track rows being inserted
+   - Show rows/second processing rate
+   - Display completion percentage
+   - Handle large file COPY operations
 
-## Configuration Structure
-```json
-{
-  "snowflake": {
-    "account": "...",
-    "user": "...",
-    "password": "...",
-    "warehouse": "...",
-    "database": "...",
-    "schema": "...",
-    "role": "..."
-  },
-  "files": [
-    {
-      "file_pattern": "filename_{date_range}.tsv",
-      "table_name": "TARGET_TABLE",
-      "expected_columns": ["col1", "col2", "..."],
-      "date_column": "RECORDDATEID"
-    }
-  ]
-}
-```
+### Implementation Plan for New Progress Bars
 
-## Known Issues & Limitations
-1. TSV files lack headers - need Snowflake table schema
-2. Manual config creation is time-consuming
-3. Date columns stored as YYYYMMDD integers in Snowflake
-
-## Testing Commands
-
-### Validation
-```bash
-# Single month validation
-./run_loader.sh --validate-only --month 2022-09
-
-# Batch validation with quiet mode
-./run_loader.sh --validate-only --batch --parallel 4 --quiet
-```
-
-### Processing
-```bash
-# Process with Snowflake validation (faster)
-./run_loader.sh --month 2022-09 --validate-in-snowflake
-
-# Batch processing
-./run_loader.sh --batch --parallel 4 --continue-on-error
-```
-
-## Environment Notes
-- Python 3.7+ required
-- Snowflake connector installed
-- tqdm for progress bars (optional but recommended)
-- Working directory: /root/snowflake
-
-## Next Steps for Config Generator
-
-### Phase 1: Core Script
-```bash
-#!/bin/bash
-# generate_config.sh
-# Usage: ./generate_config.sh --table SNOWFLAKE_TABLE --files "*.tsv"
-```
-
-### Phase 2: Snowflake Integration
+#### 1. Upload Progress Bar
 ```python
-# Query to get column info
-SELECT column_name, data_type, ordinal_position
-FROM information_schema.columns
-WHERE table_name = 'TARGET_TABLE'
-ORDER BY ordinal_position;
+def start_file_upload(self, filename: str, file_size_mb: float):
+    """Start upload progress for a specific file"""
+    # Position at compress_position + 1
+    self.upload_pbar = tqdm(total=file_size_mb,
+                           desc="{}Uploading {}".format(self.desc_prefix, os.path.basename(filename)),
+                           unit="MB",
+                           unit_scale=True,
+                           position=self.upload_position,
+                           leave=False,
+                           file=sys.stderr)
 ```
 
-### Phase 3: Pattern Detection
-- Extract dates from filenames
-- Identify {month} vs {date_range} patterns
-- Map columns to TSV positions
+#### 2. COPY Progress Bar
+```python
+def start_copy_operation(self, table_name: str, row_count: int):
+    """Start COPY progress for Snowflake operation"""
+    # Position at upload_position + 1
+    self.copy_pbar = tqdm(total=row_count,
+                         desc="{}Loading into {}".format(self.desc_prefix, table_name),
+                         unit="rows",
+                         unit_scale=True,
+                         position=self.copy_position,
+                         leave=False,
+                         file=sys.stderr)
+```
 
-## Important Context
-- Files use RECORDDATEID column for dates (YYYYMMDD format)
-- Table TEST_CUSTOM_FACTLENDINGBENCHMARK is the current target
-- TSV files have 41 columns, no headers
-- Processing 50GB files takes ~4.5 hours with Snowflake validation
+### Technical Challenges to Address
 
-## Session Handover Notes
-The config generator is the top priority for the next session. The foundation is ready:
-- PLAN_CONFIG_GENERATOR.md has full specifications
-- tsv_sampler.sh can be extended for basic analysis
-- Snowflake connection code exists in tsv_loader.py (can be reused)
+1. **Upload Progress Tracking**
+   - Snowflake PUT command doesn't provide real-time progress
+   - May need to monitor file transfer in chunks
+   - Could use callback mechanism if available
 
-Start by creating a simple version that:
-1. Takes a Snowflake table name
-2. Queries column information
-3. Analyzes TSV file structure
-4. Generates a valid config.json
+2. **COPY Progress Tracking**
+   - Snowflake COPY is atomic - completes or fails
+   - May need to use VALIDATION_MODE first to estimate
+   - Could query information_schema for progress
 
-Then enhance with pattern detection and multi-file support.
+3. **Position Management**
+   - With 5 progress bars, need to adjust position calculations
+   - Update lines_per_job in bash script (currently 2-3, will be 4-5)
+   - Handle different modes (skip QC, skip upload, etc.)
+
+## Environment Variables
+
+### Key Variables for Progress Management
+- `TSV_JOB_POSITION` - Set by run_loader.sh for each parallel job (0, 1, 2...)
+- `QUIET_MODE` - Suppresses all output except progress bars
+- `SKIP_QC` - Affects number of progress bars shown
+
+## Testing Requirements
+
+### Test Scenarios for New Progress Bars
+1. Single file upload with progress tracking
+2. Parallel uploads with proper positioning
+3. COPY operation progress for various file sizes
+4. Quiet mode with all 5 progress bars
+5. Skip modes (--skip-qc, --validate-only) with correct bar count
+
+## Dependencies
+
+### Current
+- `tqdm` - Progress bar library
+- `snowflake-connector-python` - Snowflake connectivity
+- `pandas`, `numpy` - Data processing
+
+### May Need
+- Progress callback hooks for Snowflake PUT/COPY
+- Async monitoring for upload progress
+- Threading for progress updates
+
+## Configuration Considerations
+
+### Progress Bar Configuration
+- Currently hardcoded positions based on mode
+- May want to make configurable:
+  - Progress bar colors
+  - Update frequency
+  - Minimum file size for progress display
+
+## Known Issues
+
+1. **tqdm Parallel Limitations**
+   - Position parameter has issues with true parallel execution
+   - Some visual artifacts may appear with many concurrent jobs
+   - Works well with 3-4 parallel jobs, may need adjustment for more
+
+2. **Progress Accuracy**
+   - Compression progress is accurate (streaming)
+   - Upload progress will depend on API capabilities
+   - COPY progress may be estimated rather than real-time
+
+## Success Metrics
+
+### For Next Session
+- [ ] Upload progress bar shows real-time transfer progress
+- [ ] COPY progress bar shows row insertion progress
+- [ ] All 5 bars stack properly in parallel mode
+- [ ] Quiet mode remains clean with new bars
+- [ ] No performance impact from progress tracking
+
+## Notes for Next Developer
+
+1. **Progress Bar Philosophy**: Only show what's actually happening - hide bars for skipped operations
+2. **Quiet Mode is King**: Prioritize clean --quiet mode output for production use
+3. **Position Calculation**: Each job needs (number_of_active_bars + 1) lines of space
+4. **Test with Real Data**: Progress bars behave differently with small test files vs. large production files
+5. **Error Handling**: Progress bars should close cleanly on errors to avoid terminal corruption
+
+## Commands for Quick Testing
+
+```bash
+# Test quiet mode with parallel processing
+./run_loader.sh --months 012024,022024,032024 --parallel 3 --quiet --skip-qc
+
+# Test with all progress bars (once implemented)
+./run_loader.sh --month 2024-01 --quiet
+
+# Test progress bar positioning
+TSV_JOB_POSITION=1 python tsv_loader.py --check-system
+```
+
+## File Structure Reference
+
+```
+snowflake/
+├── tsv_loader.py          # Main script with ProgressTracker class
+├── run_loader.sh          # Bash wrapper with quiet mode support
+├── CONTEXT_HANDOVER.md    # This file - session continuity
+├── TODO.md                # Task tracking
+├── PLAN.md                # Implementation planning
+└── CHANGELOG.md           # Version history
+```
+
+## Final State
+
+The system is stable and production-ready with current progress bars. The next session should focus on adding upload and COPY progress bars to complete the visual feedback system. The architecture is in place to support these additions with minimal refactoring.

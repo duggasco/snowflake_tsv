@@ -1,5 +1,34 @@
 # CHANGELOG.md
 
+## [2025-08-20] - Quiet Mode and Progress Bar Refinements
+
+### Fixed
+- **Quiet Mode Complete Implementation**:
+  - Wrapped ALL bash script echo statements with quiet mode checks
+  - Suppressed configuration display, prerequisites, processing messages
+  - Suppressed success/failure messages and batch summaries
+  - Now ONLY shows progress bars when --quiet flag is used
+  - Perfect for parallel processing to avoid terminal clutter
+
+- **Progress Bar Width Consistency**:
+  - Fixed compression progress bar width to match other bars
+  - Removed ncols=100 limitation that made compression bar narrower
+  - All progress bars now use full terminal width
+  - Consistent alignment across Files, QC Progress, and Compression bars
+
+### Enhanced
+- **Per-File Compression Tracking**:
+  - Added start_file_compression() method for file-specific progress
+  - Compression bar now shows individual file being compressed
+  - Prevents confusion during parallel file processing
+  - Clear indication of which file is being compressed
+
+### Technical Details
+- Progress bars write to stderr, remain visible in quiet mode
+- Bash script respects QUIET_MODE environment variable throughout
+- Fixed leave=False for progress bars to prevent stale displays
+- Position offset calculation improved for parallel jobs
+
 ## [2025-08-20] - Parallel Progress Bar Improvements
 
 ### Added
