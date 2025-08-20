@@ -19,9 +19,14 @@
 - [x] Create comprehensive test suite for Snowflake validator
 - [x] Test with mock billion+ row table scenarios
 - [x] Fix global logger declaration issue in main function
+- [x] Add validation flags to run_loader.sh bash script
+- [x] Create comprehensive README.md documentation
+- [x] Update CLAUDE.md with new command examples
+- [x] Update CHANGELOG.md with all recent changes
 
 ## In Progress 🔄
-- [ ] Test ETL pipeline with factLendingBenchmark configuration on remote server
+- [ ] Monitor production runs with new validation features
+- [ ] Gather performance metrics from real-world usage
 
 ## Pending Tasks 📋
 - [ ] Run tsv_loader.py with the new configuration

@@ -1,5 +1,27 @@
 # CHANGELOG.md
 
+## [2025-08-20] - Documentation and Bash Script Updates
+
+### Added
+- **Comprehensive README.md**: Created detailed documentation with:
+  - Installation instructions and prerequisites
+  - Quick start guide with configuration examples
+  - Performance benchmarks comparing file-based vs Snowflake validation
+  - Troubleshooting guide and common issues
+  - Directory structure and file patterns documentation
+  
+- **Snowflake Validation in Bash Script**: Added missing validation flags to run_loader.sh:
+  - `--validate-in-snowflake`: Skip file QC and validate after loading
+  - `--validate-only`: Only validate existing Snowflake data
+  - Updated help text with validation examples
+  - Added validation indicators in configuration display
+
+### Enhanced
+- **CLAUDE.md Updates**: 
+  - Added new validation command examples
+  - Highlighted performance benefits of Snowflake validation
+  - Added batch processing examples with validation flags
+
 ## [2025-08-20] - Bug Fixes and Validation Improvements
 
 ### Fixed

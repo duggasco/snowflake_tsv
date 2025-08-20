@@ -24,6 +24,8 @@ MONTHS_LIST=""
 CONTINUE_ON_ERROR=""
 DRY_RUN=""
 QUIET_MODE=""
+VALIDATE_IN_SNOWFLAKE=""
+VALIDATE_ONLY=""
 PARALLEL_JOBS=1  # Default to sequential processing
 
  
@@ -46,6 +48,8 @@ usage() {
     echo "  --max-workers N     Maximum parallel workers (default: auto-detect)"
     echo "                      With --parallel, workers are divided among parallel jobs"
     echo "  --skip-qc           Skip quality checks (not recommended)"
+    echo "  --validate-in-snowflake  Skip file QC and validate after loading in Snowflake"
+    echo "  --validate-only     Only validate existing data in Snowflake (no loading)"
     echo "  --analyze-only      Only analyze files and show time estimates"
     echo "  --quiet             Suppress output, log to files only (useful for parallel)"
     echo "  --check-system      Check system capabilities and exit"
@@ -57,6 +61,12 @@ usage() {
     echo ""
     echo "  # Process specific months with skip-qc"
     echo "  $0 --months 092022,102022,112022 --skip-qc"
+    echo ""
+    echo "  # Process with Snowflake validation instead of file QC"
+    echo "  $0 --month 2024-09 --validate-in-snowflake"
+    echo ""
+    echo "  # Only validate existing Snowflake data"
+    echo "  $0 --month 2024-09 --validate-only"
     echo ""
     echo "  # Process all months in batch mode"
     echo "  $0 --batch --skip-qc --continue-on-error"
@@ -134,6 +144,14 @@ process_month() {
     
     if [ -n "${SKIP_QC}" ]; then
         cmd="${cmd} ${SKIP_QC}"
+    fi
+    
+    if [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
+        cmd="${cmd} ${VALIDATE_IN_SNOWFLAKE}"
+    fi
+    
+    if [ -n "${VALIDATE_ONLY}" ]; then
+        cmd="${cmd} ${VALIDATE_ONLY}"
     fi
     
     if [ -n "${ANALYZE_ONLY}" ]; then
@@ -271,6 +289,14 @@ while [[ $# -gt 0 ]]; do
             SKIP_QC="--skip-qc"
             shift
             ;;
+        --validate-in-snowflake)
+            VALIDATE_IN_SNOWFLAKE="--validate-in-snowflake"
+            shift
+            ;;
+        --validate-only)
+            VALIDATE_ONLY="--validate-only"
+            shift
+            ;;
         --analyze-only)
             ANALYZE_ONLY="--analyze-only"
             shift
@@ -365,6 +391,8 @@ else
 fi
 
 echo -e "Skip QC:           $([ -n "${SKIP_QC}" ] && echo "Yes ⚠️" || echo "No ✓")"
+echo -e "Validate in SF:    $([ -n "${VALIDATE_IN_SNOWFLAKE}" ] && echo "Yes ✓" || echo "No")"
+echo -e "Validate Only:     $([ -n "${VALIDATE_ONLY}" ] && echo "Yes" || echo "No")"
 echo -e "Analyze Only:      $([ -n "${ANALYZE_ONLY}" ] && echo "Yes" || echo "No")"
 echo -e "Continue on Error: $([ -n "${CONTINUE_ON_ERROR}" ] && echo "Yes" || echo "No")"
 echo -e "Dry Run:           $([ -n "${DRY_RUN}" ] && echo "Yes" || echo "No")"

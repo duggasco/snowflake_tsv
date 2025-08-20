@@ -83,7 +83,7 @@ python tsv_loader.py --config config/config.json --base-path ./data --skip-qc
 # Quiet mode - suppress console logging but keep progress bars
 python tsv_loader.py --config config/config.json --base-path ./data --quiet
 
-# Skip file-based QC and validate in Snowflake after loading
+# Skip file-based QC and validate in Snowflake after loading (FASTER for large files)
 python tsv_loader.py --config config/config.json --base-path ./data --validate-in-snowflake
 
 # Only validate existing data in Snowflake (no loading)
@@ -92,8 +92,17 @@ python tsv_loader.py --config config/config.json --base-path ./data --month 2024
 # Using the bash wrapper (recommended)
 ./run_loader.sh --month 2024-01 --base-path ./data
 
+# Process with Snowflake validation instead of file QC
+./run_loader.sh --month 2024-01 --validate-in-snowflake
+
+# Only validate existing Snowflake data
+./run_loader.sh --month 2024-01 --validate-only
+
 # Parallel processing with quiet mode for cleaner output
 ./run_loader.sh --month 2024-01,2024-02,2024-03 --parallel 3 --quiet
+
+# Batch processing with Snowflake validation
+./run_loader.sh --batch --validate-in-snowflake --parallel 4
 ```
 
 ### Debugging
