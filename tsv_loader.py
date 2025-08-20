@@ -90,8 +90,10 @@ class ProgressTracker:
         self.total_files = total_files
         self.total_rows = total_rows
         self.total_size_gb = total_size_gb
+        self.total_size_mb = total_size_gb * 1024  # Convert GB to MB for compression tracking
         self.processed_files = 0
         self.processed_rows = 0
+        self.compressed_mb = 0
         self.start_time = time.time()
         self.lock = threading.Lock()
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -100,23 +102,28 @@ class ProgressTracker:
         if TQDM_AVAILABLE:
             self.file_pbar = tqdm(total=total_files, desc="Files", unit="file")
             self.row_pbar = tqdm(total=total_rows, desc="Rows", unit="rows", unit_scale=True)
+            self.compress_pbar = tqdm(total=self.total_size_mb, desc="Compression", unit="MB", unit_scale=True)
             self.logger.debug("Progress bars initialized")
 
-    def update(self, files: int = 0, rows: int = 0):
+    def update(self, files: int = 0, rows: int = 0, compressed_mb: float = 0):
         """Update progress"""
         with self.lock:
             self.processed_files += files
             self.processed_rows += rows
+            self.compressed_mb += compressed_mb
 
             if TQDM_AVAILABLE:
                 if files > 0:
                     self.file_pbar.update(files)
                 if rows > 0:
                     self.row_pbar.update(rows)
+                if compressed_mb > 0:
+                    self.compress_pbar.update(compressed_mb)
 
-            self.logger.debug("Progress: {}/{} files, {}/{} rows".format(
+            self.logger.debug("Progress: {}/{} files, {}/{} rows, {:.1f}/{:.1f} MB compressed".format(
                 self.processed_files, self.total_files,
-                self.processed_rows, self.total_rows))
+                self.processed_rows, self.total_rows,
+                self.compressed_mb, self.total_size_mb))
 
     def get_eta(self) -> str:
         """Calculate estimated time remaining"""
@@ -133,6 +140,7 @@ class ProgressTracker:
         if TQDM_AVAILABLE:
             self.file_pbar.close()
             self.row_pbar.close()
+            self.compress_pbar.close()
         self.logger.debug("Progress tracker closed")
 
 class FileAnalyzer:
@@ -712,9 +720,10 @@ class SnowflakeDataValidator:
 class SnowflakeLoader:
     """Snowflake loading with streaming compression"""
     
-    def __init__(self, connection_params: Dict):
+    def __init__(self, connection_params: Dict, progress_tracker=None):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("Initializing Snowflake connection")
+        self.progress_tracker = progress_tracker
         try:
             self.conn = snowflake.connector.connect(**connection_params)
             self.cursor = self.conn.cursor()
@@ -762,6 +771,7 @@ class SnowflakeLoader:
                     with gzip.open(compressed_file, 'wb', compresslevel=1) as f_out:  # Level 1 for speed
                         # Stream in chunks
                         chunk_size = 1024 * 1024 * 10  # 10MB chunks
+                        last_update_mb = 0
                         while True:
                             chunk = f_in.read(chunk_size)
                             if not chunk:
@@ -769,9 +779,24 @@ class SnowflakeLoader:
                             f_out.write(chunk)
                             bytes_processed += len(chunk)
                             
+                            # Update progress tracker if available
+                            if self.progress_tracker:
+                                mb_processed = bytes_processed / (1024 * 1024)
+                                mb_to_update = mb_processed - last_update_mb
+                                if mb_to_update >= 10:  # Update every 10MB
+                                    self.progress_tracker.update(compressed_mb=mb_to_update)
+                                    last_update_mb = mb_processed
+                            
                             if bytes_processed % (100 * 1024 * 1024) == 0:  # Every 100MB
                                 pct = (bytes_processed / file_size) * 100
                                 self.logger.debug("Compression progress: {:.1f}%".format(pct))
+                        
+                        # Final update for remaining bytes
+                        if self.progress_tracker:
+                            mb_processed = bytes_processed / (1024 * 1024)
+                            mb_to_update = mb_processed - last_update_mb
+                            if mb_to_update > 0:
+                                self.progress_tracker.update(compressed_mb=mb_to_update)
 
                 compression_time = time.time() - start_time
                 self.logger.debug("Compression completed in {:.1f} seconds".format(compression_time))
@@ -1389,7 +1414,7 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
             loader_futures = {}
             for config in file_configs:
                 try:
-                    loader = SnowflakeLoader(snowflake_params)
+                    loader = SnowflakeLoader(snowflake_params, progress_tracker=tracker)
                     future = executor.submit(loader.load_file_to_stage_and_table, config)
                     loader_futures[future] = config
                 except Exception as e:
