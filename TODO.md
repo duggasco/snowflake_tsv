@@ -25,8 +25,29 @@
 - [x] Update CHANGELOG.md with all recent changes
 
 ## In Progress 🔄
+- [ ] Create config generator tool (generate_config.sh)
 - [ ] Monitor production runs with new validation features
 - [ ] Gather performance metrics from real-world usage
+
+## Pending Tasks 📋
+
+### Config Generator (High Priority for Next Session)
+- [ ] Create generate_config.sh script with basic TSV analysis
+- [ ] Add Snowflake table inspection for column headers and types
+- [ ] Implement pattern detection from filenames ({month} vs {date_range})
+- [ ] Add interactive mode for Snowflake credentials
+- [ ] Support batch processing of multiple TSV files
+- [ ] Add validation and error handling
+- [ ] Create documentation and usage examples
+- [ ] Test with existing TSV files and Snowflake tables
+
+### Config Generator Features
+- [ ] Query Snowflake information_schema for column metadata
+- [ ] Auto-detect date columns from Snowflake schema
+- [ ] Generate complete config.json with proper patterns
+- [ ] Support merging with existing configs
+- [ ] Add dry-run mode for testing
+- [ ] Handle headerless TSV files using Snowflake schema
 
 ## Pending Tasks 📋
 - [ ] Run tsv_loader.py with the new configuration
