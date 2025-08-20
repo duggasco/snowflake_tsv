@@ -1212,7 +1212,7 @@ def analyze_files(file_configs: List[FileConfig], max_workers: int = 4) -> Dict:
 
 def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                  max_workers: int, skip_qc: bool, analysis_results: Dict,
-                 validate_in_snowflake: bool = False, validate_only: bool = False) -> None:
+                 validate_in_snowflake: bool = False, validate_only: bool = False) -> Dict:
     """Process files with streaming quality checks and loading"""
     logger.info("="*60)
     logger.info("Starting file processing (STREAMING MODE)")
@@ -1241,6 +1241,7 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
         if validate_only:
             print("\n=== Validate Only Mode - Checking Existing Snowflake Tables ===")
             validator = SnowflakeDataValidator(snowflake_params)
+            validation_results = []
             
             try:
                 for config in file_configs:
@@ -1257,34 +1258,27 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                         end_date=end_date
                     )
                     
-                    # Display results
+                    # Store result for later display
+                    validation_results.append(validation_result)
+                    
+                    # Display brief results
                     if validation_result.get('error'):
                         # Handle error case
                         print("  ✗ ERROR: {}".format(validation_result['error']))
                     elif validation_result.get('valid'):
                         print("  ✓ VALID - All {} dates present".format(
                             validation_result['statistics']['unique_dates']))
-                        print("  Total rows: {:,}".format(validation_result['statistics']['total_rows']))
-                        print("  Avg rows/day: {:,.0f}".format(
-                            validation_result['statistics']['avg_rows_per_day']))
                     else:
                         # Invalid but no error - missing dates
                         if 'statistics' in validation_result:
                             print("  ✗ INVALID - {} dates missing".format(
                                 validation_result['statistics']['missing_dates']))
-                            if validation_result.get('gaps'):
-                                print("  First gap: {} to {}".format(
-                                    validation_result['gaps'][0]['from'],
-                                    validation_result['gaps'][0]['to']))
-                            print("  Total rows: {:,}".format(validation_result['statistics']['total_rows']))
-                            print("  Avg rows/day: {:,.0f}".format(
-                                validation_result['statistics']['avg_rows_per_day']))
                         else:
                             print("  ✗ INVALID - No statistics available")
             finally:
                 validator.close()
             
-            return
+            return {'validation_results': validation_results}
         
         # Skip file-based QC if validating in Snowflake
         if validate_in_snowflake:
@@ -1448,6 +1442,9 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
             analysis_results['total_rows'] / elapsed))
 
     logger.info("Processing complete in {:.1f} seconds".format(elapsed))
+    
+    # Return empty dict for non-validate modes
+    return {}
 
 def main():
     global logger
@@ -1626,7 +1623,7 @@ def main():
         print("Validation-only mode - checking existing Snowflake tables")
 
     # Process files
-    process_files(
+    results = process_files(
         file_configs=file_configs,
         snowflake_params=config.get('snowflake', {}),
         max_workers=args.max_workers,
@@ -1635,6 +1632,52 @@ def main():
         validate_in_snowflake=args.validate_in_snowflake,
         validate_only=args.validate_only
     )
+    
+    # Display detailed validation results if available
+    if args.validate_only and results.get('validation_results'):
+        print("\n" + "="*60)
+        print("VALIDATION DETAILS")
+        print("="*60)
+        
+        for result in results['validation_results']:
+            table_name = result.get('table_name', 'Unknown')
+            print("\n{}:".format(table_name))
+            
+            if result.get('error'):
+                print("  Status: ✗ ERROR")
+                print("  Error: {}".format(result['error']))
+            elif result.get('valid'):
+                print("  Status: ✓ VALID")
+                if 'statistics' in result:
+                    stats = result['statistics']
+                    print("  Date Range: {} to {}".format(
+                        result.get('date_range', {}).get('actual_min', 'N/A'),
+                        result.get('date_range', {}).get('actual_max', 'N/A')))
+                    print("  Total Rows: {:,}".format(stats.get('total_rows', 0)))
+                    print("  Unique Dates: {}".format(stats.get('unique_dates', 0)))
+                    print("  Expected Dates: {}".format(stats.get('expected_dates', 0)))
+                    print("  Avg Rows/Day: {:,.0f}".format(stats.get('avg_rows_per_day', 0)))
+            else:
+                print("  Status: ✗ INVALID")
+                if 'statistics' in result:
+                    stats = result['statistics']
+                    print("  Date Range: {} to {}".format(
+                        result.get('date_range', {}).get('actual_min', 'N/A'),
+                        result.get('date_range', {}).get('actual_max', 'N/A')))
+                    print("  Total Rows: {:,}".format(stats.get('total_rows', 0)))
+                    print("  Unique Dates: {}".format(stats.get('unique_dates', 0)))
+                    print("  Expected Dates: {}".format(stats.get('expected_dates', 0)))
+                    print("  Missing Dates: {}".format(stats.get('missing_dates', 0)))
+                    print("  Avg Rows/Day: {:,.0f}".format(stats.get('avg_rows_per_day', 0)))
+                    
+                    # Show gaps if any
+                    if result.get('gaps'):
+                        print("  Date Gaps Found:")
+                        for i, gap in enumerate(result['gaps'][:5], 1):  # Show first 5 gaps
+                            print("    {}) {} to {} ({} days missing)".format(
+                                i, gap['from'], gap['to'], gap['missing_days']))
+                        if len(result['gaps']) > 5:
+                            print("    ... and {} more gaps".format(len(result['gaps']) - 5))
 
     logger.info("Main function complete")
     return 0
