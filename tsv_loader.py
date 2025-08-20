@@ -524,11 +524,17 @@ class SnowflakeDataValidator:
             self.cursor.execute(range_query)
             range_result = self.cursor.fetchone()
             
-            if not range_result or range_result[3] == 0:
+            if not range_result or range_result[3] == 0 or range_result[3] is None:
                 return {
                     'valid': False,
                     'error': 'No data found in specified date range',
-                    'total_rows': 0
+                    'statistics': {
+                        'total_rows': 0,
+                        'unique_dates': 0,
+                        'expected_dates': 0,
+                        'missing_dates': 0,
+                        'avg_rows_per_day': 0
+                    }
                 }
             
             min_date, max_date, unique_dates, total_rows = range_result
@@ -1252,20 +1258,29 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     )
                     
                     # Display results
-                    if validation_result.get('valid'):
+                    if validation_result.get('error'):
+                        # Handle error case
+                        print("  ✗ ERROR: {}".format(validation_result['error']))
+                    elif validation_result.get('valid'):
                         print("  ✓ VALID - All {} dates present".format(
                             validation_result['statistics']['unique_dates']))
+                        print("  Total rows: {:,}".format(validation_result['statistics']['total_rows']))
+                        print("  Avg rows/day: {:,.0f}".format(
+                            validation_result['statistics']['avg_rows_per_day']))
                     else:
-                        print("  ✗ INVALID - {} dates missing".format(
-                            validation_result['statistics']['missing_dates']))
-                        if validation_result.get('gaps'):
-                            print("  First gap: {} to {}".format(
-                                validation_result['gaps'][0]['from'],
-                                validation_result['gaps'][0]['to']))
-                    
-                    print("  Total rows: {:,}".format(validation_result['statistics']['total_rows']))
-                    print("  Avg rows/day: {:,.0f}".format(
-                        validation_result['statistics']['avg_rows_per_day']))
+                        # Invalid but no error - missing dates
+                        if 'statistics' in validation_result:
+                            print("  ✗ INVALID - {} dates missing".format(
+                                validation_result['statistics']['missing_dates']))
+                            if validation_result.get('gaps'):
+                                print("  First gap: {} to {}".format(
+                                    validation_result['gaps'][0]['from'],
+                                    validation_result['gaps'][0]['to']))
+                            print("  Total rows: {:,}".format(validation_result['statistics']['total_rows']))
+                            print("  Avg rows/day: {:,.0f}".format(
+                                validation_result['statistics']['avg_rows_per_day']))
+                        else:
+                            print("  ✗ INVALID - No statistics available")
             finally:
                 validator.close()
             
