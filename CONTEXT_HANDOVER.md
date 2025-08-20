@@ -40,21 +40,31 @@ The Snowflake TSV Loader is a production-ready ETL pipeline for loading large TS
 - `tsv_loader.py` - ProgressTracker class with position management
 - `run_loader.sh` - Quiet mode checks throughout, TSV_JOB_POSITION setting
 
-## Next Session Tasks
+## Latest Session Accomplishments (2025-08-20 Part 2)
 
-### High Priority - Additional Progress Bars
+### Complete 5-Bar Progress System ✅
 
-1. **Azure Blob/Snowflake Stage Upload Progress**
-   - Track PUT command progress
-   - Show MB/s upload speed
-   - Display estimated time remaining
-   - Handle parallel uploads properly
+Successfully implemented the full 5-bar progress tracking system:
 
-2. **Snowflake COPY Operation Progress**
-   - Track rows being inserted
-   - Show rows/second processing rate
-   - Display completion percentage
-   - Handle large file COPY operations
+1. **Upload Progress Bar** - Tracks Snowflake PUT operations
+   - Uses compressed file size for accurate progress
+   - Shows filename being uploaded
+   - Logs upload speed (MB/s) after completion
+
+2. **COPY Progress Bar** - Monitors Snowflake COPY operations
+   - Estimates row count based on file size
+   - Shows target table name
+   - Logs processing rate (rows/s) after completion
+
+3. **Position Management** - Updated for 5 bars total
+   - Files, QC (optional), Compression, Upload, COPY
+   - 5 lines per job with QC, 4 lines without
+   - Proper stacking in parallel mode
+
+4. **Integration Complete** - All components working together
+   - SnowflakeLoader tracks upload and COPY progress
+   - run_loader.sh handles 5-bar spacing
+   - Test script created for validation
 
 ### Implementation Plan for New Progress Bars
 
@@ -194,6 +204,105 @@ snowflake/
 └── CHANGELOG.md           # Version history
 ```
 
-## Final State
+## Current State (2025-08-20 End of Session)
 
-The system is stable and production-ready with current progress bars. The next session should focus on adding upload and COPY progress bars to complete the visual feedback system. The architecture is in place to support these additions with minimal refactoring.
+### ✅ Completed
+The complete 5-bar progress system is implemented with:
+- All 5 progress bars (Files, QC, Compression, Upload, COPY) functional
+- Proper positioning calculations for parallel execution
+- Integration with SnowflakeLoader for real-time tracking
+
+### 🐛 Critical Issue Identified
+**Problem**: Multiple static/dead progress bars when using `--parallel` with `--quiet`
+- Each parallel process creates new progress bars for each file
+- Old bars remain at 100% (static) when switching files
+- New bars overwrite at same position, causing visual clutter
+- Screenshot evidence shows multiple "Compressing file_X.tsv: 100%" bars
+
+**Root Cause**: 
+- Bash launches separate Python processes (not threads) for parallel jobs
+- Each process creates new tqdm bars with `leave=False` 
+- `leave=False` only cleans up when process exits, not between files
+- Result: Dead bars accumulate as files are processed
+
+## Next Session Priority: Fix Static Progress Bars
+
+### Implementation Plan
+
+#### Solution: Reuse Progress Bars
+Instead of creating new bars for each file, modify ProgressTracker to:
+
+1. **Create bars once** during initialization
+2. **Reset and reuse** for each new file
+3. **Update description** to show current file
+
+#### Code Changes Required
+
+```python
+# In ProgressTracker class
+def start_file_compression(self, filename: str, file_size_mb: float):
+    with self.lock:
+        if self.compress_pbar is None:
+            # Create bar first time only
+            self.compress_pbar = tqdm(...)
+        else:
+            # Reuse existing bar
+            self.compress_pbar.reset(total=file_size_mb)
+            self.compress_pbar.set_description(f"Compressing {filename}")
+```
+
+Apply same pattern to:
+- `start_file_upload()`
+- `start_copy_operation()`
+
+### Testing Requirements
+1. Test with `--parallel 3 --quiet` to verify no static bars
+2. Test with different file counts per month
+3. Verify proper cleanup on process termination
+4. Test interruption scenarios
+
+### Files to Modify
+- `tsv_loader.py`: Update ProgressTracker class methods
+- No bash script changes needed
+
+### Success Criteria
+- No static bars at 100% visible
+- Clean progress display with parallel processing
+- Each process shows only its active operations
+- Proper bar cleanup between files
+
+## Context for Next Developer
+
+### Key Insights
+1. **Parallel = Separate Processes**: Bash `--parallel` creates independent Python processes
+2. **No Shared State**: Each process has its own ProgressTracker instance
+3. **Position Calculation Works**: TSV_JOB_POSITION correctly spaces bars
+4. **Problem is Lifecycle**: Issue is bar creation/destruction, not positioning
+
+### Test Commands
+```bash
+# Reproduce the issue
+./run_loader.sh --months 012024,022024,032024 --parallel 3 --quiet --skip-qc
+
+# What to look for:
+# - Multiple compression bars at same position
+# - Static bars showing 100%
+# - New bars overwriting old ones
+```
+
+### Documentation Created
+- `PROGRESS_BAR_FIX_PLAN.md`: Initial analysis and solutions
+- `BASH_PARALLEL_FIX_PLAN.md`: Detailed fix implementation
+- `FIX_IMPLEMENTATION.md`: Code changes needed
+- Test scripts: `test_compression_bars.py`, `demo_problem.py`
+
+## Environment Status
+- `test_venv/`: Python virtual environment with tqdm and snowflake-connector
+- Test data generators created
+- Comprehensive test scripts available
+
+## Recommended Next Steps
+1. Implement the progress bar reuse fix
+2. Test thoroughly with parallel configurations
+3. Update CHANGELOG.md with fix details
+4. Consider adding `--progress-mode` flag for different display options

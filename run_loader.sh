@@ -245,6 +245,7 @@ process_direct_files() {
 process_month() {
     local month_dir=$1
     local workers_for_month=$2  # New parameter for worker allocation
+    local job_position=$3  # Position for parallel progress bars
     local month_formatted=$(convert_month_format "$month_dir")
     
     if [ -z "$month_formatted" ]; then
@@ -606,8 +607,20 @@ if [ ${PARALLEL_JOBS} -gt 1 ] && [ -z "${QUIET_MODE}" ]; then
     echo -e "${YELLOW}Tip: Use --quiet for cleaner output with parallel jobs${NC}\n"
 fi
 
-# Note: tqdm handles progress bar positioning automatically
-# No need for manual spacing when using position parameter
+# Add initial spacing for parallel progress bars
+# With 5 progress bars per job (Files, QC, Compression, Upload, COPY)
+# or 4 if skipping QC (Files, Compression, Upload, COPY)
+if [ ${PARALLEL_JOBS} -gt 1 ] && [ -n "${QUIET_MODE}" ]; then
+    lines_per_job=5
+    if [ -n "${SKIP_QC}" ] || [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
+        lines_per_job=4
+    fi
+    total_lines=$((PARALLEL_JOBS * lines_per_job))
+    # Add initial spacing to prevent overlapping with existing output
+    for ((i=0; i<total_lines; i++)); do
+        echo ""
+    done
+fi
 
 # Process months
 total_months=${#months_to_process[@]}

@@ -1,5 +1,61 @@
 # CHANGELOG.md
 
+## [2025-08-20] - Issue Identified: Static Progress Bars in Parallel Mode
+
+### Bug Discovery
+- **Issue**: Multiple static/dead progress bars accumulate when using `--parallel` with `--quiet`
+- **Symptoms**: 
+  - Old compression bars remain at 100% when processing multiple files
+  - New bars overwrite at same position causing visual clutter
+  - Each file leaves behind a "dead" progress bar
+- **Root Cause**: 
+  - Parallel mode launches separate Python processes
+  - Each process creates new tqdm bars for each file
+  - `leave=False` only cleans up on process exit, not between files
+- **Impact**: Severe visual clutter making progress tracking unusable in parallel mode
+
+### Proposed Fix (Next Session)
+- Implement progress bar reuse pattern
+- Create bars once, reset for each new file
+- Update `start_file_compression()`, `start_file_upload()`, `start_copy_operation()`
+- Testing required with various parallel configurations
+
+## [2025-08-20] - Complete 5-Bar Progress System Implementation
+
+### Added
+- **Full 5-bar progress tracking system**:
+  1. **Files Progress** - Overall file processing status
+  2. **QC Rows Progress** - Quality check progress (optional, based on mode)
+  3. **Compression Progress** - Per-file compression with filename display
+  4. **Upload Progress** - Snowflake stage upload tracking (NEW)
+  5. **COPY Progress** - Snowflake COPY operation monitoring (NEW)
+
+- **New progress tracking methods in ProgressTracker**:
+  - `start_file_upload()` - Initialize and track PUT command progress
+  - `start_copy_operation()` - Initialize and track COPY command progress
+  - Enhanced `update()` method with `uploaded_mb` and `copied_rows` parameters
+  - Automatic progress bar cleanup and reuse for multiple files
+
+- **Enhanced parallel processing support**:
+  - Updated to support 5 progress bars per job (or 4 when skipping QC)
+  - Position offset calculation: 5 lines per job with QC, 4 without
+  - run_loader.sh adds appropriate initial spacing for parallel jobs
+  - Environment-based positioning with TSV_JOB_POSITION
+
+### Integration
+- **SnowflakeLoader enhancements**:
+  - Integrated upload progress tracking after compression
+  - Added COPY progress monitoring with row count estimation
+  - Performance metrics logging (MB/s for upload, rows/s for COPY)
+  - Proper progress bar lifecycle management
+
+### Technical Details
+- Upload progress uses compressed file size for accurate tracking
+- COPY progress estimates rows based on file size (50K rows/MB approximation)
+- All 5 progress bars properly stack without overlap
+- Progress bars automatically close and recreate for each file
+- Full terminal width utilization for all progress bars
+
 ## [2025-08-20] - Quiet Mode and Progress Bar Refinements
 
 ### Fixed

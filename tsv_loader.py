@@ -110,13 +110,14 @@ class ProgressTracker:
             # Try to get job position from environment variable
             job_position = os.environ.get('TSV_JOB_POSITION', '')
             if job_position:
-                # 3 lines per job if showing QC progress, 2 lines if not
-                lines_per_job = 3 if self.show_qc_progress else 2
+                # 5 lines per job if showing QC progress, 4 lines if not
+                # Files, QC (optional), Compression, Upload, COPY
+                lines_per_job = 5 if self.show_qc_progress else 4
                 self.position_offset = int(job_position) * lines_per_job
             elif month:
                 # Fallback: extract numeric part from month (e.g., "2024-01" -> 1)
                 month_num = int(month.split('-')[-1])
-                lines_per_job = 3 if self.show_qc_progress else 2
+                lines_per_job = 5 if self.show_qc_progress else 4
                 self.position_offset = (month_num - 1) * lines_per_job
         except:
             # Default: no offset
@@ -152,6 +153,13 @@ class ProgressTracker:
             # Create a placeholder for compression bar - will update per file
             self.compress_pbar = None
             self.compress_position = self.position_offset + 2 if self.show_qc_progress else self.position_offset + 1
+            
+            # Placeholders for upload and copy bars
+            self.upload_pbar = None
+            self.upload_position = self.compress_position + 1
+            self.copy_pbar = None
+            self.copy_position = self.upload_position + 1
+            
             self.desc_prefix = desc_prefix
             self.logger.debug("Progress bars initialized with position offset {}".format(self.position_offset))
 
@@ -173,7 +181,41 @@ class ProgressTracker:
                                         leave=False,  # Clear after each file
                                         file=sys.stderr)  # No ncols limit - use full terminal width
     
-    def update(self, files: int = 0, rows: int = 0, compressed_mb: float = 0):
+    def start_file_upload(self, filename: str, file_size_mb: float):
+        """Start upload progress for a specific file"""
+        import os
+        with self.lock:
+            if TQDM_AVAILABLE:
+                # Close previous upload bar if exists
+                if self.upload_pbar:
+                    self.upload_pbar.close()
+                # Create new upload bar for this file
+                self.upload_pbar = tqdm(total=file_size_mb,
+                                      desc="{}Uploading {}".format(self.desc_prefix, os.path.basename(filename)),
+                                      unit="MB",
+                                      unit_scale=True,
+                                      position=self.upload_position,
+                                      leave=False,
+                                      file=sys.stderr)
+    
+    def start_copy_operation(self, table_name: str, row_count: int):
+        """Start COPY progress for Snowflake operation"""
+        with self.lock:
+            if TQDM_AVAILABLE:
+                # Close previous copy bar if exists
+                if self.copy_pbar:
+                    self.copy_pbar.close()
+                # Create new copy bar for this table
+                self.copy_pbar = tqdm(total=row_count,
+                                    desc="{}Loading into {}".format(self.desc_prefix, table_name),
+                                    unit="rows",
+                                    unit_scale=True,
+                                    position=self.copy_position,
+                                    leave=False,
+                                    file=sys.stderr)
+    
+    def update(self, files: int = 0, rows: int = 0, compressed_mb: float = 0, 
+                uploaded_mb: float = 0, copied_rows: int = 0):
         """Update progress"""
         with self.lock:
             self.processed_files += files
@@ -187,6 +229,10 @@ class ProgressTracker:
                     self.row_pbar.update(rows)
                 if compressed_mb > 0 and self.compress_pbar:
                     self.compress_pbar.update(compressed_mb)
+                if uploaded_mb > 0 and self.upload_pbar:
+                    self.upload_pbar.update(uploaded_mb)
+                if copied_rows > 0 and self.copy_pbar:
+                    self.copy_pbar.update(copied_rows)
 
             self.logger.debug("Progress: {}/{} files, {}/{} rows, {:.1f}/{:.1f} MB compressed".format(
                 self.processed_files, self.total_files,
@@ -211,6 +257,10 @@ class ProgressTracker:
                 self.row_pbar.close()
             if self.compress_pbar:
                 self.compress_pbar.close()
+            if self.upload_pbar:
+                self.upload_pbar.close()
+            if self.copy_pbar:
+                self.copy_pbar.close()
         self.logger.debug("Progress tracker closed")
 
 class FileAnalyzer:
@@ -894,10 +944,26 @@ class SnowflakeLoader:
             # Reduce PARALLEL setting to 4 to avoid overwhelming the system during concurrent uploads
             # This helps prevent corruption when multiple months are processed simultaneously
             print("Uploading to Snowflake stage...")
+            
+            # Start upload progress tracking
+            compressed_size = os.path.getsize(compressed_file)
+            compressed_size_mb = compressed_size / (1024 * 1024)
+            if self.progress_tracker:
+                self.progress_tracker.start_file_upload(compressed_file, compressed_size_mb)
+            
             put_command = "PUT file://{} {} AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4".format(
                 compressed_file, stage_name)
             self.logger.debug("Executing PUT command with PARALLEL=4")
+            upload_start = time.time()
             self.cursor.execute(put_command)
+            upload_time = time.time() - upload_start
+            
+            # Complete upload progress
+            if self.progress_tracker:
+                self.progress_tracker.update(uploaded_mb=compressed_size_mb)
+            
+            self.logger.debug("Upload completed in {:.1f} seconds ({:.1f} MB/s)".format(
+                upload_time, compressed_size_mb / upload_time if upload_time > 0 else 0))
 
             # COPY INTO table
             copy_query = """
@@ -930,8 +996,35 @@ class SnowflakeLoader:
 
             # If validation passes, do actual copy
             print("Copying data to {}...".format(config.table_name))
+            
+            # Get row count for progress tracking (quick estimate from file analysis if available)
+            # We'll use the file size as a proxy for now since exact row count requires full scan
+            estimated_rows = int(file_size_mb * 50000)  # Rough estimate: 50K rows per MB
+            if self.progress_tracker:
+                self.progress_tracker.start_copy_operation(config.table_name, estimated_rows)
+            
             self.logger.debug("Executing COPY command")
-            self.cursor.execute(copy_query.replace("VALIDATION_MODE = 'RETURN_ERRORS'", ""))
+            copy_start = time.time()
+            copy_result = self.cursor.execute(copy_query.replace("VALIDATION_MODE = 'RETURN_ERRORS'", ""))
+            copy_time = time.time() - copy_start
+            
+            # Get actual rows loaded from result
+            rows_loaded = 0
+            for row in copy_result:
+                if row[0] and 'rows_loaded' in str(row[0]).lower():
+                    # Extract number from result
+                    import re
+                    match = re.search(r'(\d+)', str(row[0]))
+                    if match:
+                        rows_loaded = int(match.group(1))
+                        break
+            
+            # Complete COPY progress
+            if self.progress_tracker:
+                self.progress_tracker.update(copied_rows=estimated_rows)
+            
+            self.logger.debug("COPY completed in {:.1f} seconds ({:,.0f} rows/sec)".format(
+                copy_time, rows_loaded / copy_time if copy_time > 0 and rows_loaded > 0 else 0))
 
             # Clean up stage
             self.logger.debug("Removing stage")

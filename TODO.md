@@ -24,21 +24,55 @@
 - [x] Update CLAUDE.md with new command examples
 - [x] Update CHANGELOG.md with all recent changes
 
-## Next Session Priority 🎯
-- [ ] Add Upload Progress Bar for Azure/Snowflake stage
-  - [ ] Implement start_file_upload() method
-  - [ ] Track PUT command progress
-  - [ ] Show MB/s upload speed
-  - [ ] Handle parallel uploads
-- [ ] Add COPY Progress Bar for Snowflake operations
-  - [ ] Implement start_copy_operation() method
-  - [ ] Track row insertion progress
-  - [ ] Show rows/second rate
-  - [ ] Handle large table operations
-- [ ] Update position calculations for 5 progress bars
-  - [ ] Adjust lines_per_job in bash script
-  - [ ] Handle different skip modes
-  - [ ] Test with all combinations
+## Completed in Latest Session (2025-08-20 Part 2) ✅
+- [x] Add Upload Progress Bar for Azure/Snowflake stage
+  - [x] Implement start_file_upload() method
+  - [x] Track PUT command progress
+  - [x] Show MB/s upload speed after completion
+  - [x] Handle parallel uploads
+- [x] Add COPY Progress Bar for Snowflake operations
+  - [x] Implement start_copy_operation() method
+  - [x] Track row insertion progress (estimated)
+  - [x] Show rows/second rate in logs
+  - [x] Handle large table operations
+- [x] Update position calculations for 5 progress bars
+  - [x] Adjust lines_per_job in bash script (5 with QC, 4 without)
+  - [x] Handle different skip modes
+  - [x] Create test script for validation
+
+## Next Session Priority 🎯 - Fix Static Progress Bars Issue
+
+### Critical Bug Fix
+- [ ] Fix multiple static progress bars in parallel mode
+  - [ ] Implement progress bar reuse in ProgressTracker
+  - [ ] Update start_file_compression() to reset instead of recreate
+  - [ ] Update start_file_upload() to reset instead of recreate  
+  - [ ] Update start_copy_operation() to reset instead of recreate
+  - [ ] Test with --parallel 3 --quiet to verify fix
+
+### Implementation Tasks
+- [ ] Modify ProgressTracker class in tsv_loader.py
+  - [ ] Add bar existence check before creation
+  - [ ] Implement reset() and set_description() for reuse
+  - [ ] Ensure thread-safe bar updates
+  - [ ] Test bar lifecycle management
+
+### Testing Requirements
+- [ ] Test parallel configurations
+  - [ ] Test with 1, 2, 3, 5 parallel jobs
+  - [ ] Test with --quiet flag
+  - [ ] Test without --quiet flag
+  - [ ] Verify no static bars remain
+- [ ] Test edge cases
+  - [ ] Process interruption (Ctrl+C)
+  - [ ] Mixed file sizes
+  - [ ] Failed file processing
+  - [ ] Sequential vs parallel mode switching
+
+### Documentation Updates
+- [ ] Update CHANGELOG.md with bug fix
+- [ ] Update README.md with parallel processing notes
+- [ ] Add troubleshooting section for progress bars
 
 ## In Progress 🔄
 - [ ] Monitor production runs with new validation features

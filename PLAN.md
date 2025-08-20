@@ -1,6 +1,30 @@
 # PLAN.md
 
-## Current Focus: Complete Progress Bar System
+## Current Focus: Fix Static Progress Bars in Parallel Mode
+
+### Problem Statement
+When using `--parallel` with `--quiet`, multiple static/dead progress bars accumulate on screen. Each file processed leaves behind a completed bar at 100%, causing visual clutter and confusion.
+
+### Root Cause Analysis
+1. Bash script launches **separate Python processes** for parallel jobs
+2. Each process creates **new progress bars** for each file
+3. `leave=False` only cleans up when **process exits**, not between files
+4. Result: Dead bars accumulate as multiple files are processed
+
+### Solution Strategy: Bar Reuse Pattern
+
+Instead of creating new bars for each file, we'll:
+1. **Create bars once** when first needed
+2. **Reset and reuse** the same bar for subsequent files
+3. **Update description** to show current file being processed
+
+This approach:
+- Prevents accumulation of dead bars
+- Maintains clean visual output
+- Works correctly with parallel processes
+- Requires minimal code changes
+
+## Previous Focus: Complete Progress Bar System
 
 ### Phase 1: Upload Progress Bar (Next Session Priority)
 **Goal**: Add real-time progress tracking for file uploads to Snowflake stage
