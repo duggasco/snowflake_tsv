@@ -155,6 +155,9 @@ process_month() {
     
     if [ -n "${VALIDATE_ONLY}" ]; then
         cmd="${cmd} ${VALIDATE_ONLY}"
+        # Save validation results to a JSON file for aggregation
+        local validation_file="logs/validation_${month_dir}_$(date +%Y%m%d_%H%M%S).json"
+        cmd="${cmd} --validation-output ${validation_file}"
     fi
     
     if [ -n "${ANALYZE_ONLY}" ]; then
@@ -534,6 +537,54 @@ fi
 
 echo -e "Total Time:        ${hours}h ${minutes}m ${seconds}s"
 echo -e "${GREEN}========================================${NC}"
+
+# Display aggregate validation results if in validate-only mode
+if [ -n "${VALIDATE_ONLY}" ]; then
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}VALIDATION RESULTS SUMMARY${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    
+    # Find all validation JSON files from this run
+    validation_files=($(find logs -name "validation_*.json" -mmin -$((total_time/60 + 1)) 2>/dev/null | sort))
+    
+    if [ ${#validation_files[@]} -gt 0 ]; then
+        # Parse and display results
+        for vfile in "${validation_files[@]}"; do
+            if [ -f "$vfile" ]; then
+                # Extract month and results using Python
+                python3 -c "
+import json
+import sys
+try:
+    with open('$vfile', 'r') as f:
+        data = json.load(f)
+        month = data.get('month', 'Unknown')
+        results = data.get('results', [])
+        
+        print(f'\n{month}:')
+        for r in results:
+            table = r.get('table_name', 'Unknown')
+            if r.get('error'):
+                status = '✗ ERROR: ' + r['error']
+            elif r.get('valid'):
+                stats = r.get('statistics', {})
+                status = f'✓ VALID ({stats.get(\"total_rows\", 0):,} rows, {stats.get(\"unique_dates\", 0)} dates)'
+            else:
+                stats = r.get('statistics', {})
+                missing = stats.get('missing_dates', 0)
+                status = f'✗ INVALID ({missing} dates missing)'
+            print(f'  {table}: {status}')
+except Exception as e:
+    print(f'  Error reading {vfile}: {e}', file=sys.stderr)
+" 2>/dev/null
+            fi
+        done
+    else
+        echo -e "No validation results found"
+    fi
+    
+    echo -e "${GREEN}========================================${NC}"
+fi
 
 # Set appropriate exit code
 if [ ${failed_months} -gt 0 ] && [ -z "${CONTINUE_ON_ERROR}" ]; then

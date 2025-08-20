@@ -1,0 +1,16 @@
+{
+  "month": "2022-09",
+  "timestamp": "2025-08-20T14:12:26.973183",
+  "results": [
+    {
+      "table_name": "TEST_TABLE",
+      "valid": false,
+      "statistics": {
+        "total_rows": 1000000,
+        "unique_dates": 28,
+        "expected_dates": 30,
+        "missing_dates": 2
+      }
+    }
+  ]
+}

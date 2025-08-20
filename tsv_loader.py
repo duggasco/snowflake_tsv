@@ -1257,13 +1257,27 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
     try:
         # If validate_only mode, skip to validation
         if validate_only:
-            print("\n=== Validate Only Mode - Checking Existing Snowflake Tables ===")
+            logger.info("Starting validation-only mode")
             validator = SnowflakeDataValidator(snowflake_params)
             validation_results = []
             
             try:
+                # Create progress bar for validation
+                if tqdm_available:
+                    pbar = tqdm(
+                        total=len(file_configs),
+                        desc="Validating tables",
+                        unit="table",
+                        file=sys.stderr,  # Output to stderr so it shows in quiet mode
+                        leave=True
+                    )
+                else:
+                    pbar = None
+                
                 for config in file_configs:
-                    print("\nValidating {}: ".format(config.table_name))
+                    # Update progress bar description
+                    if pbar:
+                        pbar.set_description(f"Validating {config.table_name}")
                     
                     # Convert date range to strings
                     start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
@@ -1279,20 +1293,15 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     # Store result for later display
                     validation_results.append(validation_result)
                     
-                    # Display brief results
-                    if validation_result.get('error'):
-                        # Handle error case
-                        print("  ✗ ERROR: {}".format(validation_result['error']))
-                    elif validation_result.get('valid'):
-                        print("  ✓ VALID - All {} dates present".format(
-                            validation_result['statistics']['unique_dates']))
-                    else:
-                        # Invalid but no error - missing dates
-                        if 'statistics' in validation_result:
-                            print("  ✗ INVALID - {} dates missing".format(
-                                validation_result['statistics']['missing_dates']))
-                        else:
-                            print("  ✗ INVALID - No statistics available")
+                    # Update progress bar with status
+                    if pbar:
+                        status = "✓" if validation_result.get('valid') else "✗"
+                        pbar.set_postfix_str(f"{config.table_name}: {status}")
+                        pbar.update(1)
+                
+                if pbar:
+                    pbar.close()
+                    
             finally:
                 validator.close()
             
@@ -1482,6 +1491,8 @@ def main():
                        help='Validate date completeness in Snowflake after loading (skip file-based QC)')
     parser.add_argument('--validate-only', action='store_true',
                        help='Only validate existing data in Snowflake tables (no loading)')
+    parser.add_argument('--validation-output', type=str,
+                       help='Path to save validation results JSON (for batch aggregation)')
 
     args = parser.parse_args()
 
@@ -1636,7 +1647,7 @@ def main():
             logger.info("Skipping confirmation prompt (--yes flag provided)")
             print("Proceeding automatically (--yes flag provided)")
         print("Estimated time: {:.1f} minutes".format(estimated_minutes))
-    else:
+    elif not args.quiet:
         print("\n" + "="*60)
         print("Validation-only mode - checking existing Snowflake tables")
 
@@ -1651,8 +1662,23 @@ def main():
         validate_only=args.validate_only
     )
     
-    # Display detailed validation results if available
-    if args.validate_only and results.get('validation_results'):
+    # Save validation results to file if requested
+    if args.validate_only and results.get('validation_results') and args.validation_output:
+        import json
+        validation_data = {
+            'month': args.month,
+            'timestamp': datetime.now().isoformat(),
+            'results': results['validation_results']
+        }
+        try:
+            with open(args.validation_output, 'w') as f:
+                json.dump(validation_data, f, indent=2, default=str)
+            logger.info(f"Validation results saved to {args.validation_output}")
+        except Exception as e:
+            logger.error(f"Failed to save validation results: {e}")
+    
+    # Display detailed validation results if available (only if not in quiet mode)
+    if args.validate_only and results.get('validation_results') and not args.quiet:
         print("\n" + "="*60)
         print("VALIDATION DETAILS")
         print("="*60)
