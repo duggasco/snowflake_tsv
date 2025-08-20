@@ -1505,57 +1505,110 @@ def main():
         print("Auto-detected optimal workers: {} (for {} cores)".format(
             args.max_workers, cpu_count))
 
-    # Load config and create file configs
+    # Load config
     config = load_config(args.config)
-    file_configs = create_file_configs(config, args.base_path, args.month)
+    
+    # For validate-only mode, we don't need file configs
+    if args.validate_only:
+        logger.info("Validate-only mode - skipping file discovery")
+        # Create minimal file configs just for table information
+        file_configs = []
+        for file_config in config.get('files', []):
+            # Create a FileConfig with just the table and date info, no actual file
+            # Calculate expected date range if month is provided
+            if args.month:
+                try:
+                    year, month = args.month.split('-')
+                    start_date = datetime.strptime(f"{year}-{month}-01", "%Y-%m-%d")
+                    # Get last day of month
+                    import calendar
+                    last_day = calendar.monthrange(int(year), int(month))[1]
+                    end_date = datetime.strptime(f"{year}-{month}-{last_day:02d}", "%Y-%m-%d")
+                    expected_date_range = (start_date, end_date)
+                except Exception as e:
+                    logger.warning(f"Could not parse month {args.month}: {e}")
+                    expected_date_range = (None, None)
+            else:
+                expected_date_range = (None, None)
+                
+            fc = FileConfig(
+                file_path="",  # No file needed for validate-only
+                table_name=file_config.get('table_name'),
+                expected_columns=file_config.get('expected_columns', []),
+                date_column=file_config.get('date_column'),
+                expected_date_range=expected_date_range
+            )
+            file_configs.append(fc)
+    else:
+        # Normal mode - find actual files
+        file_configs = create_file_configs(config, args.base_path, args.month)
+        
+        if not file_configs:
+            logger.error("No files found matching patterns")
+            print("ERROR: No files found matching the patterns in config")
+            return 1
 
-    if not file_configs:
-        logger.error("No files found matching patterns")
-        print("ERROR: No files found matching the patterns in config")
-        return 1
+    # Print files/tables to be processed
+    if args.validate_only:
+        print("\n=== Validating {} tables ===".format(len(file_configs)))
+        for fc in file_configs:
+            if fc.expected_date_range and fc.expected_date_range[0] and fc.expected_date_range[1]:
+                print("  - Table: {} (Date range: {} to {})".format(
+                    fc.table_name, 
+                    fc.expected_date_range[0].date(), 
+                    fc.expected_date_range[1].date()))
+            else:
+                print("  - Table: {}".format(fc.table_name))
+    else:
+        print("\n=== Processing {} files ===".format(len(file_configs)))
+        for fc in file_configs:
+            date_range = "{} to {}".format(
+                fc.expected_date_range[0].date(),
+                fc.expected_date_range[1].date())
+            print("  - {}: {} ({})".format(fc.table_name,
+                                           os.path.basename(fc.file_path),
+                                           date_range))
 
-    # Print files to be processed
-    print("\n=== Processing {} files ===".format(len(file_configs)))
-    for fc in file_configs:
-        date_range = "{} to {}".format(
-            fc.expected_date_range[0].date(),
-            fc.expected_date_range[1].date())
-        print("  - {}: {} ({})".format(fc.table_name,
-                                       os.path.basename(fc.file_path),
-                                       date_range))
+    # Verify files exist (skip for validate-only mode)
+    if not args.validate_only:
+        missing_files = [fc.file_path for fc in file_configs if not os.path.exists(fc.file_path)]
+        if missing_files:
+            logger.error("Missing files: {}".format(missing_files))
+            print("\nERROR: The following files are missing:")
+            for f in missing_files:
+                print("  - {}".format(f))
+            return 1
 
-    # Verify files exist
-    missing_files = [fc.file_path for fc in file_configs if not os.path.exists(fc.file_path)]
-    if missing_files:
-        logger.error("Missing files: {}".format(missing_files))
-        print("\nERROR: The following files are missing:")
-        for f in missing_files:
-            print("  - {}".format(f))
-        return 1
-
-    # Analyze files
-    analysis_results = analyze_files(file_configs, args.max_workers)
+    # Analyze files (skip for validate-only mode)
+    if args.validate_only:
+        analysis_results = {}  # Empty results for validate-only
+    else:
+        analysis_results = analyze_files(file_configs, args.max_workers)
 
     if args.analyze_only:
         logger.info("Analysis complete (--analyze-only mode)")
         print("\n[Analysis only mode - not processing files]")
         return 0
 
-    # Ask for confirmation (unless --yes flag is provided)
-    print("\n" + "="*60)
-    estimated_minutes = analysis_results['estimates']['total'] / 60
-    
-    if not args.yes:
-        response = input("Proceed with processing? (estimated {:.1f} minutes) [y/N]: ".format(estimated_minutes))
+    # Ask for confirmation (unless --yes flag is provided or validate-only mode)
+    if not args.validate_only:
+        print("\n" + "="*60)
+        estimated_minutes = analysis_results['estimates']['total'] / 60
         
-        if response.lower() != 'y':
-            logger.info("Processing cancelled by user")
-            print("Processing cancelled")
-            return 0
-    else:
-        logger.info("Skipping confirmation prompt (--yes flag provided)")
-        print("Proceeding automatically (--yes flag provided)")
+        if not args.yes:
+            response = input("Proceed with processing? (estimated {:.1f} minutes) [y/N]: ".format(estimated_minutes))
+            
+            if response.lower() != 'y':
+                logger.info("Processing cancelled by user")
+                print("Processing cancelled")
+                return 0
+        else:
+            logger.info("Skipping confirmation prompt (--yes flag provided)")
+            print("Proceeding automatically (--yes flag provided)")
         print("Estimated time: {:.1f} minutes".format(estimated_minutes))
+    else:
+        print("\n" + "="*60)
+        print("Validation-only mode - checking existing Snowflake tables")
 
     # Process files
     process_files(

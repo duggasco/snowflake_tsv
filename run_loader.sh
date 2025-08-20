@@ -123,14 +123,17 @@ process_month() {
     echo -e "${CYAN}========================================${NC}"
     
     # Build the Python command
-    # Append the month directory to the base path
-    local month_base_path="${BASE_PATH%/}/${month_dir}"
-    
-    echo -e "${BLUE}Data Path: ${month_base_path}${NC}"
-    
     local cmd="python3 tsv_loader.py"
     cmd="${cmd} --config ${CONFIG_FILE}"
-    cmd="${cmd} --base-path ${month_base_path}"
+    
+    # For validate-only mode, we don't need base-path
+    if [ -z "${VALIDATE_ONLY}" ]; then
+        # Append the month directory to the base path
+        local month_base_path="${BASE_PATH%/}/${month_dir}"
+        echo -e "${BLUE}Data Path: ${month_base_path}${NC}"
+        cmd="${cmd} --base-path ${month_base_path}"
+    fi
+    
     cmd="${cmd} --month ${month_formatted}"
     
     # Add optional arguments
