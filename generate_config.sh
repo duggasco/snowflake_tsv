@@ -158,21 +158,49 @@ query_snowflake_columns() {
         return 1
     fi
     
+    # Validate credentials file exists and is valid JSON
+    if [[ ! -f "$creds_file" ]]; then
+        print_color "$RED" "Error: Credentials file not found: $creds_file"
+        return 1
+    fi
+    
+    # Check if file is valid JSON
+    if ! python3 -m json.tool "$creds_file" > /dev/null 2>&1; then
+        print_color "$RED" "Error: Invalid JSON in credentials file: $creds_file"
+        return 1
+    fi
+    
     # Create Python script to query Snowflake
     local python_script=$(mktemp /tmp/query_columns_XXXXXX.py)
     
     cat > "$python_script" << 'EOPYTHON'
 import sys
 import json
-import snowflake.connector
+
+try:
+    import snowflake.connector
+except ImportError:
+    print("ERROR: snowflake-connector-python not installed. Run: pip install snowflake-connector-python")
+    sys.exit(1)
 
 def query_columns(config_file, table_name):
     try:
         # Load config
         with open(config_file, 'r') as f:
-            config = json.load(f)
+            try:
+                config = json.load(f)
+            except json.JSONDecodeError as e:
+                print(f"ERROR: Invalid JSON in config file: {e}")
+                sys.exit(1)
         
         sf_config = config.get('snowflake', {})
+        
+        # Validate required fields
+        required_fields = ['account', 'user', 'password', 'warehouse', 'database', 'schema']
+        missing_fields = [f for f in required_fields if not sf_config.get(f)]
+        if missing_fields:
+            print(f"ERROR: Missing required Snowflake config fields: {', '.join(missing_fields)}")
+            sys.exit(1)
         
         # Connect to Snowflake
         conn = snowflake.connector.connect(
@@ -561,12 +589,22 @@ fi
 # Output config
 if [[ "$DRY_RUN" == true ]]; then
     print_color "$YELLOW" "=== DRY RUN - Generated Config ==="
-    echo "$config_json" | python3 -m json.tool
+    echo "$config_json" | python3 -m json.tool 2>&1 || {
+        print_color "$RED" "Error: Failed to format JSON output"
+        echo "$config_json"
+    }
 elif [[ -n "$OUTPUT_FILE" ]]; then
-    echo "$config_json" | python3 -m json.tool > "$OUTPUT_FILE"
-    print_color "$GREEN" "Config saved to: $OUTPUT_FILE"
+    if echo "$config_json" | python3 -m json.tool > "$OUTPUT_FILE" 2>&1; then
+        print_color "$GREEN" "Config saved to: $OUTPUT_FILE"
+    else
+        print_color "$RED" "Error: Failed to format JSON. Raw output:"
+        echo "$config_json"
+    fi
 else
-    echo "$config_json" | python3 -m json.tool
+    echo "$config_json" | python3 -m json.tool 2>&1 || {
+        print_color "$RED" "Error: Failed to format JSON output"
+        echo "$config_json"
+    }
 fi
 
 # Cleanup temp files
