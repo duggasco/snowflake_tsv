@@ -41,6 +41,8 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 #### ProgressTracker
 - Real-time progress bars using tqdm (when available)
 - Tracks files processed, rows processed, and provides ETA
+- Progress bars write to stderr and are visible even in quiet mode
+- Multiple simultaneous progress bars for parallel processing
 
 ## Development Commands
 
@@ -71,8 +73,14 @@ python tsv_loader.py --config config/config.json --base-path ./data --max-worker
 # Skip quality checks (not recommended)
 python tsv_loader.py --config config/config.json --base-path ./data --skip-qc
 
+# Quiet mode - suppress console logging but keep progress bars
+python tsv_loader.py --config config/config.json --base-path ./data --quiet
+
 # Using the bash wrapper (recommended)
 ./run_loader.sh --month 2024-01 --base-path ./data
+
+# Parallel processing with quiet mode for cleaner output
+./run_loader.sh --month 2024-01,2024-02,2024-03 --parallel 3 --quiet
 ```
 
 ### Debugging
@@ -144,6 +152,16 @@ For a 50GB TSV file with ~500M rows on a 16-core system:
 - Compressed files are automatically cleaned up
 - Detailed debug logging to `logs/tsv_loader_debug.log`
 - Process can be interrupted cleanly with Ctrl+C
+
+## Logging and Output Modes
+
+- **Normal mode**: Full console output plus file logging
+- **Quiet mode** (`--quiet`): 
+  - Suppresses console logging (stdout)
+  - Keeps progress bars visible (stderr)
+  - All logs still written to `logs/tsv_loader_debug.log`
+  - Ideal for parallel processing to reduce terminal clutter
+- **Debug logging**: Always enabled to `logs/tsv_loader_debug.log`
 
 ## Memory Management
 

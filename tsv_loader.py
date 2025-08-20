@@ -29,22 +29,33 @@ import signal
 # CREATE LOGS DIRECTORY FIRST - Before any logging setup
 os.makedirs('logs', exist_ok=True)
 
-# NOW setup logging
-logging.basicConfig(
-    level=logging.DEBUG,  # Keep DEBUG level for detailed troubleshooting
-    format='%(asctime)s - %(processName)s - %(threadName)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/tsv_loader_debug.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+# Defer logging setup until we parse arguments to check for --quiet flag
+def setup_logging(quiet_mode=False):
+    """Setup logging configuration based on quiet mode"""
+    handlers = [logging.FileHandler('logs/tsv_loader_debug.log')]
+    
+    # Only add console handler if NOT in quiet mode
+    if not quiet_mode:
+        handlers.append(logging.StreamHandler(sys.stdout))
+    
+    logging.basicConfig(
+        level=logging.DEBUG,  # Keep DEBUG level for detailed troubleshooting
+        format='%(asctime)s - %(processName)s - %(threadName)s - %(levelname)s - %(message)s',
+        handlers=handlers,
+        force=True  # Force reconfiguration if already configured
+    )
+    
+    logger = logging.getLogger(__name__)
+    logger.info("="*60)
+    logger.info("TSV LOADER STARTING")
+    logger.info("Python version: {}".format(sys.version))
+    logger.info("Process ID: {}".format(os.getpid()))
+    logger.info("Quiet mode: {}".format(quiet_mode))
+    logger.info("="*60)
+    return logger
 
-logger.info("="*60)
-logger.info("TSV LOADER STARTING")
-logger.info("Python version: {}".format(sys.version))
-logger.info("Process ID: {}".format(os.getpid()))
-logger.info("="*60)
+# Initial minimal logger for early errors
+logger = logging.getLogger(__name__)
 
 # For progress bar
 try:
@@ -1135,8 +1146,13 @@ def main():
     parser.add_argument('--check-system', action='store_true', help='Check system capabilities')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging (already on by default)')
     parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation prompt and proceed automatically')
+    parser.add_argument('--quiet', action='store_true', help='Suppress console output (keep progress bars and file logging)')
 
     args = parser.parse_args()
+
+    # Setup logging based on quiet mode
+    global logger
+    logger = setup_logging(quiet_mode=args.quiet)
 
     # Debug logging is already on by default
     if args.debug:

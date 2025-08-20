@@ -159,9 +159,15 @@ process_month() {
     
     # Execute the command - redirect to log file, optionally show output
     if [ -n "${QUIET_MODE}" ]; then
-        # Quiet mode - only log to file
-        ${cmd} > "${log_file}" 2>&1
+        # Quiet mode - pass --quiet to Python, redirect stdout only (keep stderr for progress bars)
+        # Append --quiet flag to the command
+        cmd="${cmd} --quiet"
+        # Redirect stdout to log, stderr (progress bars) stays on terminal
+        # Also capture stderr to log file using process substitution
+        exec 3>&1
+        ${cmd} > "${log_file}" 2> >(tee -a "${log_file}" >&2)
         local exit_code=$?
+        exec 3>&-
     else
         # Verbose mode - show output and save to log
         ${cmd} 2>&1 | tee "${log_file}"

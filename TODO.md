@@ -11,6 +11,8 @@
 - [x] Fix critical os module import scope error in SnowflakeLoader (BUG-001)
 - [x] Update parallel processing to handle multiple months simultaneously
 - [x] Add automatic worker distribution in run_loader.sh
+- [x] Add --quiet mode to suppress console logging while keeping progress bars
+- [x] Fix progress bars not showing in quiet mode
 
 ## In Progress 🔄
 - [ ] Test ETL pipeline with factLendingBenchmark configuration on remote server

@@ -1,5 +1,31 @@
 # CHANGELOG.md
 
+## [2025-08-20] - Quiet Mode and Progress Bar Enhancement
+
+### Added
+- **--quiet flag to Python script**: Suppresses console logging while maintaining file logging
+- **Progress bar preservation in quiet mode**: tqdm progress bars remain visible on stderr
+- **Improved bash script handling**: Passes --quiet flag to Python and preserves stderr output
+
+### Fixed
+- Progress bars not showing in quiet mode due to stderr redirection
+- Console clutter during parallel processing
+
+### Technical Details
+- Modified logging setup to conditionally add StreamHandler based on quiet mode
+- Bash script now uses process substitution to capture stderr to log while keeping it visible
+- Progress bars write to stderr by default, ensuring visibility in quiet mode
+- All logging still captured to `logs/tsv_loader_debug.log` for full traceability
+
+### Usage
+```bash
+# Single file with quiet mode
+python tsv_loader.py --config config.json --quiet
+
+# Parallel processing with clean output
+./run_loader.sh --month 2024-01,2024-02,2024-03 --parallel 3 --quiet
+```
+
 ## [2025-08-20] - Critical Bug Fix: OS Module Import Scope
 
 ### Fixed
