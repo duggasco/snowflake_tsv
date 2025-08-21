@@ -2086,8 +2086,8 @@ def main():
         month=args.month  # Pass month for progress bar identification
     )
     
-    # Save validation results to file if requested
-    if args.validate_only and results.get('validation_results') and args.validation_output:
+    # Save validation results to file if requested (for both validate-only and validate-in-snowflake modes)
+    if (args.validate_only or args.validate_in_snowflake) and results.get('validation_results') and args.validation_output:
         import json
         validation_data = {
             'month': args.month,

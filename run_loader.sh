@@ -186,6 +186,9 @@ process_direct_files() {
     
     if [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
         cmd="${cmd} ${VALIDATE_IN_SNOWFLAKE}"
+        # Save validation results to a JSON file
+        local validation_file="logs/validation_direct_$(date +%Y%m%d_%H%M%S).json"
+        cmd="${cmd} --validation-output ${validation_file}"
     fi
     
     if [ -n "${VALIDATE_ONLY}" ]; then
@@ -290,6 +293,9 @@ process_month() {
     
     if [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
         cmd="${cmd} ${VALIDATE_IN_SNOWFLAKE}"
+        # Save validation results to a JSON file for aggregation
+        local validation_file="logs/validation_${month_dir}_$(date +%Y%m%d_%H%M%S).json"
+        cmd="${cmd} --validation-output ${validation_file}"
     fi
     
     if [ -n "${VALIDATE_ONLY}" ]; then
@@ -757,17 +763,77 @@ if [ -z "${QUIET_MODE}" ]; then
     echo -e "${GREEN}========================================${NC}"
 fi
 
-# Display aggregate validation results if in validate-only mode
-if [ -n "${VALIDATE_ONLY}" ]; then
+# Display aggregate validation results if in validate-only mode OR validate-in-snowflake mode
+if [ -n "${VALIDATE_ONLY}" ] || [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
     echo -e "\n${GREEN}========================================${NC}"
-    echo -e "${GREEN}VALIDATION RESULTS SUMMARY${NC}"
+    echo -e "${GREEN}COMPREHENSIVE VALIDATION RESULTS${NC}"
     echo -e "${GREEN}========================================${NC}"
     
     # Find all validation JSON files from this run
     validation_files=($(find logs -name "validation_*.json" -mmin -$((total_time/60 + 1)) 2>/dev/null | sort))
     
+    # Track totals across all months
+    total_valid=0
+    total_invalid=0
+    total_anomalies=0
+    
     if [ ${#validation_files[@]} -gt 0 ]; then
-        # Parse and display results
+        # First, show aggregate statistics
+        python3 -c "
+import json
+import sys
+
+total_valid = 0
+total_invalid = 0
+total_anomalies = 0
+all_failures = []
+
+# First pass - collect statistics
+validation_files = '$validation_files'.split()
+for vfile in validation_files:
+    try:
+        with open(vfile, 'r') as f:
+            data = json.load(f)
+            results = data.get('results', [])
+            month = data.get('month', 'Unknown')
+            
+            for r in results:
+                if r.get('error'):
+                    total_invalid += 1
+                    all_failures.append((month, r.get('table_name', 'Unknown'), 'ERROR: ' + r['error']))
+                elif r.get('valid'):
+                    total_valid += 1
+                else:
+                    total_invalid += 1
+                    failure_reasons = r.get('failure_reasons', [])
+                    if failure_reasons:
+                        reason = '; '.join(failure_reasons)
+                    else:
+                        reason = f\"{r.get('statistics', {}).get('missing_dates', 0)} dates missing\"
+                    all_failures.append((month, r.get('table_name', 'Unknown'), reason))
+                    
+                # Count anomalies
+                anomalies = r.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
+                total_anomalies += anomalies
+    except Exception as e:
+        pass
+
+# Display aggregate summary
+print(f'OVERALL STATISTICS:')
+print(f'  Total Tables Validated: {total_valid + total_invalid}')
+print(f'  ✓ Valid Tables:        {total_valid}')
+print(f'  ✗ Invalid Tables:      {total_invalid}')
+if total_anomalies > 0:
+    print(f'  ⚠ Total Anomalous Dates: {total_anomalies}')
+
+if all_failures:
+    print(f'\nFAILED VALIDATIONS:')
+    for month, table, reason in all_failures:
+        print(f'  • [{month}] {table}: {reason}')
+"
+        
+        # Then show detailed results per month
+        echo -e "\n${GREEN}DETAILED RESULTS BY MONTH:${NC}"
         for vfile in "${validation_files[@]}"; do
             if [ -f "$vfile" ]; then
                 # Extract month and results using Python
@@ -788,50 +854,26 @@ try:
                 print(f'  {table}: {status}')
             elif r.get('valid'):
                 stats = r.get('statistics', {})
+                anomalies = r.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
                 status = f'[VALID] ({stats.get(\"total_rows\", 0):,} rows, {stats.get(\"unique_dates\", 0)} dates)'
+                if anomalies > 0:
+                    status += f' - ⚠ {anomalies} anomalies detected'
                 print(f'  {table}: {status}')
             else:
-                stats = r.get('statistics', {})
-                missing = stats.get('missing_dates', 0)
-                date_range = r.get('date_range', {})
-                gaps = r.get('gaps', [])
-                
-                # Build status with more detail
-                status = f'[INVALID] ({missing} dates missing)'
+                failure_reasons = r.get('failure_reasons', [])
+                if failure_reasons:
+                    status = '[INVALID] ' + '; '.join(failure_reasons)
+                else:
+                    stats = r.get('statistics', {})
+                    missing = stats.get('missing_dates', 0)
+                    status = f'[INVALID] ({missing} dates missing)'
                 print(f'  {table}: {status}')
                 
-                # Show date range info
-                actual_min = date_range.get('actual_min', 'N/A')
-                actual_max = date_range.get('actual_max', 'N/A')
-                requested_start = date_range.get('requested_start', 'N/A')
-                requested_end = date_range.get('requested_end', 'N/A')
-                
-                if actual_min != 'N/A' and actual_max != 'N/A':
-                    print(f'    Expected: {requested_start} to {requested_end}')
-                    print(f'    Found:    {actual_min} to {actual_max}')
-                
-                # Show first few gaps
-                if gaps:
-                    print(f'    Missing date ranges:')
-                    for i, gap in enumerate(gaps[:3], 1):
-                        gap_from = gap.get('from', 'N/A')
-                        gap_to = gap.get('to', 'N/A')
-                        missing_days = gap.get('missing_days', 0)
-                        if gap_from != 'N/A' and gap_to != 'N/A':
-                            # Calculate actual missing dates (gap_from is last date before gap, gap_to is first date after)
-                            from datetime import datetime, timedelta
-                            try:
-                                start_missing = datetime.strptime(gap_from, '%Y-%m-%d') + timedelta(days=1)
-                                end_missing = datetime.strptime(gap_to, '%Y-%m-%d') - timedelta(days=1)
-                                if start_missing == end_missing:
-                                    print(f'      - {start_missing.strftime(\"%Y-%m-%d\")} (1 day)')
-                                else:
-                                    print(f'      - {start_missing.strftime(\"%Y-%m-%d\")} to {end_missing.strftime(\"%Y-%m-%d\")} ({missing_days} days)')
-                            except:
-                                # Fallback to original display if date parsing fails
-                                print(f'      - Gap between {gap_from} and {gap_to} ({missing_days} days)')
-                    if len(gaps) > 3:
-                        print(f'      - ... and {len(gaps) - 3} more gaps')
+                # Show anomalous dates if available
+                anomalous_dates = r.get('anomalous_dates', [])
+                if anomalous_dates:
+                    print(f'    Anomalous dates: {anomalous_dates[0][\"date\"]} ({anomalous_dates[0][\"count\"]} rows)' + 
+                          (f' + {len(anomalous_dates)-1} more' if len(anomalous_dates) > 1 else ''))
 except Exception as e:
     print(f'  Error reading {vfile}: {e}', file=sys.stderr)
 " 2>/dev/null
