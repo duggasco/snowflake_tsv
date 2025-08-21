@@ -187,7 +187,7 @@ fi
 
 # Print warning for destructive operations
 if [ -z "$DRY_RUN" ]; then
-    print_color $YELLOW "⚠️  WARNING: This operation will DELETE data from Snowflake ⚠️"
+    print_color $YELLOW "[WARNING] This operation will DELETE data from Snowflake"
     print_color $YELLOW "Config: $CONFIG"
     
     if [ -n "$TABLE" ]; then
@@ -197,7 +197,7 @@ if [ -z "$DRY_RUN" ]; then
         print_color $YELLOW "Tables: $TABLES"
     fi
     if [ -n "$ALL_TABLES" ]; then
-        print_color $RED "⚠️  ALL TABLES IN CONFIG ⚠️"
+        print_color $RED "[WARNING] ALL TABLES IN CONFIG"
     fi
     
     if [ -n "$MONTH" ]; then
@@ -210,11 +210,11 @@ if [ -z "$DRY_RUN" ]; then
     if [ -z "$YES" ]; then
         print_color $CYAN "You will be prompted to confirm before deletion."
     else
-        print_color $RED "⚠️  Auto-confirmation enabled (--yes flag) ⚠️"
+        print_color $RED "[WARNING] Auto-confirmation enabled (--yes flag)"
     fi
     echo ""
 else
-    print_color $GREEN "🔍 DRY RUN MODE - No data will be deleted"
+    print_color $GREEN "[DRY RUN] MODE - No data will be deleted"
 fi
 
 # Show the command being executed
@@ -228,12 +228,12 @@ exit_code=$?
 # Print result
 if [ $exit_code -eq 0 ]; then
     if [ -z "$DRY_RUN" ]; then
-        print_color $GREEN "✅ Deletion completed successfully"
+        print_color $GREEN "[SUCCESS] Deletion completed successfully"
     else
-        print_color $GREEN "✅ Dry run completed successfully"
+        print_color $GREEN "[SUCCESS] Dry run completed successfully"
     fi
 else
-    print_color $RED "❌ Operation failed with exit code: $exit_code"
+    print_color $RED "[FAILED] Operation failed with exit code: $exit_code"
 fi
 
 exit $exit_code

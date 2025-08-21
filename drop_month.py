@@ -187,7 +187,7 @@ class SnowflakeDeleter:
 
                 self.logger.info(f"  Total rows: {total_rows:,}, Rows to delete: {delete_rows:,} ({deletion_percentage:.2f}%)")
                 if deletion_percentage > 20:
-                    self.logger.warning(f"  ⚠️  Large deletion ({deletion_percentage:.1f}%) - Consider CTAS method.")
+                    self.logger.warning(f"  [WARNING] Large deletion ({deletion_percentage:.1f}%) - Consider CTAS method.")
                 
                 return analysis
         except ProgrammingError as e:
@@ -206,7 +206,7 @@ class SnowflakeDeleter:
             return DeletionResult(target, 0, analysis['total_rows'], 0, 'success', execution_time=time.time() - start_time)
 
         if self.dry_run:
-            self.logger.info(f"🔍 DRY RUN: Would delete {analysis['rows_to_delete']:,} rows from {target.table_name}.")
+            self.logger.info(f"[DRY RUN] Would delete {analysis['rows_to_delete']:,} rows from {target.table_name}.")
             return DeletionResult(target, analysis['rows_to_delete'], analysis['total_rows'], analysis['deletion_percentage'], 'skipped', execution_time=time.time() - start_time)
 
         self.logger.info(f"Executing deletion for {target.table_name} ({target.year_month})...")
@@ -231,7 +231,7 @@ class SnowflakeDeleter:
                     return DeletionResult(target, 0, analysis['total_rows'], 0, 'failed', f"Row count mismatch: expected {analysis['rows_to_delete']}, got {rows_deleted}")
 
                 self.conn.commit()
-                self.logger.info(f"✅ Transaction committed. Deleted {rows_deleted:,} rows.")
+                self.logger.info(f"[SUCCESS] Transaction committed. Deleted {rows_deleted:,} rows.")
                 return DeletionResult(target, rows_deleted, analysis['total_rows'], analysis['deletion_percentage'], 'success', execution_time=time.time() - start_time)
 
         except ProgrammingError as e:
@@ -292,7 +292,7 @@ def parse_table_specs(config: Dict, table_names: List[str] = None) -> List[Dict]
 
 def confirm_deletion(targets: List[DeletionTarget], analysis_results: Dict) -> bool:
     """Interactive confirmation prompt."""
-    print("\n" + "="*80 + "\n⚠️  DELETION CONFIRMATION REQUIRED ⚠️\n" + "="*80)
+    print("\n" + "="*80 + "\n[WARNING] DELETION CONFIRMATION REQUIRED\n" + "="*80)
     print("\nYou are about to delete data from the following tables:")
     for target in targets:
         analysis = analysis_results.get(target.table_name, {})
@@ -303,7 +303,7 @@ def confirm_deletion(targets: List[DeletionTarget], analysis_results: Dict) -> b
             f"  Rows to Delete: {analysis.get('rows_to_delete', 'N/A'):,}\n"
             f"  Deletion %: {analysis.get('deletion_percentage', 0):.2f}%"
         )
-    print("\n" + "="*80 + "\n⚠️  THIS CANNOT BE UNDONE (except via Snowflake Time Travel) ⚠️\n" + "="*80)
+    print("\n" + "="*80 + "\n[WARNING] THIS CANNOT BE UNDONE (except via Snowflake Time Travel)\n" + "="*80)
     
     response = input("\nType 'yes' to confirm deletion, or any other key to cancel: ")
     return response.lower() == 'yes'
