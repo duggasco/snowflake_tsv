@@ -2103,6 +2103,17 @@ def main():
                     print("  Unique Dates: {}".format(stats.get('unique_dates', 0)))
                     print("  Expected Dates: {}".format(stats.get('expected_dates', 0)))
                     print("  Avg Rows/Day: {:,.0f}".format(stats.get('avg_rows_per_day', 0)))
+                    
+                    # Show anomalous dates even for valid results as a warning
+                    if result.get('anomalous_dates'):
+                        print("\n  ⚠️  WARNING: Anomalous dates detected (but within tolerance):")
+                        for i, anomaly in enumerate(result['anomalous_dates'][:5], 1):
+                            print("    {}) {} - {} rows ({:.1f}% of avg) - {}".format(
+                                i, anomaly['date'], anomaly['count'],
+                                anomaly['percent_of_avg'], anomaly['severity']))
+                        if len(result['anomalous_dates']) > 5:
+                            print("    ... and {} more anomalous dates".format(
+                                len(result['anomalous_dates']) - 5))
             else:
                 print("  Status: ✗ INVALID")
                 
@@ -2142,14 +2153,40 @@ def main():
                     
                     # Show anomalous dates if any
                     if result.get('anomalous_dates'):
-                        print("\n  ⚠️  Anomalous Dates (low row counts):")
-                        for i, anomaly in enumerate(result['anomalous_dates'][:5], 1):
-                            print("    {}) {} - {} rows ({:.1f}% of avg) - {}".format(
-                                i, anomaly['date'], anomaly['count'],
-                                anomaly['percent_of_avg'], anomaly['severity']))
-                        if len(result['anomalous_dates']) > 5:
+                        print("\n  ⚠️  SPECIFIC DATES WITH ANOMALIES:")
+                        
+                        # Group by severity for clarity
+                        severely_low = [a for a in result['anomalous_dates'] if a.get('severity') == 'SEVERELY_LOW']
+                        low = [a for a in result['anomalous_dates'] if a.get('severity') == 'LOW']
+                        outlier_low = [a for a in result['anomalous_dates'] if a.get('severity') == 'OUTLIER_LOW']
+                        
+                        if severely_low:
+                            print("    CRITICALLY LOW (<10% of average):")
+                            for anomaly in severely_low[:5]:
+                                expected_min = anomaly.get('expected_range', [0, 0])[0]
+                                print("      • {} → {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
+                                    anomaly['date'], anomaly['count'], expected_min,
+                                    anomaly['percent_of_avg']))
+                        
+                        if low:
+                            print("    LOW (<50% of average):")
+                            for anomaly in low[:3]:
+                                expected_min = anomaly.get('expected_range', [0, 0])[0]
+                                print("      • {} → {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
+                                    anomaly['date'], anomaly['count'], expected_min,
+                                    anomaly['percent_of_avg']))
+                        
+                        if outlier_low:
+                            print("    STATISTICAL OUTLIERS:")
+                            for anomaly in outlier_low[:3]:
+                                expected_min = anomaly.get('expected_range', [0, 0])[0]
+                                print("      • {} → {} rows (expected ~{:,})".format(
+                                    anomaly['date'], anomaly['count'], expected_min))
+                        
+                        total_shown = len(severely_low[:5]) + len(low[:3]) + len(outlier_low[:3])
+                        if len(result['anomalous_dates']) > total_shown:
                             print("    ... and {} more anomalous dates".format(
-                                len(result['anomalous_dates']) - 5))
+                                len(result['anomalous_dates']) - total_shown))
                     
                     # Show gaps if any
                     if result.get('gaps'):
