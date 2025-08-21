@@ -1839,15 +1839,6 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                 
                 # Store validation results in main results
                 results['validation_results'] = validation_results
-                                print("    - {} to {} ({} days missing)".format(
-                                    gap['from'], gap['to'], gap['missing_days']))
-                        validation_failed = True
-                        logger.error("{} failed Snowflake validation".format(config.table_name))
-                    
-                    print("  Total rows: {:,}".format(
-                        validation_result.get('statistics', {}).get('total_rows', 0)))
-                    print("  Avg rows/day: {:,.0f}".format(
-                        validation_result.get('statistics', {}).get('avg_rows_per_day', 0)))
                 
                 if validation_failed:
                     print("\n⚠ WARNING: Some tables have incomplete date ranges")
