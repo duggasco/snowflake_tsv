@@ -112,7 +112,7 @@ python tsv_loader.py --config config/config.json --base-path ./data --analyze-on
 
 ### Validation Options
 
-The pipeline offers three validation modes:
+The pipeline offers three validation modes with progress tracking:
 
 1. **Traditional File-based QC** (default):
 ```bash
@@ -131,7 +131,11 @@ The pipeline offers three validation modes:
 
 ### What Gets Validated
 
-The Snowflake validator performs comprehensive data quality checks:
+The Snowflake validator performs comprehensive data quality checks with progress tracking:
+
+**Important**: Validation results are ALWAYS displayed, even in `--quiet` mode, because this data is critical for data quality assurance.
+
+**Progress Tracking**: All validation operations show progress bars (via stderr) that remain visible even in quiet mode:
 
 #### Date Completeness
 - Verifies all expected dates are present
@@ -151,15 +155,30 @@ The Snowflake validator performs comprehensive data quality checks:
   - Detects data quality issues even when date exists
   - Prevents incomplete data from reaching production
 
+#### Example Validation Progress
+```
+Validating tables: 100%|██████████| 3/3 [00:02<00:00, 1.50table/s, TEST_TABLE_2: ✗ (3 anomalies)]
+```
+
 #### Example Validation Output
 ```
-Date: 2024-01-05
-  Row count: 12
-  Expected range: 46,500 - 49,500
-  Severity: SEVERELY_LOW
-  Percent of average: 0.03%
+TEST_TABLE_2:
+  Status: ✗ INVALID
+  Date Range: 2024-01-01 to 2024-01-31
+  Total Rows: 1,440,012
+  Avg Rows/Day: 46,452
   
-⚠️ WARNING: CRITICAL: 1 date has less than 10% of average row count - possible data loss
+  Row Count Analysis:
+    Mean: 46,452 rows/day
+    Range: 12 - 52,000 rows
+    Anomalies Detected: 3 dates
+  
+  ⚠️ Anomalous Dates (low row counts):
+    1) 2024-01-05 - 12 rows (0.03% of avg) - SEVERELY_LOW
+    2) 2024-01-15 - 2,400 rows (5.2% of avg) - SEVERELY_LOW
+  
+  ⚠️ Warnings:
+    • CRITICAL: 2 dates have less than 10% of average row count - possible data loss
 ```
 
 ### Advanced Options

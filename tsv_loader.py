@@ -1635,6 +1635,9 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     # Update progress bar with status
                     if pbar:
                         status = "✓" if validation_result.get('valid') else "✗"
+                        anomaly_count = validation_result.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
+                        if anomaly_count > 0:
+                            status += f" ({anomaly_count} anomalies)"
                         pbar.set_postfix_str(f"{config.table_name}: {status}")
                         pbar.update(1)
                 
@@ -1753,8 +1756,24 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
             
             try:
                 validation_failed = False
+                validation_results = []  # Store for detailed display
+                
+                # Create progress bar for validation
+                if TQDM_AVAILABLE:
+                    val_pbar = tqdm(
+                        total=len(file_configs),
+                        desc="Validating tables",
+                        unit="table",
+                        file=sys.stderr,  # Output to stderr so it shows in quiet mode
+                        leave=True
+                    )
+                else:
+                    val_pbar = None
+                
                 for config in file_configs:
-                    print("\nValidating {}: ".format(config.table_name))
+                    # Update progress bar description
+                    if val_pbar:
+                        val_pbar.set_description(f"Validating {config.table_name}")
                     
                     # Convert date range to strings
                     start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
@@ -1767,17 +1786,32 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                         end_date=end_date
                     )
                     
-                    # Display results
+                    # Store result for later display
+                    validation_results.append(validation_result)
+                    
+                    # Update progress bar with status
+                    if val_pbar:
+                        status = "✓" if validation_result.get('valid') else "✗"
+                        anomaly_count = validation_result.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
+                        if anomaly_count > 0:
+                            status += f" ({anomaly_count} anomalies)"
+                        val_pbar.set_postfix_str(f"{config.table_name}: {status}")
+                        val_pbar.update(1)
+                    
+                    # Quick status in log
                     if validation_result.get('valid'):
-                        print("  ✓ VALID - All {} dates present".format(
-                            validation_result['statistics']['unique_dates']))
                         logger.info("{} passed Snowflake validation".format(config.table_name))
                     else:
-                        print("  ✗ INVALID - {} dates missing".format(
-                            validation_result['statistics'].get('missing_dates', 'Unknown')))
-                        if validation_result.get('gaps'):
-                            print("  Gaps found:")
-                            for gap in validation_result['gaps'][:3]:  # Show first 3 gaps
+                        validation_failed = True
+                        logger.warning("{} failed validation: {}".format(
+                            config.table_name,
+                            validation_result.get('warnings', ['Unknown issue'])[0] if validation_result.get('warnings') else 'Unknown issue'))
+                
+                if val_pbar:
+                    val_pbar.close()
+                
+                # Store validation results in main results
+                results['validation_results'] = validation_results
                                 print("    - {} to {} ({} days missing)".format(
                                     gap['from'], gap['to'], gap['missing_days']))
                         validation_failed = True
@@ -2017,8 +2051,9 @@ def main():
         except Exception as e:
             logger.error(f"Failed to save validation results: {e}")
     
-    # Display detailed validation results if available (only if not in quiet mode)
-    if args.validate_only and results.get('validation_results') and not args.quiet:
+    # Display detailed validation results if available (ALWAYS show - even in quiet mode)
+    # Validation data is critical and should always be visible
+    if (args.validate_only or args.validate_in_snowflake) and results.get('validation_results'):
         print("\n" + "="*60)
         print("VALIDATION DETAILS")
         print("="*60)
@@ -2054,14 +2089,43 @@ def main():
                     print("  Missing Dates: {}".format(stats.get('missing_dates', 0)))
                     print("  Avg Rows/Day: {:,.0f}".format(stats.get('avg_rows_per_day', 0)))
                     
+                    # Show row count analysis if available
+                    if 'row_count_analysis' in result:
+                        analysis = result['row_count_analysis']
+                        if analysis.get('anomalous_dates_count', 0) > 0:
+                            print("\n  Row Count Analysis:")
+                            print("    Mean: {:,.0f} rows/day".format(analysis.get('mean', 0)))
+                            print("    Median: {:,.0f} rows/day".format(analysis.get('median', 0)))
+                            print("    Range: {:,} - {:,} rows".format(
+                                analysis.get('min', 0), analysis.get('max', 0)))
+                            print("    Anomalies Detected: {} dates".format(
+                                analysis.get('anomalous_dates_count', 0)))
+                    
+                    # Show anomalous dates if any
+                    if result.get('anomalous_dates'):
+                        print("\n  ⚠️  Anomalous Dates (low row counts):")
+                        for i, anomaly in enumerate(result['anomalous_dates'][:5], 1):
+                            print("    {}) {} - {} rows ({:.1f}% of avg) - {}".format(
+                                i, anomaly['date'], anomaly['count'],
+                                anomaly['percent_of_avg'], anomaly['severity']))
+                        if len(result['anomalous_dates']) > 5:
+                            print("    ... and {} more anomalous dates".format(
+                                len(result['anomalous_dates']) - 5))
+                    
                     # Show gaps if any
                     if result.get('gaps'):
-                        print("  Date Gaps Found:")
+                        print("\n  Date Gaps Found:")
                         for i, gap in enumerate(result['gaps'][:5], 1):  # Show first 5 gaps
                             print("    {}) {} to {} ({} days missing)".format(
                                 i, gap['from'], gap['to'], gap['missing_days']))
                         if len(result['gaps']) > 5:
                             print("    ... and {} more gaps".format(len(result['gaps']) - 5))
+                    
+                    # Show warnings if any
+                    if result.get('warnings'):
+                        print("\n  ⚠️  Warnings:")
+                        for warning in result['warnings']:
+                            print("    • {}".format(warning))
 
     logger.info("Main function complete")
     return 0

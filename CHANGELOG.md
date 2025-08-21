@@ -1,5 +1,30 @@
 # CHANGELOG.md
 
+## [2025-08-21] - Enhanced: Validation Progress Bars and Always-Visible Results
+
+### Feature Enhancement
+- **Added Progress Bars for Validation**: Shows real-time progress during validation operations
+- **Always Display Validation Results**: Critical validation data now ALWAYS shows, even in --quiet mode
+- **Enhanced Progress Information**: Shows anomaly counts directly in progress bar status
+
+### Implementation Details
+- Progress bars for both `--validate-only` and `--validate-in-snowflake` modes
+- Progress bars output to stderr, visible even in quiet mode
+- Each table shows validation status (✓/✗) with anomaly count if applicable
+- Full validation details always displayed regardless of quiet flag
+
+### Benefits
+- Better visibility into validation progress for large datasets
+- Critical data quality information never hidden
+- Consistent experience across all validation modes
+- Clear indication of issues during validation
+
+### Technical Changes
+- Added tqdm progress bars to validation loops
+- Modified display condition to always show validation results
+- Enhanced progress bar postfix to include anomaly counts
+- Validation details include full anomaly analysis
+
 ## [2025-08-21] - Enhanced: Row Count Anomaly Detection in Validation
 
 ### Feature Enhancement
