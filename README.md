@@ -129,6 +129,39 @@ The pipeline offers three validation modes:
 ./run_loader.sh --month 2024-01 --validate-only
 ```
 
+### What Gets Validated
+
+The Snowflake validator performs comprehensive data quality checks:
+
+#### Date Completeness
+- Verifies all expected dates are present
+- Identifies gaps in date sequences
+- Compares actual vs requested date ranges
+
+#### Row Count Anomaly Detection (NEW)
+- **Statistical Analysis**: Calculates mean, median, quartiles, and standard deviation
+- **Anomaly Classification**:
+  - **SEVERELY_LOW**: < 10% of average row count (critical data loss)
+  - **OUTLIER_LOW**: Statistical outlier below Q1 - 1.5 * IQR
+  - **LOW**: < 50% of average row count (partial data)
+  - **OUTLIER_HIGH**: Statistical outlier above Q3 + 1.5 * IQR
+  - **NORMAL**: Within expected statistical range
+- **Benefits**:
+  - Identifies partial data loads (e.g., 12 rows vs expected 48,000)
+  - Detects data quality issues even when date exists
+  - Prevents incomplete data from reaching production
+
+#### Example Validation Output
+```
+Date: 2024-01-05
+  Row count: 12
+  Expected range: 46,500 - 49,500
+  Severity: SEVERELY_LOW
+  Percent of average: 0.03%
+  
+⚠️ WARNING: CRITICAL: 1 date has less than 10% of average row count - possible data loss
+```
+
 ### Advanced Options
 
 ```bash

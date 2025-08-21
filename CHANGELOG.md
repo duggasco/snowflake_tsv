@@ -1,5 +1,39 @@
 # CHANGELOG.md
 
+## [2025-08-21] - Enhanced: Row Count Anomaly Detection in Validation
+
+### Feature Enhancement
+- **Added Row Count Anomaly Detection**: Enhanced Snowflake validation to identify dates with suspiciously low row counts
+- **Problem Solved**: Previously only detected completely missing dates, now detects partial data loads
+- **Implementation**: 
+  - Calculates statistical metrics (mean, std dev, quartiles) for daily row counts
+  - Flags anomalies using multiple severity levels
+  - Uses IQR method for outlier detection
+
+### Anomaly Detection Rules
+- **SEVERELY_LOW**: < 10% of average row count (critical data loss indicator)
+- **OUTLIER_LOW**: Below Q1 - 1.5 * IQR (statistical outlier)
+- **LOW**: < 50% of average row count (significant data reduction)
+- **OUTLIER_HIGH**: Above Q3 + 1.5 * IQR (unusual spike in data)
+- **NORMAL**: Within expected statistical range
+
+### Technical Implementation
+- Enhanced SQL query with CTE for statistics calculation
+- Added `row_count_analysis` section to validation results
+- Tracks anomalous dates with severity and percentage of average
+- Provides warnings for critical data issues
+
+### Benefits
+- Identifies partial data loads (e.g., 12 rows instead of 48,000)
+- Detects data quality issues even when date exists
+- Provides statistical context for row count variations
+- Helps prevent incomplete data from reaching production
+
+### Testing
+- Created `test_anomaly_detection.py` to verify functionality
+- Tests demonstrate detection of various anomaly severities
+- Validates SQL query structure and anomaly classification
+
 ## [2025-08-20] - Fixed: Static Progress Bars in Parallel Mode
 
 ### Bug Fix Implementation

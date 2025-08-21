@@ -711,15 +711,47 @@ class SnowflakeDataValidator:
             
             min_date, max_date, unique_dates, total_rows = range_result
             
-            # Query 2: Get daily distribution (limited to avoid memory issues)
+            # Query 2: Get daily distribution with statistics for anomaly detection
             distribution_query = """
+            WITH daily_counts AS (
+                SELECT 
+                    {date_col} as date_value,
+                    COUNT(*) as row_count
+                FROM {table}
+                WHERE {date_col} BETWEEN '{start}' AND '{end}'
+                GROUP BY {date_col}
+            ),
+            stats AS (
+                SELECT 
+                    AVG(row_count) as avg_count,
+                    STDDEV(row_count) as std_dev,
+                    MIN(row_count) as min_count,
+                    MAX(row_count) as max_count,
+                    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY row_count) as q1,
+                    PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY row_count) as median,
+                    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY row_count) as q3
+                FROM daily_counts
+            )
             SELECT 
-                {date_col} as date_value,
-                COUNT(*) as row_count
-            FROM {table}
-            WHERE {date_col} BETWEEN '{start}' AND '{end}'
-            GROUP BY {date_col}
-            ORDER BY {date_col}
+                dc.date_value,
+                dc.row_count,
+                s.avg_count,
+                s.std_dev,
+                s.min_count,
+                s.max_count,
+                s.q1,
+                s.median,
+                s.q3,
+                CASE 
+                    WHEN dc.row_count < (s.avg_count * 0.1) THEN 'SEVERELY_LOW'
+                    WHEN dc.row_count < (s.q1 - 1.5 * (s.q3 - s.q1)) THEN 'OUTLIER_LOW'
+                    WHEN dc.row_count < (s.avg_count * 0.5) THEN 'LOW'
+                    WHEN dc.row_count > (s.q3 + 1.5 * (s.q3 - s.q1)) THEN 'OUTLIER_HIGH'
+                    ELSE 'NORMAL'
+                END as anomaly_flag
+            FROM daily_counts dc
+            CROSS JOIN stats s
+            ORDER BY dc.date_value
             LIMIT 1000
             """.format(
                 date_col=date_column,
@@ -728,7 +760,7 @@ class SnowflakeDataValidator:
                 end=end_yyyymmdd
             )
             
-            self.logger.debug("Executing distribution query")
+            self.logger.debug("Executing distribution query with anomaly detection")
             self.cursor.execute(distribution_query)
             daily_counts = self.cursor.fetchall()
             
@@ -782,9 +814,53 @@ class SnowflakeDataValidator:
                     return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
                 return str(date_val)
             
-            # Compile validation results
+            # Process daily counts with anomaly detection
+            anomalous_dates = []
+            row_count_stats = {}
+            daily_sample = []
+            
+            if daily_counts and len(daily_counts) > 0:
+                # Extract statistics from first row (they're the same for all rows)
+                first_row = daily_counts[0]
+                if len(first_row) >= 9:
+                    row_count_stats = {
+                        'mean': float(first_row[2]) if first_row[2] else 0,
+                        'std_dev': float(first_row[3]) if first_row[3] else 0,
+                        'min': int(first_row[4]) if first_row[4] else 0,
+                        'max': int(first_row[5]) if first_row[5] else 0,
+                        'q1': float(first_row[6]) if first_row[6] else 0,
+                        'median': float(first_row[7]) if first_row[7] else 0,
+                        'q3': float(first_row[8]) if first_row[8] else 0
+                    }
+                
+                # Process each day's data
+                for row in daily_counts[:100]:  # Process up to 100 days
+                    if len(row) >= 10:
+                        date_val = format_yyyymmdd(row[0])
+                        count = int(row[1]) if row[1] else 0
+                        anomaly = row[9] if len(row) > 9 else 'UNKNOWN'
+                        
+                        # Add to daily sample
+                        daily_sample.append({
+                            'date': date_val,
+                            'count': count,
+                            'anomaly': anomaly
+                        })
+                        
+                        # Track anomalous dates
+                        if anomaly in ['SEVERELY_LOW', 'OUTLIER_LOW', 'LOW']:
+                            anomalous_dates.append({
+                                'date': date_val,
+                                'count': count,
+                                'expected_range': [int(row_count_stats.get('q1', 0)), 
+                                                 int(row_count_stats.get('q3', 0))],
+                                'severity': anomaly,
+                                'percent_of_avg': (count / row_count_stats['mean'] * 100) if row_count_stats.get('mean', 0) > 0 else 0
+                            })
+            
+            # Compile validation results with enhanced statistics
             validation_result = {
-                'valid': len(gaps) == 0 and unique_dates == expected_days,
+                'valid': len(gaps) == 0 and unique_dates == expected_days and len(anomalous_dates) == 0,
                 'table_name': table_name,
                 'date_column': date_column,
                 'date_range': {
@@ -800,6 +876,13 @@ class SnowflakeDataValidator:
                     'missing_dates': expected_days - unique_dates,
                     'avg_rows_per_day': total_rows / unique_dates if unique_dates > 0 else 0
                 },
+                'row_count_analysis': {
+                    **row_count_stats,
+                    'anomalous_dates_count': len(anomalous_dates),
+                    'threshold_10_percent': row_count_stats.get('mean', 0) * 0.1 if row_count_stats else 0,
+                    'threshold_50_percent': row_count_stats.get('mean', 0) * 0.5 if row_count_stats else 0
+                },
+                'anomalous_dates': anomalous_dates[:20],  # Limit to first 20 anomalies
                 'gaps': [
                     {
                         'from': format_yyyymmdd(gap[0]) if gap and len(gap) > 0 else '',
@@ -807,23 +890,42 @@ class SnowflakeDataValidator:
                         'missing_days': gap[2] - 1 if gap and len(gap) > 2 else 0
                     } for gap in gaps[:10] if gap and len(gap) >= 3  # Limit to first 10 gaps
                 ],
-                'daily_sample': [
-                    {
-                        'date': format_yyyymmdd(row[0]) if row and len(row) > 0 else '',
-                        'count': row[1] if row and len(row) > 1 else 0
-                    } for row in daily_counts[:30] if row and len(row) >= 2  # First 30 days sample
-                ]
+                'daily_sample': daily_sample[:30]  # First 30 days sample
             }
             
             # Add warnings if issues detected
+            validation_result['warnings'] = []
+            
             if validation_result['statistics']['missing_dates'] > 0:
-                validation_result['warnings'] = []
                 validation_result['warnings'].append(
                     "Missing {} dates out of {} expected".format(
                         validation_result['statistics']['missing_dates'],
                         expected_days
                     )
                 )
+            
+            if len(anomalous_dates) > 0:
+                # Count by severity
+                severity_counts = {}
+                for anomaly in anomalous_dates:
+                    severity = anomaly.get('severity', 'UNKNOWN')
+                    severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                
+                validation_result['warnings'].append(
+                    "Found {} dates with anomalous row counts: {}".format(
+                        len(anomalous_dates),
+                        ', '.join(["{} {}".format(count, sev) for sev, count in severity_counts.items()])
+                    )
+                )
+                
+                # Add specific warnings for severe cases
+                severely_low = [a for a in anomalous_dates if a.get('severity') == 'SEVERELY_LOW']
+                if severely_low:
+                    validation_result['warnings'].append(
+                        "CRITICAL: {} dates have less than 10% of average row count - possible data loss".format(
+                            len(severely_low)
+                        )
+                    )
             
             self.logger.info("Validation complete: {} dates found, {} expected".format(
                 unique_dates, expected_days))
