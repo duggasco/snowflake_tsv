@@ -198,6 +198,85 @@ TEST_TABLE_2:
 ./run_loader.sh --batch --dry-run
 ```
 
+## Data Deletion Tool (drop_month.py)
+
+### Overview
+Safely delete monthly data from Snowflake tables with multiple safety layers and comprehensive audit logging.
+
+### Safety Features
+- **Parameterized Queries**: Prevents SQL injection attacks
+- **Dry Run Mode**: Analyze impact without deleting data
+- **Interactive Confirmation**: Requires explicit user confirmation
+- **Transaction Management**: Automatic rollback on errors
+- **Metadata Caching**: Efficient validation with cached table schemas
+- **Audit Logging**: Complete record of all operations
+- **Snowflake Time Travel**: Recovery path documented in logs
+
+### Using the Bash Wrapper (Recommended)
+```bash
+# Using the convenient bash wrapper with colored output
+./drop_month.sh --config config/config.json --table MY_TABLE --month 2024-01 --dry-run
+
+# Delete with preview
+./drop_month.sh --config config/config.json --table MY_TABLE --month 2024-01 --preview
+
+# Delete multiple months
+./drop_month.sh --config config/config.json --table MY_TABLE --months 2024-01,2024-02,2024-03
+```
+
+### Direct Python Usage
+```bash
+# Dry run - analyze impact without deleting
+python drop_month.py --config config/factLendingBenchmark_config.json \
+  --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-01 --dry-run
+
+# Preview sample rows before deletion
+python drop_month.py --config config/factLendingBenchmark_config.json \
+  --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-01 --preview
+
+# Delete with confirmation prompt
+python drop_month.py --config config/factLendingBenchmark_config.json \
+  --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-01
+
+# Skip confirmation (use with caution!)
+python drop_month.py --config config/factLendingBenchmark_config.json \
+  --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-01 --yes
+
+# Delete multiple months from multiple tables
+python drop_month.py --config config/factLendingBenchmark_config.json \
+  --tables TABLE1,TABLE2 --months 2024-01,2024-02,2024-03
+
+# Delete from all configured tables
+python drop_month.py --config config/factLendingBenchmark_config.json \
+  --all-tables --month 2024-01
+
+# Output summary report to JSON
+python drop_month.py --config config/factLendingBenchmark_config.json \
+  --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-01 \
+  --output-json deletion_report.json
+```
+
+### Architecture
+The deletion tool uses a secure, separated architecture:
+- **SnowflakeManager**: Manages connection lifecycle with context managers
+- **SnowflakeMetadata**: Caches table metadata to reduce queries
+- **SnowflakeDeleter**: Handles analysis and deletion with transactions
+
+### Security Best Practices
+- All user inputs are parameterized (no SQL injection risk)
+- Table and column names validated against metadata
+- Connection automatically closed even on exceptions
+- Transactions ensure atomic operations
+
+### Recovery
+If data is accidentally deleted, use Snowflake Time Travel:
+```sql
+-- Check the recovery timestamp in the logs
+-- Restore table to before deletion
+CREATE OR REPLACE TABLE my_table AS 
+SELECT * FROM my_table AT(TIMESTAMP => '2025-08-21T10:30:00'::timestamp);
+```
+
 ## Performance
 
 ### Benchmarks (50GB file, ~500M rows, 16-core system)
@@ -227,6 +306,44 @@ The system automatically detects CPU cores and allocates workers:
 - 9-16 cores: Use 75% of cores
 - 17-32 cores: Use 60% of cores
 - 33+ cores: Use 50% (max 32)
+
+## Utility Scripts
+
+### TSV Sampler (tsv_sampler.sh)
+Analyzes TSV files to help understand structure and create configurations.
+
+```bash
+# Sample first 1000 rows (default)
+./tsv_sampler.sh data/file_2024-01.tsv
+
+# Sample specific number of rows
+./tsv_sampler.sh data/file_2024-01.tsv 5000
+```
+
+Features:
+- Shows file size and total line count
+- Detects column count and headers
+- Performs data type inference
+- Identifies date columns automatically
+- Generates sample config JSON structure
+
+### Snowflake Table Checker (check_snowflake_table.py)
+Diagnostic tool for verifying table existence and structure in Snowflake.
+
+```bash
+# Check if table exists and get column info
+python3 check_snowflake_table.py config/config.json TABLE_NAME
+
+# Useful for debugging connection issues
+python3 check_snowflake_table.py config/config.json TEST_CUSTOM_FACTLENDINGBENCHMARK
+```
+
+Features:
+- Verifies Snowflake connection
+- Checks table existence in multiple schemas
+- Lists all columns with data types
+- Shows row count and table size
+- Helps debug permission issues
 
 ## File Patterns
 

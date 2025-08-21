@@ -1,5 +1,47 @@
 # CHANGELOG.md
 
+## [v3.0.0] - 2025-08-21 - Data Deletion Capability
+
+### Added - New drop_month.py Tool
+- **Production-ready data deletion tool** for safely removing monthly data from Snowflake tables
+  - Parameterized queries to prevent SQL injection attacks
+  - Multi-layer safety features (dry-run, preview, confirmation prompts)
+  - Transaction management with automatic rollback on errors
+  - Metadata caching for efficient validation
+  - Context managers for proper connection lifecycle
+  - Comprehensive audit logging with recovery timestamps
+  - Support for multiple tables and months in single operation
+  - JSON report generation for audit trails
+
+### Security Improvements
+- **SQL Injection Prevention**: All queries use parameterized bindings
+- **Metadata Validation**: Table and column names validated against cached schemas
+- **Resource Management**: Context managers ensure connections are always closed
+- **Specific Exception Handling**: Catches ProgrammingError instead of generic Exception
+
+### Architecture Enhancements
+- **Separation of Concerns**: Three focused classes instead of monolithic design
+  - SnowflakeManager: Connection lifecycle management
+  - SnowflakeMetadata: Cached metadata operations  
+  - SnowflakeDeleter: Business logic with transactions
+- **Performance Optimizations**:
+  - Metadata cached after first query (O(1) instead of O(n))
+  - Single analysis pass instead of redundant double execution
+  - Efficient batch processing with progress tracking
+
+### Documentation Updates
+- Added comprehensive implementation comparison document
+- Security best practices for destructive operations
+- Recovery procedures using Snowflake Time Travel
+- Updated README and CLAUDE.md with deletion tool usage
+
+### Development Process
+- Implemented initial version with comprehensive features
+- Critical review identified SQL injection vulnerability
+- Created improved version with security-first design
+- Compared implementations to identify best practices
+- Merged best features into production-ready version
+
 ## [2025-08-21] - Session Summary: Comprehensive Validation Enhancements
 
 ### Major Accomplishments

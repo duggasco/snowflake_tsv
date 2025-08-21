@@ -14,6 +14,15 @@
 
 ## 🔥 High Priority (Next Session)
 
+### Data Management Features
+- [ ] Implement drop_month.py for safe month-based data deletion
+- [ ] Add SnowflakeMonthDropper class with transaction management
+- [ ] Create comprehensive safety features (dry-run, preview, confirmation)
+- [ ] Add audit logging for all deletion operations
+- [ ] Create drop_month.sh bash wrapper for batch operations
+- [ ] Write unit and integration tests for deletion functionality
+- [ ] Document recovery procedures using Snowflake Time Travel
+
 ### Performance Optimization
 - [ ] Investigate streaming validation for file-based QC
 - [ ] Optimize memory usage for 50GB+ file processing

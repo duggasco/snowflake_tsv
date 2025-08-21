@@ -8,9 +8,14 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 
 ## Key Components
 
-### Main Script
+### Main Scripts
 - **tsv_loader.py**: The primary ETL script that orchestrates file analysis, quality checks, compression, and Snowflake loading
+- **drop_month.py**: Safe deletion tool for removing monthly data from Snowflake tables with comprehensive safety features
+- **drop_month.sh**: Bash wrapper for drop_month.py with colored output and safety warnings
 - **run_loader.sh**: Bash wrapper script for convenient execution with color-coded output and prerequisite checking
+- **generate_config.sh**: Automatic configuration generator from TSV files and Snowflake schemas
+- **tsv_sampler.sh**: TSV file analyzer that samples data to help understand structure and generate configurations
+- **check_snowflake_table.py**: Diagnostic tool for verifying table existence and debugging Snowflake connections
 
 ### Core Classes and Their Responsibilities
 
@@ -44,6 +49,31 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 - Handles file compression (gzip) before upload
 - Uses internal staging (@~/) for efficient bulk loading
 - Implements validation mode before actual data loading
+
+#### Drop Month Components (drop_month.py)
+
+##### DeletionTarget (dataclass)
+- Represents a single deletion operation with table, date column, month, and date range
+
+##### DeletionResult (dataclass)
+- Captures result of deletion including rows affected, status, and execution time
+
+##### SnowflakeManager
+- Manages Snowflake connection lifecycle using context managers
+- Provides automatic connection cleanup even on exceptions
+- Logs connection details for audit purposes
+
+##### SnowflakeMetadata
+- Caches table metadata to reduce redundant queries
+- Validates table and column existence before operations
+- Provides column name listing for validation
+
+##### SnowflakeDeleter
+- Executes deletion operations within managed transactions
+- Implements dry-run mode for impact analysis
+- Provides preview functionality to show sample rows
+- Ensures atomic operations with automatic rollback on errors
+- Validates row count consistency before committing
 
 #### ProgressTracker
 - Real-time progress bars using tqdm (when available)
@@ -136,10 +166,31 @@ python tsv_loader.py --config config/config.json --base-path ./data --month 2024
 ./run_loader.sh --batch --validate-in-snowflake --parallel 4
 ```
 
+### Data Deletion
+```bash
+# Dry run to preview impact
+python drop_month.py --config config/config.json --table MY_TABLE --month 2024-01 --dry-run
+
+# Delete with preview and confirmation
+python drop_month.py --config config/config.json --table MY_TABLE --month 2024-01 --preview
+
+# Delete multiple months (skip confirmation with --yes)
+python drop_month.py --config config/config.json --table MY_TABLE --months 2024-01,2024-02 --yes
+
+# Delete from all tables in config
+python drop_month.py --config config/config.json --all-tables --month 2024-01
+
+# Output deletion report
+python drop_month.py --config config/config.json --table MY_TABLE --month 2024-01 --output-json report.json
+```
+
 ### Debugging
 ```bash
 # Logs are automatically created in logs/ directory
 tail -f logs/tsv_loader_debug.log
+
+# Check deletion logs
+tail -f logs/drop_month_*.log
 
 # Check recent errors in a run
 grep -i "error\|failed" logs/run_*.log | tail -20
