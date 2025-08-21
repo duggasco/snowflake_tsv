@@ -1,180 +1,239 @@
-# PLAN.md
+# PLAN.md - Implementation Roadmap
+*Last Updated: 2025-08-21*
 
-## Current Focus: Fix Static Progress Bars in Parallel Mode
+## Project Vision
+Create a production-ready, enterprise-grade ETL pipeline for Snowflake that handles massive TSV files with comprehensive data quality validation and monitoring.
 
-### Problem Statement
-When using `--parallel` with `--quiet`, multiple static/dead progress bars accumulate on screen. Each file processed leaves behind a completed bar at 100%, causing visual clutter and confusion.
+## Current State (v2.0 - Validation Enhanced)
+✅ **Core Functionality**: Loading, validation, progress tracking
+✅ **Data Quality**: Anomaly detection, clear failure reasons
+✅ **Batch Processing**: Parallel execution with comprehensive summary
+✅ **User Experience**: Progress bars, always-visible critical data
 
-### Root Cause Analysis
-1. Bash script launches **separate Python processes** for parallel jobs
-2. Each process creates **new progress bars** for each file
-3. `leave=False` only cleans up when **process exits**, not between files
-4. Result: Dead bars accumulate as multiple files are processed
+## Phase 1: Performance & Reliability (Next Sprint)
+**Goal**: Handle 100GB+ files efficiently with <8GB memory usage
 
-### Solution Strategy: Bar Reuse Pattern
+### Week 1: Memory Optimization
+```python
+# Current Issue: Loading entire chunks in memory
+# Solution: Implement true streaming with generators
 
-Instead of creating new bars for each file, we'll:
-1. **Create bars once** when first needed
-2. **Reset and reuse** the same bar for subsequent files
-3. **Update description** to show current file being processed
+class StreamingValidator:
+    def validate_dates_streaming(self, file_path, chunk_size=10000):
+        """Generator-based validation to minimize memory"""
+        with open(file_path, 'r') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            chunk = []
+            for row in reader:
+                chunk.append(row)
+                if len(chunk) >= chunk_size:
+                    yield self.process_chunk(chunk)
+                    chunk = []
+```
 
-This approach:
-- Prevents accumulation of dead bars
-- Maintains clean visual output
-- Works correctly with parallel processes
-- Requires minimal code changes
+### Week 2: Error Recovery
+```python
+# Implement retry decorator with exponential backoff
+@retry(max_attempts=3, backoff_factor=2)
+def snowflake_operation(self, query):
+    try:
+        return self.cursor.execute(query)
+    except OperationalError as e:
+        if "timeout" in str(e):
+            self.reconnect()
+        raise
+```
 
-## Previous Focus: Complete Progress Bar System
+### Week 3: Checkpoint System
+```yaml
+# Checkpoint file structure
+checkpoint:
+  batch_id: "2024-01-batch-001"
+  status: "in_progress"
+  completed_months: ["2024-01", "2024-02"]
+  failed_months: ["2024-03"]
+  current_month: "2024-04"
+  current_file: 3
+  total_files: 10
+  last_update: "2025-08-21T10:30:00"
+```
 
-### Phase 1: Upload Progress Bar (Next Session Priority)
-**Goal**: Add real-time progress tracking for file uploads to Snowflake stage
+## Phase 2: Enhanced Reporting (Sprint 2)
+**Goal**: Comprehensive reporting with multiple output formats
 
-**Implementation Steps**:
-1. Research Snowflake PUT command progress capabilities
-   - Check if snowflake-connector-python supports callbacks
-   - Investigate chunked upload possibilities
-   - Look for async upload monitoring options
+### Validation Report Generator
+```python
+class ValidationReporter:
+    def generate_html_report(self, results):
+        """Create interactive HTML report with charts"""
+        # Use Plotly for interactive charts
+        # Include drill-down capability
+        # Export to PDF option
+    
+    def send_email_alert(self, results, recipients):
+        """Send formatted email with validation summary"""
+        # HTML email with inline charts
+        # Attach CSV for detailed analysis
+        # Include actionable recommendations
+```
 
-2. Implement start_file_upload() method in ProgressTracker
-   - Calculate upload position (compress_position + 1)
-   - Track file size and transfer rate
-   - Show filename being uploaded
-   - Display MB/s and ETA
+### Report Templates
+1. **Executive Summary**: High-level metrics, trends
+2. **Technical Report**: Detailed anomalies, SQL queries
+3. **Audit Trail**: Complete processing history
 
-3. Integration with SnowflakeLoader
-   - Hook into PUT command execution
-   - Update progress during transfer
-   - Handle connection interruptions gracefully
+## Phase 3: Advanced Validation (Sprint 3)
+**Goal**: Flexible, business-specific validation rules
 
-4. Testing
-   - Single file upload tracking
-   - Parallel upload progress
-   - Network interruption handling
-   - Various file sizes (1MB to 50GB)
+### Custom Validation Framework
+```python
+class ValidationRule:
+    def __init__(self, name, condition, severity):
+        self.name = name
+        self.condition = condition  # Lambda or SQL
+        self.severity = severity    # CRITICAL, WARNING, INFO
 
-### Phase 2: COPY Progress Bar
-**Goal**: Track Snowflake COPY operation progress
+# Example custom rules
+rules = [
+    ValidationRule(
+        name="Weekend Data Check",
+        condition="COUNT(*) WHERE DAYOFWEEK(date) IN (1,7)",
+        severity="WARNING"
+    ),
+    ValidationRule(
+        name="Month-End Spike",
+        condition="COUNT(*) WHERE DAY(date) = LAST_DAY(date)",
+        severity="INFO"
+    )
+]
+```
 
-**Implementation Steps**:
-1. Research COPY progress tracking options
-   - Query information_schema during COPY
-   - Use VALIDATION_MODE for estimation
-   - Check for progress callbacks
+### Business Day Validation
+- Skip weekends/holidays in completeness checks
+- Configure holiday calendars by region
+- Support for fiscal calendars
 
-2. Implement start_copy_operation() method
-   - Calculate copy position (upload_position + 1)
-   - Track rows processed
-   - Show rows/second rate
-   - Display target table name
+## Phase 4: Distributed Processing (Sprint 4)
+**Goal**: Scale to multiple TB with distributed computing
 
-3. Progress estimation strategies
-   - Pre-validate to get row count
-   - Monitor query_history during execution
-   - Use stage file metadata
+### Architecture Options
+1. **Dask Integration**
+   ```python
+   import dask.dataframe as dd
+   
+   def process_with_dask(file_path):
+       df = dd.read_csv(file_path, sep='\t', blocksize="256MB")
+       # Distributed processing across cores/nodes
+       result = df.groupby('date').count().compute()
+   ```
 
-4. Testing
-   - Various table sizes
-   - Different file formats
-   - Error handling during COPY
-   - Parallel COPY operations
+2. **Ray Implementation**
+   ```python
+   import ray
+   
+   @ray.remote
+   def process_file_chunk(chunk_path):
+       # Process chunk in parallel
+       return validate_chunk(chunk_path)
+   ```
 
-### Phase 3: Position Management Refactor
-**Goal**: Support 5 progress bars with dynamic positioning
+3. **Snowflake Native**
+   - Use Snowpark for server-side processing
+   - Leverage Snowflake's compute clusters
+   - Implement UDFs for custom validation
 
-**Tasks**:
-1. Update position calculations
-   - Base: Files (always shown)
-   - +1: QC Rows (if not skip_qc)
-   - +1: Compression (always during processing)
-   - +1: Upload (during PUT operation)
-   - +1: COPY (during COPY operation)
+## Phase 5: Enterprise Features (Sprint 5)
+**Goal**: Production-ready enterprise capabilities
 
-2. Bash script updates
-   - Dynamic lines_per_job calculation
-   - Handle all skip mode combinations
-   - Proper spacing for 5 bars
+### Security Enhancements
+- [ ] Encrypted credential storage (HashiCorp Vault)
+- [ ] SSO integration
+- [ ] Audit logging with tamper protection
+- [ ] Role-based access control
+- [ ] Data masking for sensitive columns
 
-3. Mode-specific bar counts
-   - --skip-qc: 4 bars (no QC)
-   - --validate-only: 1 bar (validation only)
-   - --analyze-only: 1 bar (analysis only)
-   - Normal: 5 bars (all operations)
+### Monitoring & Observability
+- [ ] Prometheus metrics export
+- [ ] Grafana dashboards
+- [ ] DataDog integration
+- [ ] Custom alerts and thresholds
+- [ ] SLA tracking and reporting
 
-### Phase 4: Performance Optimization
-**Goal**: Ensure progress tracking doesn't impact performance
+### CI/CD Pipeline
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy to Production
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Tests
+        run: |
+          python -m pytest tests/
+          python -m pytest integration/
+      - name: Deploy
+        if: success()
+        run: |
+          ./deploy.sh production
+```
 
-**Considerations**:
-1. Update frequency throttling
-   - Limit updates to every 100ms
-   - Batch small updates
-   - Skip updates for tiny files
+## Phase 6: UI/Dashboard (Future)
+**Goal**: Web-based monitoring and management
 
-2. Memory management
-   - Close unused progress bars immediately
-   - Reuse bar objects where possible
-   - Monitor memory during large operations
+### Technology Stack
+- **Backend**: FastAPI + SQLAlchemy
+- **Frontend**: React + Material-UI
+- **Real-time**: WebSockets for live updates
+- **Charts**: D3.js for custom visualizations
 
-3. Thread safety
-   - Ensure locks don't cause deadlocks
-   - Minimize lock contention
-   - Test with high parallelism
+### Features
+1. Real-time progress monitoring
+2. Historical trend analysis
+3. Drag-and-drop file upload
+4. Visual validation rule builder
+5. Automated report scheduling
 
-## Implementation Priority Order
-
-1. **Week 1**: Upload Progress Bar
-   - Research and prototype
-   - Basic implementation
-   - Single file testing
-
-2. **Week 2**: COPY Progress Bar
-   - Research tracking options
-   - Implementation
-   - Integration testing
-
-3. **Week 3**: Position Management
-   - Refactor calculations
-   - Update bash script
-   - Test all modes
-
-4. **Week 4**: Polish and Optimization
-   - Performance testing
-   - Edge case handling
-   - Documentation update
-
-## Success Criteria
-
-- [ ] All 5 progress bars display correctly
-- [ ] No overlap in parallel mode (3+ jobs)
-- [ ] Quiet mode shows only progress bars
-- [ ] < 1% performance impact from tracking
-- [ ] Clean error handling and recovery
-- [ ] Works with files from 1KB to 50GB
+## Success Metrics
+- [ ] Process 100GB file in <2 hours
+- [ ] Memory usage <8GB for any file size
+- [ ] 99.9% uptime for batch processing
+- [ ] <5 minute MTTR for common errors
+- [ ] 100% validation coverage
 
 ## Risk Mitigation
+1. **Performance Degradation**
+   - Implement performance benchmarks
+   - Set up automated alerts for slowdowns
+   - Regular performance tuning sessions
 
-1. **Snowflake API Limitations**
-   - Fallback: Estimate progress based on file size
-   - Alternative: Show spinner instead of progress
+2. **Data Quality Issues**
+   - Comprehensive validation before production
+   - Rollback mechanisms for bad data
+   - Data quality SLAs with upstream systems
 
-2. **Performance Impact**
-   - Throttle updates for large operations
-   - Make progress bars optional (--no-progress flag)
+3. **Scalability Bottlenecks**
+   - Load testing with synthetic data
+   - Capacity planning models
+   - Auto-scaling configurations
 
-3. **Terminal Compatibility**
-   - Test on various terminals
-   - Fallback to simple text output
-   - Handle missing tqdm gracefully
+## Technical Decisions
+1. **Why Python?** - Snowflake SDK support, data science ecosystem
+2. **Why tqdm?** - Best-in-class progress bars, minimal overhead
+3. **Why multiprocessing?** - True parallelism for CPU-bound operations
+4. **Why JSON configs?** - Human-readable, version-controllable
+5. **Why bash wrapper?** - Easy integration with schedulers, colored output
 
-## Dependencies to Research
+## Next Actions (Immediate)
+1. Create feature branch for memory optimization
+2. Set up performance benchmarking suite
+3. Document current memory bottlenecks
+4. Research streaming libraries (ijson, pandas chunks)
+5. Create test dataset for 100GB file
 
-- Snowflake Python connector progress callbacks
-- Azure blob storage transfer progress APIs
-- Alternative progress bar libraries (rich, alive-progress)
-- Async monitoring capabilities
-
-## Notes
-
-- Keep --quiet mode as the gold standard
-- Progress bars should enhance, not hinder
-- Consider colorization for different operations
-- Document all new environment variables
+---
+*This plan provides a clear roadmap for evolving the ETL pipeline into an enterprise-grade solution*
