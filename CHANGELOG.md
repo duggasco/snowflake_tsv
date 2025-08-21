@@ -1,5 +1,37 @@
 # CHANGELOG.md
 
+## [2025-08-21] - Enhanced: Clear Validation Failure Explanations
+
+### Feature Enhancement
+- **Clear Failure Reasons**: Validation now explicitly states WHY it failed
+- **Improved Date Range Display**: Shows both "Requested" and "Found" date ranges
+- **Specific Issue Identification**: Distinguishes between missing dates, gaps, and anomalies
+
+### Implementation Details
+- Added `failure_reasons` list to validation results
+- Shows failure reasons prominently before statistics
+- Categorizes issues:
+  - Missing X dates (found Y of Z expected)
+  - Found X gap(s) in date sequence
+  - X date(s) with critically low row counts (<10% of average)
+  - X date(s) with anomalous row counts
+
+### Benefits
+- Clear understanding of validation failures even when date ranges match
+- Easier troubleshooting of data quality issues
+- More actionable information for fixing problems
+- Reduces confusion when dates exist but have low row counts
+
+### Example Output
+```
+❌ VALIDATION FAILED BECAUSE:
+  • 3 date(s) with critically low row counts (<10% of average)
+
+Date Range Requested: 2024-01-01 to 2024-01-31
+Date Range Found: 2024-01-01 to 2024-01-31
+Unique Dates: 31 of 31 expected
+```
+
 ## [2025-08-21] - Enhanced: Validation Progress Bars and Always-Visible Results
 
 ### Feature Enhancement

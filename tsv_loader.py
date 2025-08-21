@@ -858,9 +858,30 @@ class SnowflakeDataValidator:
                                 'percent_of_avg': (count / row_count_stats['mean'] * 100) if row_count_stats.get('mean', 0) > 0 else 0
                             })
             
+            # Determine validation status and failure reasons
+            has_gaps = len(gaps) > 0
+            has_missing_dates = unique_dates != expected_days
+            has_anomalies = len(anomalous_dates) > 0
+            is_valid = not (has_gaps or has_missing_dates or has_anomalies)
+            
+            # Build list of failure reasons
+            failure_reasons = []
+            if has_missing_dates:
+                missing_count = expected_days - unique_dates
+                failure_reasons.append(f"Missing {missing_count} dates (found {unique_dates} of {expected_days} expected)")
+            if has_gaps:
+                failure_reasons.append(f"Found {len(gaps)} gap(s) in date sequence")
+            if has_anomalies:
+                severely_low = len([a for a in anomalous_dates if a.get('severity') == 'SEVERELY_LOW'])
+                if severely_low > 0:
+                    failure_reasons.append(f"{severely_low} date(s) with critically low row counts (<10% of average)")
+                else:
+                    failure_reasons.append(f"{len(anomalous_dates)} date(s) with anomalous row counts")
+            
             # Compile validation results with enhanced statistics
             validation_result = {
-                'valid': len(gaps) == 0 and unique_dates == expected_days and len(anomalous_dates) == 0,
+                'valid': is_valid,
+                'failure_reasons': failure_reasons,
                 'table_name': table_name,
                 'date_column': date_column,
                 'date_range': {
@@ -1803,9 +1824,15 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                         logger.info("{} passed Snowflake validation".format(config.table_name))
                     else:
                         validation_failed = True
-                        logger.warning("{} failed validation: {}".format(
-                            config.table_name,
-                            validation_result.get('warnings', ['Unknown issue'])[0] if validation_result.get('warnings') else 'Unknown issue'))
+                        # Use failure reasons if available, otherwise fall back to warnings
+                        failure_msg = validation_result.get('failure_reasons', [])
+                        if failure_msg:
+                            logger.warning("{} failed validation: {}".format(
+                                config.table_name, '; '.join(failure_msg)))
+                        else:
+                            logger.warning("{} failed validation: {}".format(
+                                config.table_name,
+                                validation_result.get('warnings', ['Unknown issue'])[0] if validation_result.get('warnings') else 'Unknown issue'))
                 
                 if val_pbar:
                     val_pbar.close()
@@ -2078,15 +2105,27 @@ def main():
                     print("  Avg Rows/Day: {:,.0f}".format(stats.get('avg_rows_per_day', 0)))
             else:
                 print("  Status: ✗ INVALID")
+                
+                # Show clear failure reasons first
+                if result.get('failure_reasons'):
+                    print("\n  ❌ VALIDATION FAILED BECAUSE:")
+                    for reason in result['failure_reasons']:
+                        print(f"    • {reason}")
+                
                 if 'statistics' in result:
                     stats = result['statistics']
-                    print("  Date Range: {} to {}".format(
+                    print("\n  Date Range Requested: {} to {}".format(
+                        result.get('date_range', {}).get('requested_start', 'N/A'),
+                        result.get('date_range', {}).get('requested_end', 'N/A')))
+                    print("  Date Range Found: {} to {}".format(
                         result.get('date_range', {}).get('actual_min', 'N/A'),
                         result.get('date_range', {}).get('actual_max', 'N/A')))
                     print("  Total Rows: {:,}".format(stats.get('total_rows', 0)))
-                    print("  Unique Dates: {}".format(stats.get('unique_dates', 0)))
-                    print("  Expected Dates: {}".format(stats.get('expected_dates', 0)))
-                    print("  Missing Dates: {}".format(stats.get('missing_dates', 0)))
+                    print("  Unique Dates: {} of {} expected".format(
+                        stats.get('unique_dates', 0),
+                        stats.get('expected_dates', 0)))
+                    if stats.get('missing_dates', 0) > 0:
+                        print("  Missing Dates: {} completely absent".format(stats.get('missing_dates', 0)))
                     print("  Avg Rows/Day: {:,.0f}".format(stats.get('avg_rows_per_day', 0)))
                     
                     # Show row count analysis if available
