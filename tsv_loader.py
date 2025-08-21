@@ -744,9 +744,9 @@ class SnowflakeDataValidator:
                 s.q3,
                 CASE 
                     WHEN dc.row_count < (s.avg_count * 0.1) THEN 'SEVERELY_LOW'
-                    WHEN dc.row_count < (s.q1 - 1.5 * (s.q3 - s.q1)) THEN 'OUTLIER_LOW'
                     WHEN dc.row_count < (s.avg_count * 0.5) THEN 'LOW'
-                    WHEN dc.row_count > (s.q3 + 1.5 * (s.q3 - s.q1)) THEN 'OUTLIER_HIGH'
+                    WHEN dc.row_count < (s.avg_count * 0.9) THEN 'OUTLIER_LOW'
+                    WHEN dc.row_count > (s.avg_count * 1.1) THEN 'OUTLIER_HIGH'
                     ELSE 'NORMAL'
                 END as anomaly_flag
             FROM daily_counts dc
@@ -1858,11 +1858,43 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
     if analysis_results and analysis_results['total_rows'] > 0:
         print("Average Rate: {:.0f} rows/second".format(
             analysis_results['total_rows'] / elapsed))
+    
+    # Add validation summary if available
+    if results.get('validation_results'):
+        print("\n" + "="*60)
+        print("VALIDATION SUMMARY")
+        print("="*60)
+        
+        valid_count = sum(1 for r in results['validation_results'] if r.get('valid'))
+        invalid_count = len(results['validation_results']) - valid_count
+        
+        print("Tables Validated: {}".format(len(results['validation_results'])))
+        print("  ✓ Valid: {}".format(valid_count))
+        print("  ✗ Invalid: {}".format(invalid_count))
+        
+        if invalid_count > 0:
+            print("\nFailed Tables:")
+            for result in results['validation_results']:
+                if not result.get('valid'):
+                    table_name = result.get('table_name', 'Unknown')
+                    reasons = result.get('failure_reasons', [])
+                    if reasons:
+                        print("  • {} - {}".format(table_name, '; '.join(reasons)))
+                    else:
+                        print("  • {} - Unknown failure reason".format(table_name))
+        
+        # Count anomalies across all tables
+        total_anomalies = sum(
+            result.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
+            for result in results['validation_results']
+        )
+        if total_anomalies > 0:
+            print("\nTotal Anomalous Dates: {} across all tables".format(total_anomalies))
 
     logger.info("Processing complete in {:.1f} seconds".format(elapsed))
     
-    # Return empty dict for non-validate modes
-    return {}
+    # Return results including validation results
+    return results
 
 def main():
     global logger
@@ -2168,11 +2200,12 @@ def main():
                                     anomaly['percent_of_avg']))
                         
                         if outlier_low:
-                            print("    STATISTICAL OUTLIERS:")
+                            print("    OUTLIERS (10-50% below average):")
                             for anomaly in outlier_low[:3]:
                                 expected_min = anomaly.get('expected_range', [0, 0])[0]
-                                print("      • {} → {} rows (expected ~{:,})".format(
-                                    anomaly['date'], anomaly['count'], expected_min))
+                                print("      • {} → {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
+                                    anomaly['date'], anomaly['count'], expected_min,
+                                    anomaly['percent_of_avg']))
                         
                         total_shown = len(severely_low[:5]) + len(low[:3]) + len(outlier_low[:3])
                         if len(result['anomalous_dates']) > total_shown:
