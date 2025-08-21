@@ -1001,7 +1001,7 @@ class SnowflakeDataValidator:
         self.logger.debug("Validator connection closed")
 
 class SnowflakeLoader:
-    """Snowflake loading with streaming compression"""
+    """Snowflake loading with streaming compression and async support for large files"""
     
     def __init__(self, connection_params: Dict, progress_tracker=None):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -1010,9 +1010,130 @@ class SnowflakeLoader:
         try:
             self.conn = snowflake.connector.connect(**connection_params)
             self.cursor = self.conn.cursor()
-            self.logger.info("Snowflake connection established")
+            # Set ABORT_DETACHED_QUERY to FALSE to allow long-running async queries
+            self.cursor.execute("ALTER SESSION SET ABORT_DETACHED_QUERY = FALSE")
+            
+            # Check warehouse size and warn if too small
+            self.cursor.execute("SELECT CURRENT_WAREHOUSE()")
+            current_wh = self.cursor.fetchone()[0]
+            self.cursor.execute("SHOW WAREHOUSES")
+            warehouses = self.cursor.fetchall()
+            
+            for wh in warehouses:
+                if wh[0] == current_wh:
+                    wh_size = wh[2]
+                    self.logger.info(f"Using warehouse: {current_wh} (Size: {wh_size})")
+                    if wh_size in ['X-Small', 'Small']:
+                        self.logger.warning("WARNING: Small warehouse may cause slow performance for large files")
+                        print(f"⚠️  WARNING: Warehouse '{current_wh}' is {wh_size}")
+                        print("   For files >100MB, consider using: ALTER WAREHOUSE {} SET WAREHOUSE_SIZE = 'MEDIUM';".format(current_wh))
+                    break
+            
+            self.logger.info("Snowflake connection established with async support enabled")
         except Exception as e:
             self.logger.error("Failed to connect to Snowflake: {}".format(e))
+            raise
+    
+    def execute_copy_async(self, copy_query: str, table_name: str, estimated_rows: int):
+        """Execute COPY command asynchronously with progress monitoring for large files"""
+        import re
+        import time
+        
+        self.logger.info("Starting async COPY for {} (estimated {} rows)".format(
+            table_name, "{:,}".format(estimated_rows)))
+        print("Executing async COPY for {} (this may take several minutes for large files)...".format(table_name))
+        
+        try:
+            # Execute COPY command asynchronously
+            self.logger.debug("Executing COPY with execute_async()")
+            query_id = self.cursor.execute_async(copy_query).get('queryId')
+            self.logger.info("Async COPY submitted with query ID: {}".format(query_id))
+            
+            # Start progress tracking
+            if self.progress_tracker:
+                self.progress_tracker.start_copy_operation(table_name, estimated_rows)
+            
+            # Polling configuration
+            poll_interval = 30  # Status update every 30 seconds
+            keepalive_interval = 240  # Keepalive every 4 minutes  
+            max_wait_time = 7200  # Max 2 hours
+            
+            start_time = time.time()
+            last_keepalive = start_time
+            last_status_update = start_time
+            
+            # Poll for completion
+            while True:
+                elapsed_time = time.time() - start_time
+                
+                # Check timeout
+                if elapsed_time > max_wait_time:
+                    self.logger.error("COPY operation timed out after {} minutes".format(max_wait_time/60))
+                    raise Exception("COPY operation timed out after {} minutes".format(max_wait_time/60))
+                
+                # Check query status
+                status = self.conn.get_query_status(query_id)
+                
+                if not self.conn.is_still_running(status):
+                    # Query completed
+                    break
+                
+                # Send keepalive to prevent 5-minute timeout
+                if time.time() - last_keepalive > keepalive_interval:
+                    self.logger.debug("Sending keepalive for query {}".format(query_id))
+                    try:
+                        # query_result prevents query cancellation
+                        self.cursor.get_results_from_sfqid(query_id)
+                    except:
+                        # Expected to fail while query is running, just prevents timeout
+                        pass
+                    last_keepalive = time.time()
+                
+                # Status update for user
+                if time.time() - last_status_update > poll_interval:
+                    elapsed_mins = elapsed_time / 60
+                    self.logger.info("COPY still running after {:.1f} minutes...".format(elapsed_mins))
+                    print("Still copying... ({:.1f} minutes elapsed)".format(elapsed_mins))
+                    last_status_update = time.time()
+                    
+                    # Update progress tracker (estimate)
+                    if self.progress_tracker:
+                        # Rough progress estimate based on time
+                        progress_pct = min(elapsed_time / 600, 0.9)  # Assume ~10 min for large files
+                        self.progress_tracker.update(copied_rows=int(estimated_rows * progress_pct / 10))
+                
+                # Short sleep between status checks
+                time.sleep(5)
+            
+            # Check for errors
+            self.conn.get_query_status_throw_if_error(query_id)
+            
+            # Get results
+            copy_result = self.cursor.get_results_from_sfqid(query_id)
+            
+            # Extract rows loaded
+            rows_loaded = 0
+            for row in copy_result:
+                if row[0] and 'rows_loaded' in str(row[0]).lower():
+                    match = re.search(r'(\d+)', str(row[0]))
+                    if match:
+                        rows_loaded = int(match.group(1))
+                        break
+            
+            # Complete progress tracking
+            if self.progress_tracker:
+                self.progress_tracker.update(copied_rows=estimated_rows)
+            
+            copy_time = time.time() - start_time
+            self.logger.info("Async COPY completed in {:.1f} seconds ({:,.0f} rows loaded, {:,.0f} rows/sec)".format(
+                copy_time, rows_loaded, rows_loaded / copy_time if copy_time > 0 else 0))
+            print("COPY completed successfully ({:,} rows loaded in {:.1f} minutes)".format(
+                rows_loaded, copy_time / 60))
+            
+            return rows_loaded
+            
+        except Exception as e:
+            self.logger.error("Async COPY failed for {}: {}".format(table_name, e))
             raise
 
     def load_file_to_stage_and_table(self, config: FileConfig):
@@ -1036,11 +1157,45 @@ class SnowflakeLoader:
             # This is critical for parallel processing to prevent file corruption
             timestamp = int(time.time() * 1000)  # millisecond timestamp
             file_basename = os.path.basename(config.file_path).replace('.tsv', '')
+            
+            # Clean up old stages for this table/file combination first
+            old_stage_pattern = "@~/tsv_stage/{}/{}_*/".format(config.table_name, file_basename)
+            try:
+                self.logger.debug("Cleaning up old stages matching: {}".format(old_stage_pattern))
+                self.cursor.execute("REMOVE {}".format(old_stage_pattern))
+                self.logger.debug("Old stages cleaned up")
+            except Exception as e:
+                self.logger.debug("No old stages to clean or cleanup failed: {}".format(e))
+            
             stage_name = "@~/tsv_stage/{}/{}_{}/".format(config.table_name, file_basename, timestamp)
             self.logger.debug("Using stage: {}".format(stage_name))
 
             # Stream compress file
             compressed_file = "{}.gz".format(config.file_path)
+            
+            # Check if compressed file already exists
+            if os.path.exists(compressed_file):
+                existing_size = os.path.getsize(compressed_file) / (1024 * 1024)
+                original_size = os.path.getsize(config.file_path) / (1024 * 1024)
+                compression_ratio = (existing_size / original_size) * 100 if original_size > 0 else 0
+                
+                self.logger.warning("Compressed file already exists: {} ({:.1f} MB)".format(
+                    compressed_file, existing_size))
+                self.logger.warning("Original file: {:.1f} MB, Compression ratio: {:.1f}%".format(
+                    original_size, compression_ratio))
+                
+                # If compression ratio is suspiciously high (< 8%) or low (> 40%), recompress
+                if compression_ratio < 8 or compression_ratio > 40:
+                    self.logger.warning("Suspicious compression ratio {:.1f}%, removing and recompressing".format(
+                        compression_ratio))
+                    print("WARNING: Existing compressed file has suspicious size, recompressing...")
+                    os.remove(compressed_file)
+                else:
+                    self.logger.info("Using existing compressed file with normal ratio {:.1f}%".format(
+                        compression_ratio))
+                    print("Using existing compressed file ({:.1f} MB, {:.1f}% of original)".format(
+                        existing_size, compression_ratio))
+            
             if not os.path.exists(compressed_file):
                 print("Compressing {} (streaming)...".format(config.file_path))
                 self.logger.debug("Streaming compression to {}".format(compressed_file))
@@ -1087,7 +1242,20 @@ class SnowflakeLoader:
                                 self.progress_tracker.update(compressed_mb=mb_to_update)
 
                 compression_time = time.time() - start_time
-                self.logger.debug("Compression completed in {:.1f} seconds".format(compression_time))
+                
+                # Verify compression results
+                final_compressed_size = os.path.getsize(compressed_file) / (1024 * 1024)
+                original_size_mb = file_size / (1024 * 1024)
+                final_ratio = (final_compressed_size / original_size_mb) * 100 if original_size_mb > 0 else 0
+                
+                self.logger.info("Compression completed in {:.1f} seconds".format(compression_time))
+                self.logger.info("Original size: {:.1f} MB, Compressed size: {:.1f} MB".format(
+                    original_size_mb, final_compressed_size))
+                self.logger.info("Compression ratio: {:.1f}% of original, {:.1f}x reduction".format(
+                    final_ratio, original_size_mb / final_compressed_size if final_compressed_size > 0 else 0))
+                
+                print("Compression complete: {:.1f} MB -> {:.1f} MB ({:.1f}% of original)".format(
+                    original_size_mb, final_compressed_size, final_ratio))
 
             # PUT file to stage
             # Reduce PARALLEL setting to 4 to avoid overwhelming the system during concurrent uploads
@@ -1115,6 +1283,8 @@ class SnowflakeLoader:
                 upload_time, compressed_size_mb / upload_time if upload_time > 0 else 0))
 
             # COPY INTO table
+            # IMPORTANT: Using ABORT_STATEMENT for fast failure instead of CONTINUE
+            # CONTINUE causes extremely slow row-by-row processing on errors
             copy_query = """
             COPY INTO {}
             FROM {}
@@ -1128,7 +1298,8 @@ class SnowflakeLoader:
                 TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS'
                 NULL_IF = ('', 'NULL', 'null', '\\N')
             )
-            ON_ERROR = 'CONTINUE'
+            ON_ERROR = 'ABORT_STATEMENT'
+            PURGE = TRUE
             VALIDATION_MODE = 'RETURN_ERRORS'
             """.format(config.table_name, stage_name)
 
@@ -1136,44 +1307,64 @@ class SnowflakeLoader:
             print("Validating data...")
             self.logger.debug("Running validation")
             validation_result = self.cursor.execute(
-                copy_query.replace("ON_ERROR = 'CONTINUE'", "")
+                copy_query.replace("ON_ERROR = 'ABORT_STATEMENT'", "")
             ).fetchall()
 
             if validation_result:
-                self.logger.warning("Validation errors found: {}".format(validation_result))
-                print("Validation errors found: {}".format(validation_result))
+                self.logger.error("Validation errors found, aborting load: {}".format(validation_result))
+                print("ERROR: Validation failed. Data has errors that must be fixed:")
+                for error in validation_result[:10]:  # Show first 10 errors
+                    print(f"  - {error}")
+                if len(validation_result) > 10:
+                    print(f"  ... and {len(validation_result) - 10} more errors")
+                raise Exception("Data validation failed. Fix data errors before loading.")
 
             # If validation passes, do actual copy
-            print("Copying data to {}...".format(config.table_name))
+            # Determine whether to use async based on compressed file size
+            compressed_size = os.path.getsize(compressed_file)
+            compressed_size_mb = compressed_size / (1024 * 1024)
+            use_async = compressed_size_mb > 100  # Use async for files > 100MB
             
             # Get row count for progress tracking (quick estimate from file analysis if available)
             # We'll use the file size as a proxy for now since exact row count requires full scan
             estimated_rows = int(file_size_mb * 50000)  # Rough estimate: 50K rows per MB
-            if self.progress_tracker:
-                self.progress_tracker.start_copy_operation(config.table_name, estimated_rows)
             
-            self.logger.debug("Executing COPY command")
-            copy_start = time.time()
-            copy_result = self.cursor.execute(copy_query.replace("VALIDATION_MODE = 'RETURN_ERRORS'", ""))
-            copy_time = time.time() - copy_start
+            # Execute COPY command
+            final_copy_query = copy_query.replace("VALIDATION_MODE = 'RETURN_ERRORS'", "")
             
-            # Get actual rows loaded from result
-            rows_loaded = 0
-            for row in copy_result:
-                if row[0] and 'rows_loaded' in str(row[0]).lower():
-                    # Extract number from result
-                    import re
-                    match = re.search(r'(\d+)', str(row[0]))
-                    if match:
-                        rows_loaded = int(match.group(1))
-                        break
-            
-            # Complete COPY progress
-            if self.progress_tracker:
-                self.progress_tracker.update(copied_rows=estimated_rows)
-            
-            self.logger.debug("COPY completed in {:.1f} seconds ({:,.0f} rows/sec)".format(
-                copy_time, rows_loaded / copy_time if copy_time > 0 and rows_loaded > 0 else 0))
+            if use_async:
+                self.logger.info("Using async COPY for large file ({:.1f} MB compressed)".format(compressed_size_mb))
+                rows_loaded = self.execute_copy_async(final_copy_query, config.table_name, estimated_rows)
+            else:
+                # Use synchronous for smaller files
+                print("Copying data to {} (sync mode)...".format(config.table_name))
+                
+                if self.progress_tracker:
+                    self.progress_tracker.start_copy_operation(config.table_name, estimated_rows)
+                
+                self.logger.debug("Executing synchronous COPY command")
+                copy_start = time.time()
+                copy_result = self.cursor.execute(final_copy_query)
+                copy_time = time.time() - copy_start
+                
+                # Get actual rows loaded from result
+                rows_loaded = 0
+                for row in copy_result:
+                    if row[0] and 'rows_loaded' in str(row[0]).lower():
+                        # Extract number from result
+                        import re
+                        match = re.search(r'(\d+)', str(row[0]))
+                        if match:
+                            rows_loaded = int(match.group(1))
+                            break
+                
+                # Complete COPY progress
+                if self.progress_tracker:
+                    self.progress_tracker.update(copied_rows=estimated_rows)
+                
+                self.logger.debug("COPY completed in {:.1f} seconds ({:,.0f} rows/sec)".format(
+                    copy_time, rows_loaded / copy_time if copy_time > 0 and rows_loaded > 0 else 0))
+                print("Successfully loaded {:,} rows".format(rows_loaded))
 
             # Clean up stage
             self.logger.debug("Removing stage")
