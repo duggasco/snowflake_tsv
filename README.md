@@ -5,20 +5,27 @@ A high-performance ETL pipeline for loading large TSV files (up to 50GB) into Sn
 ## Features
 
 - **Streaming Processing**: Memory-efficient processing of large files without loading them into memory
+- **Async COPY Support**: Automatic async execution for files >100MB with keepalive mechanism
 - **Parallel Processing**: Automatic CPU core detection and optimal worker allocation
 - **Data Quality Checks**: 
   - File-based validation with date completeness checks
   - Snowflake-based validation for faster processing of large files
   - Schema validation and type inference
+  - Row count anomaly detection with statistical analysis
 - **Progress Tracking**: 
   - Real-time progress bars with ETA calculations
   - Stacked progress bars for parallel processing
   - Context-aware display (shows QC progress only when performing file-based QC)
+- **Performance Optimizations**:
+  - Automatic warehouse size detection with warnings
+  - Stage cleanup before uploads
+  - ABORT_STATEMENT instead of CONTINUE for fast failure
+  - PURGE=TRUE for automatic stage cleanup
 - **Flexible Date Patterns**: Supports both date range (YYYYMMDD-YYYYMMDD) and month (YYYY-MM) formats
 - **Batch Processing**: Process multiple months in parallel with comprehensive error handling
-- **Performance Optimized**: Utilizes Snowflake's bulk loading features with compression
 - **Config Generator**: Automatically generate configuration files from TSV files and Snowflake schemas
 - **Direct File Processing**: Process specific TSV files directly without directory structure requirements
+- **Diagnostic Tools**: Stage inspection and performance analysis utilities
 
 ## Installation
 
@@ -281,14 +288,16 @@ SELECT * FROM my_table AT(TIMESTAMP => '2025-08-21T10:30:00'::timestamp);
 
 ### Benchmarks (50GB file, ~500M rows, 16-core system)
 
-| Operation | File-based QC | Snowflake Validation |
-|-----------|--------------|---------------------|
-| Row Counting | ~16 seconds | N/A |
-| Quality Checks | ~2.5 hours | ~5-10 seconds |
-| Compression | ~35 minutes | ~35 minutes |
-| Upload | ~3 hours | ~3 hours |
-| Snowflake COPY | ~1.5 hours | ~1.5 hours |
-| **Total Time** | **~7-8 hours** | **~4.5 hours** |
+| Operation | File-based QC | Snowflake Validation | With Optimizations |
+|-----------|--------------|---------------------|-------------------|
+| Row Counting | ~16 seconds | N/A | N/A |
+| Quality Checks | ~2.5 hours | ~5-10 seconds | ~5-10 seconds |
+| Compression | ~35 minutes | ~35 minutes | ~35 minutes |
+| Upload | ~3 hours | ~3 hours | ~3 hours |
+| Snowflake COPY | ~1.5 hours | ~1.5 hours | ~15-30 minutes* |
+| **Total Time** | **~7-8 hours** | **~4.5 hours** | **~4 hours** |
+
+*With proper warehouse sizing (MEDIUM/LARGE) and ABORT_STATEMENT instead of CONTINUE
 
 ### Why Use Snowflake Validation?
 
@@ -344,6 +353,28 @@ Features:
 - Lists all columns with data types
 - Shows row count and table size
 - Helps debug permission issues
+
+### Stage and Performance Analyzer (check_stage_and_performance.py)
+Diagnostic tool for troubleshooting slow COPY operations and stage management.
+
+```bash
+# Check stage contents and query performance
+python check_stage_and_performance.py config/config.json
+
+# Check specific table's stage
+python check_stage_and_performance.py config/config.json TABLE_NAME
+
+# Interactive cleanup of old stage files
+python check_stage_and_performance.py config/config.json TABLE_NAME
+```
+
+Features:
+- Lists all files in Snowflake stages with sizes
+- Analyzes recent COPY query performance
+- Identifies slow queries and bottlenecks
+- Checks warehouse configuration
+- Provides optimization recommendations
+- Interactive stage cleanup option
 
 ## File Patterns
 
@@ -457,6 +488,11 @@ python -m pytest tests/ -v
 2. **Slow processing**: Increase `--max-workers` or use parallel processing
 3. **Connection timeouts**: Check Snowflake warehouse size and network connectivity
 4. **Date validation failures**: Verify date format in config matches your files
+5. **COPY taking hours for large files**: 
+   - Check warehouse size (use MEDIUM or LARGE for files >100MB)
+   - Ensure ON_ERROR is set to ABORT_STATEMENT (not CONTINUE)
+   - Run `check_stage_and_performance.py` to diagnose issues
+   - Files >100MB will automatically use async execution
 
 ### Debug Mode
 

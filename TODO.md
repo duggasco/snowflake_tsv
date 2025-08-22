@@ -1,7 +1,7 @@
 # TODO.md - Snowflake TSV Loader
 *Last Updated: 2025-08-21*
 
-## ✅ Completed (This Session - 2025-08-21)
+## ✅ Completed (2025-08-21)
 - [x] Fix critical IndentationError in validation code
 - [x] Add row count anomaly detection to validation
 - [x] Implement 10% threshold for outliers (normal variance)
@@ -10,18 +10,21 @@
 - [x] Ensure validation results always visible (even in quiet mode)
 - [x] Add comprehensive batch summary at end of runs
 - [x] Fix static progress bar accumulation issue
-- [x] Create comprehensive CONTEXT_HANDOVER.md
+- [x] **Implement drop_month.py for safe month-based data deletion** ✅
+- [x] **Add SnowflakeDeleter class with transaction management** ✅
+- [x] **Create comprehensive safety features (dry-run, preview, confirmation)** ✅
+- [x] **Add audit logging for all deletion operations** ✅
+- [x] **Create drop_month.sh bash wrapper for batch operations** ✅
+- [x] **Document recovery procedures using Snowflake Time Travel** ✅
+- [x] **Fix "ping pong" issue with long-running COPY operations** ✅
+- [x] **Add async execution for files >100MB** ✅
+- [x] **Implement keepalive mechanism to prevent query cancellation** ✅
+- [x] **Fix slow COPY (ON_ERROR='CONTINUE' → 'ABORT_STATEMENT')** ✅
+- [x] **Add warehouse size detection and warnings** ✅
+- [x] **Implement automatic stage cleanup** ✅
+- [x] **Create performance diagnostic tool (check_stage_and_performance.py)** ✅
 
 ## 🔥 High Priority (Next Session)
-
-### Data Management Features
-- [ ] Implement drop_month.py for safe month-based data deletion
-- [ ] Add SnowflakeMonthDropper class with transaction management
-- [ ] Create comprehensive safety features (dry-run, preview, confirmation)
-- [ ] Add audit logging for all deletion operations
-- [ ] Create drop_month.sh bash wrapper for batch operations
-- [ ] Write unit and integration tests for deletion functionality
-- [ ] Document recovery procedures using Snowflake Time Travel
 
 ### Performance Optimization
 - [ ] Investigate streaming validation for file-based QC
@@ -33,8 +36,8 @@
 ### Error Recovery & Resilience
 - [ ] Add retry mechanism for failed Snowflake operations
 - [ ] Implement checkpoint/resume for interrupted batch runs
-- [ ] Better error messages for common issues
-- [ ] Add timeout handling for long-running operations
+- [ ] Better error messages for common issues (partially done)
+- [ ] Add timeout handling for long-running operations (partially done with async)
 - [ ] Implement graceful degradation when tqdm unavailable
 
 ### Enhanced Reporting
@@ -86,16 +89,18 @@
 ### Documentation
 - [ ] API documentation with Sphinx
 - [ ] Video tutorials
-- [ ] Troubleshooting guide
-- [ ] Performance tuning guide
+- [ ] Troubleshooting guide (partially done in README)
+- [ ] Performance tuning guide (partially done in README)
 - [ ] Architecture diagrams
 
-## 🐛 Known Bugs
+## 🐛 Known Bugs (Some Fixed)
 - [ ] Progress bars can overlap if terminal is resized during execution
 - [ ] Memory usage high for file-based QC on 50GB+ files
 - [ ] Date format limited to YYYYMMDD only
 - [ ] Validation results not aggregated for non-batch runs
 - [ ] No cleanup of old log files
+- [x] ~~COPY operations stuck in ping-pong for large files~~ ✅ FIXED
+- [x] ~~ON_ERROR='CONTINUE' causing extremely slow loads~~ ✅ FIXED
 
 ## 🔧 Technical Debt
 - [ ] Split tsv_loader.py into modules (validation, loading, progress)
@@ -105,18 +110,20 @@
 - [ ] Refactor duplicate code in run_loader.sh
 
 ## 📝 Notes for Next Session
-1. Start with performance optimization - users reporting memory issues with large files
+1. Monitor async COPY performance with new optimizations
 2. Consider using Dask or Ray for distributed processing
-3. Investigate Snowflake's COPY INTO with VALIDATION_MODE for better error handling
+3. Review async execution effectiveness for very large files (50GB+)
 4. Look into using Snowflake's GET_QUERY_OPERATOR_STATS for performance monitoring
 5. Review possibility of using Snowflake Tasks for scheduling
 
-## 💬 User Feedback to Address
-- "Need ability to resume failed batch runs"
-- "Want email alerts when validation fails"
-- "CSV export would be helpful for reporting"
-- "Memory usage too high for our 50GB files"
-- "Need better error messages when Snowflake connection fails"
+## 💬 User Feedback Addressed
+- ✅ "COPY operations taking hours" - Fixed with async and ABORT_STATEMENT
+- ✅ "Need ability to delete monthly data" - Implemented drop_month.py
+- ✅ "Better visibility into long-running operations" - Added async with progress
+- "Need ability to resume failed batch runs" - Still pending
+- "Want email alerts when validation fails" - Still pending
+- "CSV export would be helpful for reporting" - Still pending
+- "Memory usage too high for our 50GB files" - Partially addressed
 
 ---
 *Use this TODO list to maintain project momentum across sessions*

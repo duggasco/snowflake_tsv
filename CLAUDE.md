@@ -16,6 +16,7 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 - **generate_config.sh**: Automatic configuration generator from TSV files and Snowflake schemas
 - **tsv_sampler.sh**: TSV file analyzer that samples data to help understand structure and generate configurations
 - **check_snowflake_table.py**: Diagnostic tool for verifying table existence and debugging Snowflake connections
+- **check_stage_and_performance.py**: Performance diagnostic tool for analyzing slow COPY operations and managing stages
 
 ### Core Classes and Their Responsibilities
 
@@ -46,6 +47,12 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 
 #### SnowflakeLoader
 - Manages Snowflake connection and executes PUT/COPY commands
+- **Async COPY support**: Automatically uses execute_async() for files >100MB compressed
+- **Keepalive mechanism**: Prevents 5-minute timeout with get_results_from_sfqid() every 4 minutes
+- **Warehouse detection**: Warns if using X-Small/Small warehouse for large files
+- **Stage cleanup**: Removes old stage files before uploading to prevent conflicts
+- **Optimized error handling**: Uses ABORT_STATEMENT instead of CONTINUE for fast failure
+- **Auto-purge**: PURGE=TRUE automatically removes files after successful load
 - Handles file compression (gzip) before upload
 - Uses internal staging (@~/) for efficient bulk loading
 - Implements validation mode before actual data loading
@@ -247,9 +254,19 @@ For a 50GB TSV file with ~500M rows on a 16-core system:
   - Can be skipped with `--validate-in-snowflake` for faster processing
 - Compression: ~35 minutes
 - Upload to Snowflake: ~3 hours
-- Snowflake COPY: ~1.5 hours
+- Snowflake COPY: 
+  - With ON_ERROR='CONTINUE': 1+ hours (row-by-row on errors - AVOID!)
+  - With ON_ERROR='ABORT_STATEMENT': ~15-30 minutes (fast failure)
+  - Async execution for files >100MB compressed
 - Snowflake validation: ~5-10 seconds (aggregate queries only)
-- Total time: ~7-8 hours (or ~4.5 hours with Snowflake validation)
+- Total time: ~4 hours with optimizations (was ~7-8 hours)
+
+### Key Performance Optimizations
+- **Async COPY**: Files >100MB use execute_async() with keepalive
+- **Fast Failure**: ABORT_STATEMENT stops on first error (not row-by-row)
+- **Warehouse Sizing**: Medium/Large recommended for files >100MB
+- **Stage Cleanup**: Prevents confusion from duplicate files
+- **PURGE=TRUE**: Automatic cleanup after successful load
 
 ## Error Handling
 

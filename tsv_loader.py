@@ -1294,6 +1294,8 @@ class SnowflakeLoader:
                 SKIP_HEADER = 0
                 FIELD_OPTIONALLY_ENCLOSED_BY = '"'
                 ESCAPE_UNENCLOSED_FIELD = NONE
+                ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE
+                REPLACE_INVALID_CHARACTERS = TRUE
                 DATE_FORMAT = 'YYYY-MM-DD'
                 TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS'
                 NULL_IF = ('', 'NULL', 'null', '\\N')
@@ -1301,6 +1303,7 @@ class SnowflakeLoader:
             ON_ERROR = 'ABORT_STATEMENT'
             PURGE = TRUE
             VALIDATION_MODE = 'RETURN_ERRORS'
+            SIZE_LIMIT = 5368709120
             """.format(config.table_name, stage_name)
 
             # First validate

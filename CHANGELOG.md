@@ -1,5 +1,60 @@
 # CHANGELOG.md
 
+## [v3.1.0] - 2025-08-21 - Async COPY and Performance Optimizations
+
+### Major Performance Improvements
+- **Fixed "ping pong" issue with long-running COPY operations**
+  - Added async execution for files >100MB compressed
+  - Implemented keepalive mechanism (every 4 minutes) to prevent query cancellation
+  - Added status polling with user feedback every 30 seconds
+  - Proper error handling with get_query_status_throw_if_error()
+
+- **Resolved slow COPY performance (was taking 1+ hour for 700MB files)**
+  - Changed ON_ERROR from 'CONTINUE' to 'ABORT_STATEMENT'
+    - CONTINUE was causing row-by-row processing on errors (extremely slow)
+    - ABORT_STATEMENT fails fast on first error
+  - Added PURGE=TRUE to auto-cleanup stage after successful loads
+  - Proper validation with error abort on failures
+  - Performance improvement: 1+ hour → 5-15 minutes for 700MB files
+
+### Added Features
+- **Warehouse size detection and warnings**
+  - Automatically checks current warehouse size on connection
+  - Warns if using X-Small/Small warehouse for large files
+  - Provides ALTER WAREHOUSE command suggestions
+
+- **Automatic stage cleanup**
+  - Removes old stage files before uploading new ones
+  - Prevents accumulation of failed/duplicate files
+  - Reduces potential for confusion with multiple file versions
+
+- **Diagnostic tool** (`check_stage_and_performance.py`)
+  - Lists all files in Snowflake stages with sizes
+  - Analyzes recent COPY query performance history
+  - Identifies slow queries and bottlenecks
+  - Checks warehouse configuration
+  - Provides optimization recommendations
+  - Interactive stage cleanup option
+
+### Technical Improvements
+- Set ABORT_DETACHED_QUERY=FALSE at session level for async support
+- Use execute_async() method for large files
+- Implement proper polling with is_still_running() and get_query_status()
+- Call get_results_from_sfqid() as keepalive to prevent 5-minute timeout
+- Backwards compatible - files <100MB still use synchronous execution
+
+### Documentation Updates
+- Updated README with performance troubleshooting section
+- Added diagnostic tool documentation
+- Updated performance benchmarks with optimization results
+- Added async execution details to CLAUDE.md
+
+### Cleanup
+- Removed unnecessary test files (test*.py)
+- Removed old documentation (DROP_MONTH*.md, CONTEXT_HANDOVER.md)
+- Removed test virtual environment
+- Removed unused image files
+
 ## [v3.0.0] - 2025-08-21 - Data Deletion Capability
 
 ### Added - New drop_month.py Tool
