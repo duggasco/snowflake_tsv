@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.8.1"
+VERSION="2.8.2"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -954,6 +954,9 @@ view_job_full_log() {
         echo "--- End of log ---"
         read -p "Press Enter to continue..."
     fi
+    
+    # Clear the screen after viewing to prevent log stacking
+    clear
     
     # Return success
     return 0

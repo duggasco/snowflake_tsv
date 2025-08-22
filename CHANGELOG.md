@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## [v2.8.2] - 2025-01-22 - Log Viewer Screen Clearing Fix
+
+### Fixed
+- Log viewer now clears terminal screen after viewing to prevent log stacking
+- Multiple log views no longer appear below each other causing confusion
+- Added `clear` command after pager exits for clean viewing experience
+
+### Improved
+- Better user experience when viewing multiple job logs sequentially
+- Cleaner interface with no residual log content between views
+
 ## [v2.8.1] - 2025-01-22 - Robust Log Viewer with Comprehensive Error Handling
 
 ### Fixed
