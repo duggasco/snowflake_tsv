@@ -1,0 +1,20 @@
+{
+  "snowflake": {
+    "account": "prod_account",
+    "user": "prod_user",
+    "password": "prod_password",
+    "warehouse": "PROD_WAREHOUSE",
+    "database": "PROD_DB",
+    "schema": "ANALYTICS",
+    "role": "PROD_ROLE"
+  },
+  "files": [
+    {
+      "file_pattern": "prod_data_{month}.tsv",
+      "table_name": "PROD_TABLE",
+      "date_column": "dateColumn",
+      "duplicate_key_columns": ["dateColumn", "assetId", "fundId"],
+      "expected_columns": ["dateColumn", "assetId", "fundId", "amount", "type"]
+    }
+  ]
+}

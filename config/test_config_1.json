@@ -1,0 +1,20 @@
+{
+  "snowflake": {
+    "account": "test_account",
+    "user": "test_user",
+    "password": "test_password",
+    "warehouse": "TEST_WAREHOUSE_1",
+    "database": "TEST_DB_1",
+    "schema": "PUBLIC",
+    "role": "TEST_ROLE"
+  },
+  "files": [
+    {
+      "file_pattern": "test_data_{date_range}.tsv",
+      "table_name": "TEST_TABLE_1",
+      "date_column": "recordDate",
+      "duplicate_key_columns": ["recordDate", "id"],
+      "expected_columns": ["recordDate", "id", "value", "status"]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.2.0 - Dynamic config selection
+# Version: 2.3.0 - Enhanced progress visibility
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.2.0"
+VERSION="2.3.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -430,7 +430,7 @@ confirm_action() {
 # JOB MANAGEMENT (IMPROVED)
 # ============================================================================
 
-# Start a background job (using arrays instead of eval)
+# Start a background job (with optional real-time output)
 start_background_job() {
     local job_name="$1"
     shift  # Remaining arguments are the command
@@ -449,50 +449,132 @@ start_background_job() {
         "PID" "$$" \
         "LOG_FILE" "$log_file"
     
-    # Start job in background using array expansion
-    (
-        # Execute command and capture result
-        if "$@" > "$log_file" 2>&1; then
+    # Check if we should show real-time output
+    local show_output="${SHOW_REALTIME_OUTPUT:-false}"
+    
+    if [[ "$show_output" == "true" ]]; then
+        # Run in foreground with output visible
+        echo "${BOLD}${BLUE}Starting: $job_name${NC}"
+        echo "Log: $log_file"
+        echo "${YELLOW}Progress will be shown below:${NC}"
+        echo "----------------------------------------"
+        
+        # Use tee to show output and save to log
+        if "$@" 2>&1 | tee "$log_file"; then
             update_job_file "$job_file" "STATUS" "COMPLETED"
+            echo "${GREEN}SUCCESS Job completed successfully${NC}"
         else
             update_job_file "$job_file" "STATUS" "FAILED"
+            echo "${RED}FAILED Job failed${NC}"
         fi
         update_job_file "$job_file" "END_TIME" "$(date +"%Y-%m-%d %H:%M:%S")"
-    ) &
-    
-    local bg_pid=$!
-    update_job_file "$job_file" "PID" "$bg_pid"
-    
-    show_message "Job Started" "Job: $job_name\nID: $job_id\nPID: $bg_pid\nLog: $log_file"
+    else
+        # Original background behavior
+        (
+            # Execute command and capture result
+            if "$@" > "$log_file" 2>&1; then
+                update_job_file "$job_file" "STATUS" "COMPLETED"
+            else
+                update_job_file "$job_file" "STATUS" "FAILED"
+            fi
+            update_job_file "$job_file" "END_TIME" "$(date +"%Y-%m-%d %H:%M:%S")"
+        ) &
+        
+        local bg_pid=$!
+        update_job_file "$job_file" "PID" "$bg_pid"
+        
+        show_message "Job Started" "Job: $job_name\nID: $job_id\nPID: $bg_pid\nLog: $log_file\n\nTip: Check 'Job Status' menu to monitor progress"
+    fi
     
     return 0
 }
 
-# Show job status (with error details for failed jobs)
+# Start a foreground job with real-time output
+start_foreground_job() {
+    SHOW_REALTIME_OUTPUT=true start_background_job "$@"
+}
+
+# Show job status with option to view live logs
 show_job_status() {
-    local jobs_found=false
+    while true; do
+        local jobs_found=false
+        local running_jobs=()
+        local all_jobs=()
+        
+        # Collect job information
+        for job_file in "$JOBS_DIR"/*.job; do
+            if [[ -f "$job_file" ]]; then
+                jobs_found=true
+                all_jobs+=("$job_file")
+                
+                local status=$(parse_job_file "$job_file" "STATUS")
+                local pid=$(parse_job_file "$job_file" "PID")
+                
+                # Check if running process is still alive
+                if [[ "$status" == "RUNNING" ]] && [[ -n "$pid" ]]; then
+                    if ! kill -0 "$pid" 2>/dev/null; then
+                        update_job_file "$job_file" "STATUS" "CRASHED"
+                    else
+                        running_jobs+=("$job_file")
+                    fi
+                fi
+            fi
+        done
+        
+        if [[ "$jobs_found" == false ]]; then
+            show_message "Job Status" "No jobs found."
+            return
+        fi
+        
+        # Build menu options
+        local menu_options=()
+        menu_options+=("View All Jobs Summary")
+        
+        if [[ ${#running_jobs[@]} -gt 0 ]]; then
+            menu_options+=("---")
+            for job_file in "${running_jobs[@]}"; do
+                local job_name=$(parse_job_file "$job_file" "JOB_NAME")
+                local job_id=$(parse_job_file "$job_file" "JOB_ID")
+                menu_options+=("Monitor: $job_name [$job_id]")
+            done
+        fi
+        
+        menu_options+=("---")
+        menu_options+=("Clean Completed Jobs")
+        menu_options+=("Refresh")
+        
+        local choice=$(show_menu "Job Status Menu" "${menu_options[@]}")
+        
+        case "$choice" in
+            1) show_all_jobs_summary "${all_jobs[@]}" ;;
+            0|"") return ;;
+            *)
+                # Check if it's a monitor selection
+                if [[ $choice -gt 1 ]] && [[ $choice -le $((${#running_jobs[@]} + 1)) ]]; then
+                    local selected_job="${running_jobs[$((choice - 2))]}"
+                    monitor_job_progress "$selected_job"
+                elif [[ $choice -eq $((${#menu_options[@]} - 1)) ]]; then
+                    clean_completed_jobs
+                elif [[ $choice -eq ${#menu_options[@]} ]]; then
+                    continue  # Refresh
+                fi
+                ;;
+        esac
+    done
+}
+
+# Show summary of all jobs
+show_all_jobs_summary() {
     local status_text=""
     
-    for job_file in "$JOBS_DIR"/*.job; do
+    for job_file in "$@"; do
         if [[ -f "$job_file" ]]; then
-            jobs_found=true
-            
-            # Parse job file safely
             local job_name=$(parse_job_file "$job_file" "JOB_NAME")
             local job_id=$(parse_job_file "$job_file" "JOB_ID")
             local status=$(parse_job_file "$job_file" "STATUS")
             local start_time=$(parse_job_file "$job_file" "START_TIME")
             local end_time=$(parse_job_file "$job_file" "END_TIME")
             local log_file=$(parse_job_file "$job_file" "LOG_FILE")
-            local pid=$(parse_job_file "$job_file" "PID")
-            
-            # Check if running process is still alive
-            if [[ "$status" == "RUNNING" ]] && [[ -n "$pid" ]]; then
-                if ! kill -0 "$pid" 2>/dev/null; then
-                    status="CRASHED"
-                    update_job_file "$job_file" "STATUS" "CRASHED"
-                fi
-            fi
             
             status_text+="\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             status_text+="Job: $job_name\n"
@@ -504,29 +586,36 @@ show_job_status() {
                 status_text+="Ended: $end_time\n"
             fi
             
-            if [[ "$status" == "RUNNING" ]]; then
-                status_text+="PID: $pid\n"
-            fi
-            
-            # Show error details for failed jobs
             if [[ "$status" == "FAILED" ]] || [[ "$status" == "CRASHED" ]]; then
                 status_text+="\nLast 5 lines of log:\n"
                 if [[ -f "$log_file" ]]; then
                     status_text+="$(tail -5 "$log_file" 2>/dev/null || echo "Log file not accessible")\n"
-                else
-                    status_text+="Log file not found\n"
                 fi
             fi
-            
-            status_text+="Log: $log_file\n"
         fi
     done
     
-    if [[ "$jobs_found" == false ]]; then
-        show_message "Job Status" "No jobs found."
-    else
-        show_message "Job Status" "$status_text"
+    show_message "All Jobs Summary" "$status_text"
+}
+
+# Monitor a specific job's progress
+monitor_job_progress() {
+    local job_file="$1"
+    local job_name=$(parse_job_file "$job_file" "JOB_NAME")
+    local log_file=$(parse_job_file "$job_file" "LOG_FILE")
+    
+    if [[ ! -f "$log_file" ]]; then
+        show_message "Error" "Log file not found: $log_file"
+        return
     fi
+    
+    clear
+    echo "${BOLD}${BLUE}Monitoring Job: $job_name${NC}"
+    echo "${YELLOW}Press Ctrl+C to stop monitoring${NC}"
+    echo "----------------------------------------"
+    
+    # Use tail -f to show live output
+    tail -f "$log_file" 2>/dev/null || show_message "Error" "Could not monitor log file"
 }
 
 # Clean completed jobs
@@ -1455,7 +1544,7 @@ main_menu() {
             2) menu_data_operations ;;
             3) menu_file_tools ;;
             4) menu_recovery ;;
-            5) show_job_status ;;
+            5) show_job_status ;;  # Now has interactive menu
             6) menu_settings ;;
             0|"") 
                 echo "${GREEN}Thank you for using Snowflake ETL Manager!${NC}"
