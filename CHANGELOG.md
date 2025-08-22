@@ -1,5 +1,47 @@
 # CHANGELOG.md
 
+## [v2.11.0] - 2025-01-22 - Interactive File Browser with Config Validation
+
+### Added
+- **Interactive TSV File Browser**: Curses-based TUI for visual file selection
+  - Navigate directories with arrow keys
+  - Multi-file selection with spacebar
+  - Real-time search/filter with '/' key
+  - File preview with 'p' key
+  - Sort by name, size, date, or type
+  - Handles special characters in filenames safely
+  - Shows file sizes and modification times
+  
+- **Automatic Config Validation**: Smart config matching and suggestions
+  - Validates selected files against current config
+  - Suggests matching configs when mismatches detected
+  - Offers to switch configs automatically
+  - Generates config skeletons for unmatched files
+  
+- **Performance Optimizations**:
+  - Efficient directory scanning with os.scandir()
+  - Config caching - loads once at startup
+  - Directory content caching with TTL
+  - Handles 90,000+ files/second scanning speed
+  
+### Enhanced
+- Load Data menu now offers three methods:
+  1. Interactive file browser (new)
+  2. Traditional base path and month
+  3. Load all months from base path
+  
+### Technical Implementation
+- `tsv_file_browser.py`: Core Python module with curses UI
+- `tsv_browser_integration.py`: Config validation helper
+- Integrated with existing `snowflake_etl.sh` wrapper
+- Proper handling of paths with spaces and special characters
+- No silent error suppression - all errors logged
+
+### Testing
+- Comprehensive test suite (`test_file_browser.sh`)
+- Tests special characters, large directories, performance
+- Validates config matching and batch operations
+
 ## [v2.10.4] - 2025-01-22 - Fix Script Exit on Clean Jobs
 
 ### Fixed

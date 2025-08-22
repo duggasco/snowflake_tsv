@@ -1229,19 +1229,161 @@ quick_load_without_qc() {
 
 # Load data menu
 menu_load_data() {
-    local month=$(get_input "Load Data" "Enter month(s) - comma separated or 'all'" "$(date +%Y-%m)")
+    # First, ask user to choose method
+    local choice=$(show_menu "Load Data Method" \
+        "Browse for TSV files interactively" \
+        "Specify base path and month" \
+        "Load all months from base path")
     
-    if [[ "$month" == "all" ]]; then
-        if confirm_action "Load ALL months from $BASE_PATH?"; then
-            with_lock start_background_job "load_batch_all" \
-                ./run_loader.sh --batch --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+    case "$choice" in
+        1)
+            # Interactive file browser
+            browse_and_load_files
+            ;;
+        2)
+            # Traditional month-based loading
+            local month=$(get_input "Load Data" "Enter month(s) - comma separated" "$(date +%Y-%m)")
+            
+            if [[ -n "$month" ]]; then
+                if confirm_action "Load month(s): $month?"; then
+                    with_lock start_background_job "load_${month}" \
+                        ./run_loader.sh --months "$month" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+                fi
+            fi
+            ;;
+        3)
+            # Load all months
+            if confirm_action "Load ALL months from $BASE_PATH?"; then
+                with_lock start_background_job "load_batch_all" \
+                    ./run_loader.sh --batch --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+            fi
+            ;;
+        0|"")
+            return
+            ;;
+    esac
+}
+
+# Interactive file browser for loading
+browse_and_load_files() {
+    # Use the Python file browser to select files
+    local temp_file="/tmp/tsv_browser_selection_$$.txt"
+    
+    echo -e "${BLUE}Opening interactive file browser...${NC}"
+    echo -e "${YELLOW}Controls: Arrow keys to navigate, Enter to select directory/file${NC}"
+    echo -e "${YELLOW}         Space to multi-select, 'p' to preview, '/' to search${NC}"
+    echo -e "${YELLOW}         'q' to quit, 'h' for help${NC}"
+    sleep 2
+    
+    # Run the file browser
+    if python3 tsv_file_browser.py --start-dir "${BASE_PATH:-$(pwd)}" \
+                                   --config-dir "${CONFIG_DIR:-config}" \
+                                   --output "$temp_file"; then
+        
+        # Check if files were selected
+        if [[ -f "$temp_file" ]] && [[ -s "$temp_file" ]]; then
+            local num_files=$(wc -l < "$temp_file")
+            echo -e "${GREEN}Selected $num_files file(s)${NC}"
+            
+            # Validate against current config
+            local files_array=()
+            while IFS= read -r file; do
+                files_array+=("$file")
+            done < "$temp_file"
+            
+            # Run validation
+            echo -e "${BLUE}Validating files against current config...${NC}"
+            local validation_result=$(python3 tsv_browser_integration.py \
+                "${files_array[@]}" \
+                --current-config "$CONFIG_FILE" \
+                --config-dir "${CONFIG_DIR:-config}" \
+                --json 2>/dev/null)
+            
+            if [[ -n "$validation_result" ]]; then
+                local all_match=$(echo "$validation_result" | jq -r '.all_match_current')
+                
+                if [[ "$all_match" != "true" ]]; then
+                    # Files don't match current config
+                    echo -e "${YELLOW}Warning: Some files don't match current config${NC}"
+                    
+                    # Check for suggestions
+                    local num_suggestions=$(echo "$validation_result" | jq '.suggestions | length')
+                    
+                    if [[ "$num_suggestions" -gt 0 ]]; then
+                        echo -e "${BLUE}Found matching configurations:${NC}"
+                        
+                        # Build menu of suggested configs
+                        local config_options=()
+                        local config_paths=()
+                        
+                        while IFS= read -r line; do
+                            local cfg_path=$(echo "$line" | jq -r '.config_path')
+                            local cfg_name=$(echo "$line" | jq -r '.config_name')
+                            local tables=$(echo "$line" | jq -r '.tables | join(", ")')
+                            
+                            config_options+=("$cfg_name - Tables: $tables")
+                            config_paths+=("$cfg_path")
+                        done < <(echo "$validation_result" | jq -c '.suggestions[]')
+                        
+                        config_options+=("Keep current config anyway")
+                        config_options+=("Cancel")
+                        
+                        local choice=$(show_menu "Select Configuration" "${config_options[@]}")
+                        
+                        if [[ "$choice" -ge 1 ]] && [[ "$choice" -le "${#config_paths[@]}" ]]; then
+                            # Switch to suggested config
+                            CONFIG_FILE="${config_paths[$((choice-1))]}"
+                            echo -e "${GREEN}Switched to config: $(basename "$CONFIG_FILE")${NC}"
+                        elif [[ "$choice" == "$((${#config_options[@]}-1))" ]]; then
+                            # Keep current config
+                            echo -e "${YELLOW}Proceeding with current config${NC}"
+                        else
+                            # Cancel
+                            rm -f "$temp_file"
+                            return
+                        fi
+                    else
+                        # No matching configs found
+                        if ! confirm_action "No matching configs found. Proceed anyway?"; then
+                            rm -f "$temp_file"
+                            return
+                        fi
+                    fi
+                fi
+            fi
+            
+            # Process the selected files
+            echo -e "${BLUE}Processing selected files...${NC}"
+            
+            # Build comma-separated list of files
+            local files_list=$(tr '\n' ',' < "$temp_file" | sed 's/,$//')
+            
+            # Ask for processing options
+            local skip_qc_choice=$(get_input "Quality Checks" "Skip file-based quality checks? (Y/N)" "N")
+            local validate_sf_choice=$(get_input "Validation" "Validate in Snowflake after loading? (Y/N)" "Y")
+            
+            local extra_args=""
+            if [[ "${skip_qc_choice^^}" == "Y" ]]; then
+                extra_args="$extra_args --skip-qc"
+            fi
+            if [[ "${validate_sf_choice^^}" == "Y" ]]; then
+                extra_args="$extra_args --validate-in-snowflake"
+            fi
+            
+            # Start the job
+            if confirm_action "Process ${num_files} file(s) with config $(basename "$CONFIG_FILE")?"; then
+                with_lock start_background_job "load_selected_files" \
+                    ./run_loader.sh --direct-file "$files_list" --config "$CONFIG_FILE" $extra_args
+            fi
+        else
+            echo -e "${YELLOW}No files selected${NC}"
         fi
     else
-        if confirm_action "Load month(s): $month?"; then
-            with_lock start_background_job "load_${month}" \
-                ./run_loader.sh --months "$month" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
-        fi
+        echo -e "${YELLOW}File browser cancelled${NC}"
     fi
+    
+    # Cleanup
+    rm -f "$temp_file"
 }
 
 # Validate data menu (runs synchronously - quick operation)

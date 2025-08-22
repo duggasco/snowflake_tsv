@@ -16,7 +16,24 @@ Create a production-ready, enterprise-grade ETL pipeline for Snowflake that hand
 ✅ **UI/UX Complete**: No black screens, all content visible, adaptive dialogs
 ✅ **Log Viewing**: Persistent log viewer using 'less' pager with search and navigation
 
-## Phase 1: Performance & Reliability (Next Sprint)
+## Phase 1: Interactive File Browser & Config Validation (Current Sprint)
+**Goal**: Intuitive file selection with automatic config validation
+
+### Week 1: Core Browser Implementation
+- Python-based TUI with curses for file navigation
+- Efficient directory scanning with os.scandir()
+- Config caching and pattern pre-compilation
+- Multi-file selection and preview capability
+- Search/filter for large directories
+- Proper handling of special characters and symlinks
+
+### Week 2: Config Validation System
+- Automatic validation of selected files against configs
+- Smart config suggestion when mismatches detected
+- Config generation for unmatched files
+- Integration with existing job management system
+
+## Phase 2: Performance & Reliability (Next Sprint)
 **Goal**: Handle 100GB+ files efficiently with <8GB memory usage
 
 ### Week 1: Memory Optimization

@@ -89,6 +89,39 @@ python tsv_loader.py --config config/config.json --base-path ./data --month 2024
 
 ## Usage
 
+### Interactive File Browser (New in v2.11.0)
+
+The pipeline now includes an interactive file browser for intuitive TSV file selection:
+
+```bash
+# Launch the unified wrapper
+./snowflake_etl.sh
+
+# Navigate to: Snowflake Operations > Load Data > Browse for TSV files interactively
+```
+
+**Browser Controls:**
+- **Arrow Keys / h,j,k,l**: Navigate files and directories
+- **Enter**: Open directory or select file
+- **Space**: Toggle multi-file selection
+- **p**: Preview file contents and config matches
+- **/**: Search/filter files (case-insensitive)
+- **s**: Cycle sort modes (name, size, date, type)
+- **r**: Toggle reverse sort
+- **.**: Toggle hidden files
+- **a**: Select all TSV files
+- **A**: Deselect all
+- **q / ESC**: Quit browser
+
+**Features:**
+- Automatic config validation for selected files
+- Suggests matching configs when current doesn't match
+- Handles special characters in filenames
+- Shows file sizes and modification times
+- Multi-file selection for batch processing
+- Real-time search and filtering
+- 90,000+ files/second scanning performance
+
 ### Basic Commands
 
 ```bash
