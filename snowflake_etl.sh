@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.5.1 - Fixed character encoding in job status display
+# Version: 2.6.0 - Enhanced job results display
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.5.1"
+VERSION="2.6.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -626,14 +626,36 @@ show_job_status() {
         
         # Build menu options
         local menu_options=()
-        menu_options+=("View All Jobs Summary")
+        menu_options+=("View All Jobs Summary (with Results)")
+        
+        # Add completed jobs for full log viewing
+        local completed_jobs=()
+        for job_file in "${all_jobs[@]}"; do
+            local status=$(parse_job_file "$job_file" "STATUS")
+            if [[ "$status" == "COMPLETED" ]] || [[ "$status" == "FAILED" ]]; then
+                completed_jobs+=("$job_file")
+            fi
+        done
+        
+        if [[ ${#completed_jobs[@]} -gt 0 ]]; then
+            menu_options+=("---")
+            for job_file in "${completed_jobs[@]}"; do
+                local job_name=$(parse_job_file "$job_file" "JOB_NAME")
+                local status=$(parse_job_file "$job_file" "STATUS")
+                local label="View Log"
+                if [[ "$status" == "FAILED" ]]; then
+                    label="View Error"
+                fi
+                menu_options+=("$label: $job_name [$status]")
+            done
+        fi
         
         if [[ ${#running_jobs[@]} -gt 0 ]]; then
             menu_options+=("---")
             for job_file in "${running_jobs[@]}"; do
                 local job_name=$(parse_job_file "$job_file" "JOB_NAME")
                 local job_id=$(parse_job_file "$job_file" "JOB_ID")
-                menu_options+=("Monitor: $job_name [$job_id]")
+                menu_options+=("Monitor: $job_name [RUNNING]")
             done
         fi
         
@@ -647,14 +669,39 @@ show_job_status() {
             1) show_all_jobs_summary "${all_jobs[@]}" ;;
             0|"") return ;;
             *)
-                # Check if it's a monitor selection
-                if [[ $choice -gt 1 ]] && [[ $choice -le $((${#running_jobs[@]} + 1)) ]]; then
-                    local selected_job="${running_jobs[$((choice - 2))]}"
-                    monitor_job_progress "$selected_job"
-                elif [[ $choice -eq $((${#menu_options[@]} - 1)) ]]; then
+                local selected_option="${menu_options[$((choice - 1))]}"
+                
+                # Check what type of selection it is
+                if [[ "$selected_option" == "Clean Completed Jobs" ]]; then
                     clean_completed_jobs
-                elif [[ $choice -eq ${#menu_options[@]} ]]; then
-                    continue  # Refresh
+                elif [[ "$selected_option" == "Refresh" ]]; then
+                    continue
+                elif [[ "$selected_option" =~ ^View\ Log:|^View\ Error: ]]; then
+                    # Extract job name from the selection
+                    local job_to_view="${selected_option#*: }"
+                    job_to_view="${job_to_view% \[*\]}"  # Remove status suffix
+                    
+                    # Find the job file
+                    for job_file in "${completed_jobs[@]}"; do
+                        local job_name=$(parse_job_file "$job_file" "JOB_NAME")
+                        if [[ "$job_name" == "$job_to_view" ]]; then
+                            view_job_full_log "$job_file"
+                            break
+                        fi
+                    done
+                elif [[ "$selected_option" =~ ^Monitor: ]]; then
+                    # Extract job name from the selection
+                    local job_to_monitor="${selected_option#Monitor: }"
+                    job_to_monitor="${job_to_monitor% \[*\]}"  # Remove status suffix
+                    
+                    # Find the job file
+                    for job_file in "${running_jobs[@]}"; do
+                        local job_name=$(parse_job_file "$job_file" "JOB_NAME")
+                        if [[ "$job_name" == "$job_to_monitor" ]]; then
+                            monitor_job_progress "$job_file"
+                            break
+                        fi
+                    done
                 fi
                 ;;
         esac
@@ -689,16 +736,59 @@ show_all_jobs_summary() {
                 status_text+="Ended: $end_time\n"
             fi
             
-            if [[ "$status" == "FAILED" ]] || [[ "$status" == "CRASHED" ]]; then
-                status_text+="\nLast 5 lines of log:\n"
+            # Show log output for all completed/failed jobs
+            if [[ "$status" == "COMPLETED" ]]; then
+                status_text+="\n=== RESULTS ===\n"
                 if [[ -f "$log_file" ]]; then
-                    status_text+="$(tail -5 "$log_file" 2>/dev/null || echo "Log file not accessible")\n"
+                    # For completed jobs, show last 20 lines which usually contains the results
+                    local results=$(tail -20 "$log_file" 2>/dev/null | head -15)
+                    if [[ -n "$results" ]]; then
+                        status_text+="$results\n"
+                    else
+                        status_text+="(No output captured)\n"
+                    fi
+                else
+                    status_text+="(Log file not found)\n"
                 fi
+            elif [[ "$status" == "FAILED" ]] || [[ "$status" == "CRASHED" ]]; then
+                status_text+="\n=== ERROR OUTPUT ===\n"
+                if [[ -f "$log_file" ]]; then
+                    status_text+="$(tail -10 "$log_file" 2>/dev/null || echo "Log file not accessible")\n"
+                else
+                    status_text+="(Log file not found)\n"
+                fi
+            elif [[ "$status" == "RUNNING" ]]; then
+                status_text+="\n(Job is still running - select 'Monitor' to view live output)\n"
             fi
         fi
     done
     
     show_message "All Jobs Summary" "$status_text"
+}
+
+# View full log for a completed job
+view_job_full_log() {
+    local job_file="$1"
+    local job_name=$(parse_job_file "$job_file" "JOB_NAME")
+    local job_id=$(parse_job_file "$job_file" "JOB_ID")
+    local status=$(parse_job_file "$job_file" "STATUS")
+    local log_file=$(parse_job_file "$job_file" "LOG_FILE")
+    
+    if [[ ! -f "$log_file" ]]; then
+        show_message "Error" "Log file not found for job: $job_name"
+        return
+    fi
+    
+    # Get log content
+    local log_content=$(cat "$log_file" 2>/dev/null)
+    
+    if [[ -z "$log_content" ]]; then
+        show_message "Job Log: $job_name" "No output captured in log file."
+    else
+        # Show the full log with proper title
+        local title="Job Results: $job_name [$status]"
+        show_message "$title" "$log_content"
+    fi
 }
 
 # Monitor a specific job's progress
