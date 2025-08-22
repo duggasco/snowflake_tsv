@@ -663,20 +663,34 @@ class SnowflakeDataValidator:
             raise
     
     def validate_date_completeness(self, table_name: str, date_column: str, 
-                                  start_date: str, end_date: str, 
+                                  start_date: str = None, end_date: str = None, 
                                   expected_daily_rows: int = None) -> Dict:
         """
         Efficiently validate date completeness in Snowflake table.
         Uses aggregated queries to minimize data scanning.
+        If start_date and end_date are None, validates ALL data in the table.
         """
-        self.logger.info("Validating date completeness for {} from {} to {}".format(
-            table_name, start_date, end_date))
+        if start_date and end_date:
+            self.logger.info("Validating date completeness for {} from {} to {}".format(
+                table_name, start_date, end_date))
+        else:
+            self.logger.info("Validating ALL data in table {}".format(table_name))
         
         try:
             # Query 1: Get date range summary
-            # Convert date strings to YYYYMMDD format for comparison
-            start_yyyymmdd = start_date.replace('-', '')
-            end_yyyymmdd = end_date.replace('-', '')
+            # Build WHERE clause based on whether dates are provided
+            if start_date and end_date:
+                # Convert date strings to YYYYMMDD format for comparison
+                start_yyyymmdd = start_date.replace('-', '')
+                end_yyyymmdd = end_date.replace('-', '')
+                where_clause = "WHERE {date_col} BETWEEN '{start}' AND '{end}'".format(
+                    date_col=date_column,
+                    start=start_yyyymmdd,
+                    end=end_yyyymmdd
+                )
+            else:
+                # No date filter - validate ALL data
+                where_clause = ""
             
             range_query = """
             SELECT 
@@ -685,12 +699,11 @@ class SnowflakeDataValidator:
                 COUNT(DISTINCT {date_col}) as unique_dates,
                 COUNT(*) as total_rows
             FROM {table}
-            WHERE {date_col} BETWEEN '{start}' AND '{end}'
+            {where}
             """.format(
                 date_col=date_column,
                 table=table_name,
-                start=start_yyyymmdd,
-                end=end_yyyymmdd
+                where=where_clause
             )
             
             self.logger.debug("Executing range query: {}".format(range_query))
@@ -713,13 +726,23 @@ class SnowflakeDataValidator:
             min_date, max_date, unique_dates, total_rows = range_result
             
             # Query 2: Get daily distribution with statistics for anomaly detection
+            # Build WHERE clause for distribution query
+            if start_date and end_date:
+                dist_where = "WHERE {date_col} BETWEEN '{start}' AND '{end}'".format(
+                    date_col=date_column,
+                    start=start_yyyymmdd,
+                    end=end_yyyymmdd
+                )
+            else:
+                dist_where = ""
+                
             distribution_query = """
             WITH daily_counts AS (
                 SELECT 
                     {date_col} as date_value,
                     COUNT(*) as row_count
                 FROM {table}
-                WHERE {date_col} BETWEEN '{start}' AND '{end}'
+                {where}
                 GROUP BY {date_col}
             ),
             stats AS (
@@ -757,8 +780,7 @@ class SnowflakeDataValidator:
             """.format(
                 date_col=date_column,
                 table=table_name,
-                start=start_yyyymmdd,
-                end=end_yyyymmdd
+                where=dist_where
             )
             
             self.logger.debug("Executing distribution query with anomaly detection")
@@ -767,6 +789,16 @@ class SnowflakeDataValidator:
             
             # Query 3: Find gaps in date sequence
             # For YYYYMMDD format, we need to convert to dates for DATEDIFF
+            # Build WHERE clause for gap query
+            if start_date and end_date:
+                gap_where = "WHERE {date_col} BETWEEN '{start}' AND '{end}'".format(
+                    date_col=date_column,
+                    start=start_yyyymmdd,
+                    end=end_yyyymmdd
+                )
+            else:
+                gap_where = ""
+                
             gap_query = """
             WITH date_sequence AS (
                 SELECT 
@@ -775,7 +807,7 @@ class SnowflakeDataValidator:
                 FROM (
                     SELECT DISTINCT {date_col}
                     FROM {table}
-                    WHERE {date_col} BETWEEN '{start}' AND '{end}'
+                    {where}
                 )
             )
             SELECT 
@@ -795,8 +827,7 @@ class SnowflakeDataValidator:
             """.format(
                 date_col=date_column,
                 table=table_name,
-                start=start_yyyymmdd,
-                end=end_yyyymmdd
+                where=gap_where
             )
             
             self.logger.debug("Executing gap detection query")
@@ -804,9 +835,14 @@ class SnowflakeDataValidator:
             gaps = self.cursor.fetchall()
             
             # Calculate expected dates
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            expected_days = (end_dt - start_dt).days + 1
+            if start_date and end_date:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                expected_days = (end_dt - start_dt).days + 1
+            else:
+                # When validating ALL data, we don't have a specific expected count
+                # Use the actual unique dates as the baseline
+                expected_days = unique_dates
             
             # Helper function to format YYYYMMDD to YYYY-MM-DD
             def format_yyyymmdd(date_val):
@@ -2085,9 +2121,14 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     if pbar:
                         pbar.set_description(f"Validating {config.table_name}")
                     
-                    # Convert date range to strings
-                    start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
-                    end_date = config.expected_date_range[1].strftime('%Y-%m-%d')
+                    # Convert date range to strings (or use None for ALL data)
+                    if config.expected_date_range[0] and config.expected_date_range[1]:
+                        start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
+                        end_date = config.expected_date_range[1].strftime('%Y-%m-%d')
+                    else:
+                        # No date range specified - validate ALL data
+                        start_date = None
+                        end_date = None
                     
                     validation_result = validator.validate_date_completeness(
                         table_name=config.table_name,
@@ -2255,9 +2296,14 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     if val_pbar:
                         val_pbar.set_description(f"Validating {config.table_name}")
                     
-                    # Convert date range to strings
-                    start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
-                    end_date = config.expected_date_range[1].strftime('%Y-%m-%d')
+                    # Convert date range to strings (or use None for ALL data)
+                    if config.expected_date_range[0] and config.expected_date_range[1]:
+                        start_date = config.expected_date_range[0].strftime('%Y-%m-%d')
+                        end_date = config.expected_date_range[1].strftime('%Y-%m-%d')
+                    else:
+                        # No date range specified - validate ALL data
+                        start_date = None
+                        end_date = None
                     
                     validation_result = validator.validate_date_completeness(
                         table_name=config.table_name,

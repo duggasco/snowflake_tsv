@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## [v2.9.1] - 2025-01-22 - Enhanced Validation to Support ALL Data
+
+### Added
+- Validate Data menu now accepts empty input to validate ALL data in tables
+- No date filtering when month is not specified - comprehensive validation of entire table
+- Consistent with other menu options that treat empty input as "ALL"
+
+### Fixed
+- Fixed AttributeError when expected_date_range contains None values
+- Updated validation functions to handle None start/end dates properly
+- Query WHERE clauses now conditionally apply date filters
+
+### Improved
+- Better user prompts indicating "leave empty for ALL data" option
+- Job names reflect whether validating specific month or all data
+- More flexible validation allowing complete table quality checks
+
 ## [v2.9.0] - 2025-01-22 - Menu Reorganization and Screen Clearing Fix
 
 ### Changed

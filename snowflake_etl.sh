@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.9.0"
+VERSION="2.9.1"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -1206,20 +1206,35 @@ menu_validate_data() {
         return 1
     fi
     
-    local month=$(get_input "Validate Data" "Enter month (YYYY-MM)" "$(date +%Y-%m)")
+    local month=$(get_input "Validate Data" "Enter month (YYYY-MM) or leave empty for ALL data")
     
-    if confirm_action "Validate data for $month?\nUsing config: $(basename "$CONFIG_FILE")"; then
+    # Set display text based on whether month is specified
+    local validate_text
+    local job_name
+    if [[ -z "$month" ]]; then
+        validate_text="Validate ALL data in tables"
+        job_name="validate_all"
+    else
+        validate_text="Validate data for $month"
+        job_name="validate_${month}"
+    fi
+    
+    if confirm_action "$validate_text?\nUsing config: $(basename "$CONFIG_FILE")"; then
         # Ask user for execution mode
         local response=$(get_input "Execution Mode" "Show real-time progress? (Y=foreground, N=background)" "Y")
         
+        # Build command with or without month parameter
+        local cmd="python3 tsv_loader.py --config \"$CONFIG_FILE\" --validate-only"
+        if [[ -n "$month" ]]; then
+            cmd="$cmd --month \"$month\""
+        fi
+        
         if [[ "${response^^}" == "Y" ]]; then
             # Run in foreground with visible progress
-            with_lock start_foreground_job "validate_${month}" \
-                python3 tsv_loader.py --config "$CONFIG_FILE" --month "$month" --validate-only
+            with_lock start_foreground_job "$job_name" bash -c "$cmd"
         else
             # Run in background
-            with_lock start_background_job "validate_${month}" \
-                python3 tsv_loader.py --config "$CONFIG_FILE" --month "$month" --validate-only
+            with_lock start_background_job "$job_name" bash -c "$cmd"
         fi
     fi
 }
