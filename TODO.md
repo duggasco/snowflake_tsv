@@ -1,6 +1,14 @@
 # TODO.md - Snowflake ETL Pipeline Manager
 *Last Updated: 2025-01-22*
-*Current Version: 2.8.1*
+*Current Version: 2.10.4*
+
+## ✅ Completed (2025-01-22 Session 2) - v2.10.4
+- [x] **Fixed Clean Completed Jobs menu bug** ✅
+- [x] **Fixed menu indexing causing wrong functions** ✅ 
+- [x] **Removed ALL Unicode/emoji characters** ✅
+- [x] **Fixed script exit with nullglob handling** ✅
+- [x] **Auto-refresh Job Status after cleaning** ✅
+- [x] **Enhanced validation to support ALL data** ✅
 
 ## ✅ Completed (2025-08-21)
 - [x] Fix critical IndentationError in validation code

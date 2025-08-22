@@ -1,6 +1,13 @@
 # Snowflake TSV Loader
 
-A high-performance ETL pipeline for loading large TSV files (up to 50GB) into Snowflake with built-in data quality checks, progress tracking, and parallel processing capabilities.
+**Version 2.10.4** - A high-performance ETL pipeline for loading large TSV files (up to 50GB) into Snowflake with built-in data quality checks, progress tracking, and parallel processing capabilities.
+
+## Recent Critical Fixes (2025-01-22)
+- **v2.10.4**: Fixed script exit issue in Job Status menu
+- **v2.10.3**: Fixed menu indexing bug (wrong functions triggered)
+- **v2.10.0**: Removed ALL Unicode/emoji for terminal compatibility
+- **v2.9.1**: Enhanced validation to support ALL data
+- **v2.9.0**: Menu reorganization (Snowflake Operations)
 
 ## Features
 
