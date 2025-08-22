@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.1.0 - Fully implemented recovery functions
+# Version: 2.1.2 - No emojis, CLI-compliant
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.1.1"
+VERSION="2.1.2"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -776,7 +776,7 @@ try:
         print(f'Error: {result[\"error\"]}')
     elif result.get('has_duplicates'):
         stats = result['statistics']
-        print(f'\\n⚠️  DUPLICATES FOUND!')
+        print(f'\\nWARNING: DUPLICATES FOUND!')
         print(f'Total rows: {stats[\"total_rows\"]:,}')
         print(f'Duplicate keys: {stats[\"duplicate_key_combinations\"]:,}')
         print(f'Excess rows: {stats[\"excess_rows\"]:,}')
@@ -788,9 +788,9 @@ try:
             print('\\nSample duplicate keys:')
             for sample in result['sample_duplicates'][:5]:
                 key_str = ', '.join([f'{k}={v}' for k, v in sample['key_values'].items()])
-                print(f'  • {key_str} (×{sample[\"duplicate_count\"]})')
+                print(f'  - {key_str} (x{sample[\"duplicate_count\"]})')
     else:
-        print('✅ No duplicates found!')
+        print('SUCCESS: No duplicates found!')
         
 finally:
     validator.close()
@@ -1328,13 +1328,13 @@ EOF
 main_menu() {
     while true; do
         local choice=$(show_menu "SNOWFLAKE ETL PIPELINE MANAGER v$VERSION" \
-            "📦 Quick Load        - Common loading tasks" \
-            "🔄 Data Operations   - Load/Validate/Delete" \
-            "🔧 File Tools        - Analyze/Compare/Generate" \
-            "🚑 Recovery & Fix    - Error recovery tools" \
+            "Quick Load        - Common loading tasks" \
+            "Data Operations   - Load/Validate/Delete" \
+            "File Tools        - Analyze/Compare/Generate" \
+            "Recovery & Fix    - Error recovery tools" \
             "---" \
-            "📊 Job Status        - Monitor operations" \
-            "⚙️  Settings          - Configure defaults")
+            "Job Status        - Monitor operations" \
+            "Settings          - Configure defaults")
         
         case "$choice" in
             1) menu_quick_load ;;
