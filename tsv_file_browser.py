@@ -300,7 +300,8 @@ class TSVFileBrowser:
     def _apply_filter(self, items: List[FileItem]) -> List[FileItem]:
         """Apply search filter to items"""
         if not self.filter_text:
-            return items
+            # Return a copy to avoid modifying the cached list
+            return items.copy()
         
         # Case-insensitive filtering
         filter_lower = self.filter_text.lower()
