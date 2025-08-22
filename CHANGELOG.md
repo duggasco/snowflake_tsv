@@ -1,5 +1,38 @@
 # CHANGELOG.md
 
+## [v2.7.0] - 2025-01-22 - Dynamic UI Sizing & Complete UX Overhaul
+
+### Major UI/UX Improvements
+- **Dynamic Dialog Sizing**
+  - Dialogs automatically size based on content
+  - Terminal-aware sizing (fits within boundaries)
+  - Scrollable view for very long content (>2000 chars)
+  - Maximum limits: 40 height, 120 width
+  
+### Job Management Enhancements  
+- **Result Display (v2.6.0)**
+  - Shows actual results for completed jobs
+  - Error details for failed jobs
+  - Full log viewing via menu
+  - Proper output capture and display
+  
+### Black Screen Fixes (v2.5.0)
+- All operations use job management system
+- Created check_duplicates_interactive.py
+- Foreground/background execution choice
+- Real-time progress visibility
+
+### Smart Table Selection (v2.4.0)
+- Auto-detect tables from config files
+- Intelligent selection based on config content
+- Context-aware prompts with table names
+
+### Bug Fixes
+- Fixed character encoding in job status display (v2.5.1)
+- Resolved black screen during operations
+- Fixed truncated results in dialogs
+- Corrected job summary display issues
+
 ## [v4.3.0] - 2025-01-22 - All Operations Use Job Management
 
 ### Job Management Improvements
