@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## [v2.10.2] - 2025-01-22 - Fix Clean Jobs Triggering Log Viewer
+
+### Fixed
+- Fixed critical bug where "Clean Completed Jobs" was opening log viewer instead of cleaning
+- Removed complex subshell execution that was causing misinterpretation
+- Simplified clean_completed_jobs function to use direct file operations
+
+### Improved
+- More reliable job cleaning without complex bash -c commands
+- Cleaner implementation without nested with_lock calls
+- Direct file operations prevent command misinterpretation
+
 ## [v2.10.1] - 2025-01-22 - Auto-refresh Job Status Menu After Cleaning
 
 ### Fixed

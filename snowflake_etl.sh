@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.10.1"
+VERSION="2.10.2"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -986,46 +986,26 @@ monitor_job_progress() {
 
 # Clean completed jobs
 clean_completed_jobs() {
-    # Capture the result from the subshell
-    local result=$(with_lock bash -c "
-        cleaned=0
-        failed=0
-        for job_file in '$JOBS_DIR'/*.job; do
-            if [[ -f \"\$job_file\" ]]; then
-                status=\$(grep '^STATUS=' \"\$job_file\" | cut -d'=' -f2)
-                log_file=\$(grep '^LOG_FILE=' \"\$job_file\" | cut -d'=' -f2)
+    local cleaned=0
+    local failed=0
+    
+    # Simple direct approach without complex subshells
+    for job_file in "$JOBS_DIR"/*.job; do
+        if [[ -f "$job_file" ]]; then
+            local status=$(grep '^STATUS=' "$job_file" | cut -d'=' -f2)
+            
+            if [[ "$status" == "COMPLETED" ]] || [[ "$status" == "FAILED" ]] || [[ "$status" == "CRASHED" ]]; then
+                # Remove the job file
+                rm -f "$job_file"
                 
-                if [[ \"\$status\" == \"COMPLETED\" ]] || [[ \"\$status\" == \"FAILED\" ]] || [[ \"\$status\" == \"CRASHED\" ]]; then
-                    # Remove log file if it exists (optional - you may want to keep logs)
-                    # if [[ -n \"\$log_file\" ]] && [[ -f \"\$log_file\" ]]; then
-                    #     rm -f \"\$log_file\"
-                    # fi
-                    
-                    # Remove the job file
-                    rm -f \"\$job_file\"
-                    
-                    if [[ \"\$status\" == \"COMPLETED\" ]]; then
-                        ((cleaned++))
-                    else
-                        ((failed++))
-                    fi
+                if [[ "$status" == "COMPLETED" ]]; then
+                    ((cleaned++))
+                else
+                    ((failed++))
                 fi
             fi
-        done
-        echo \"\$cleaned,\$failed\"
-    ")
-    
-    # Parse the result (handle empty result)
-    if [[ -z "$result" ]]; then
-        cleaned=0
-        failed=0
-    else
-        cleaned=$(echo "$result" | cut -d',' -f1)
-        failed=$(echo "$result" | cut -d',' -f2)
-        # Handle empty values
-        cleaned=${cleaned:-0}
-        failed=${failed:-0}
-    fi
+        fi
+    done
     
     local total=$((cleaned + failed))
     if [[ $total -eq 0 ]]; then
