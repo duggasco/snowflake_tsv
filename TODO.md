@@ -24,13 +24,16 @@
 - [x] **Implement automatic stage cleanup** ✅
 - [x] **Create performance diagnostic tool (check_stage_and_performance.py)** ✅
 
-## ✅ Completed (2025-01-22) - Unified Wrapper v2.1.0
+## ✅ Completed (2025-01-22) - Unified Wrapper v2.4.0
 - [x] Implement all placeholder recovery functions in unified wrapper
 - [x] Parameterize duplicate checking to accept custom columns and dates
 - [x] Add stage cleaning functionality with interactive mode
 - [x] Implement VARCHAR error recovery automation
 - [x] Add clean file generation for problematic TSVs
 - [x] Update wrapper to version 2.1.0 with full recovery capabilities
+- [x] **Add smart table selection from config files** ✅
+- [x] **Auto-detect tables from config and show selection menu** ✅
+- [x] **Implement context-aware prompts with table names** ✅
 
 ## 🔥 High Priority (Next Session)
 

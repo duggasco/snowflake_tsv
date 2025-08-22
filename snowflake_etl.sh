@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.3.0 - Enhanced progress visibility
+# Version: 2.4.0 - Smart table selection from config
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.3.0"
+VERSION="2.4.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -46,6 +46,104 @@ DIALOG_WIDTH=70
 # ============================================================================
 # CRITICAL SECURITY FIXES
 # ============================================================================
+
+# Extract tables from config file
+get_tables_from_config() {
+    local config_file="${1:-$CONFIG_FILE}"
+    
+    if [[ ! -f "$config_file" ]]; then
+        echo ""
+        return 1
+    fi
+    
+    # Extract table names from the JSON config
+    python3 -c "
+import json
+import sys
+
+try:
+    with open('$config_file', 'r') as f:
+        config = json.load(f)
+    
+    tables = []
+    if 'files' in config:
+        for file_config in config['files']:
+            if 'table_name' in file_config:
+                tables.append(file_config['table_name'])
+    
+    # Return unique tables
+    print(' '.join(sorted(set(tables))))
+except Exception as e:
+    sys.exit(1)
+" 2>/dev/null
+}
+
+# Select table from config or prompt
+select_table() {
+    local prompt_msg="${1:-Select Table}"
+    local default_table="${2:-}"
+    local allow_all="${3:-false}"  # Allow 'all' as an option
+    
+    # Get tables from config
+    local config_tables=$(get_tables_from_config)
+    
+    if [[ -z "$config_tables" ]]; then
+        # No tables in config, prompt for input
+        local table=$(get_input "$prompt_msg" "Enter table name" "$default_table")
+        echo "$table"
+        return
+    fi
+    
+    # Convert to array
+    local tables_array=($config_tables)
+    
+    # If only one table, use it automatically (unless allow_all is true)
+    if [[ ${#tables_array[@]} -eq 1 ]] && [[ "$allow_all" != "true" ]]; then
+        echo "${tables_array[0]}"
+        return
+    fi
+    
+    # Multiple tables or allow_all, show selection menu
+    local menu_options=()
+    
+    # Add 'all' option if requested
+    if [[ "$allow_all" == "true" ]]; then
+        menu_options+=("[ALL TABLES]")
+    fi
+    
+    for table in "${tables_array[@]}"; do
+        menu_options+=("$table")
+    done
+    menu_options+=("[Enter custom table name]")
+    
+    local choice=$(show_menu "$prompt_msg" "${menu_options[@]}")
+    
+    if [[ "$choice" == "0" ]] || [[ -z "$choice" ]]; then
+        echo ""
+        return 1
+    fi
+    
+    local selected_index=$((choice - 1))
+    
+    # Check if 'all' was selected
+    if [[ "$allow_all" == "true" ]] && [[ $selected_index -eq 0 ]]; then
+        echo "all"
+        return
+    fi
+    
+    # Adjust index if 'all' option was included
+    if [[ "$allow_all" == "true" ]]; then
+        selected_index=$((selected_index - 1))
+    fi
+    
+    if [[ $selected_index -eq ${#tables_array[@]} ]]; then
+        # User selected custom entry
+        local table=$(get_input "$prompt_msg" "Enter table name" "$default_table")
+        echo "$table"
+    elif [[ $selected_index -ge 0 ]] && [[ $selected_index -lt ${#tables_array[@]} ]]; then
+        echo "${tables_array[$selected_index]}"
+    fi
+}
 
 # Safe file parsing - no source/eval
 parse_job_file() {
@@ -858,8 +956,14 @@ menu_delete_data() {
         return 1
     fi
     
-    local table=$(get_input "Delete Data" "Enter table name")
-    local month=$(get_input "Delete Data" "Enter month (YYYY-MM)")
+    local table=$(select_table "Delete Data")
+    
+    if [[ -z "$table" ]]; then
+        show_message "Error" "Table selection cancelled"
+        return
+    fi
+    
+    local month=$(get_input "Delete Data" "Enter month (YYYY-MM) for table: $table")
     
     if [[ -z "$table" ]] || [[ -z "$month" ]]; then
         show_message "Error" "Table and month are required"
@@ -887,7 +991,7 @@ check_duplicates() {
         return 1
     fi
     
-    local table=$(get_input "Check Duplicates" "Enter table name")
+    local table=$(select_table "Check Duplicates")
     
     if [[ -z "$table" ]]; then
         show_message "Error" "Table name is required"
@@ -1093,7 +1197,7 @@ check_table_info() {
         return 1
     fi
     
-    local table=$(get_input "Check Table" "Enter table name to check")
+    local table=$(select_table "Check Table")
     
     if [[ -z "$table" ]]; then
         show_message "Error" "Table name is required"
@@ -1130,8 +1234,19 @@ diagnose_failed_load() {
 
 # Recovery and fix functions
 fix_varchar_errors() {
-    local month=$(get_input "Fix VARCHAR Errors" "Enter month (YYYY-MM) with VARCHAR errors")
-    local table=$(get_input "Fix VARCHAR Errors" "Enter table name")
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
+    local table=$(select_table "Fix VARCHAR Errors")
+    
+    if [[ -z "$table" ]]; then
+        show_message "Error" "Table selection cancelled"
+        return
+    fi
+    
+    local month=$(get_input "Fix VARCHAR Errors" "Enter month (YYYY-MM) with VARCHAR errors for table: $table")
     
     if [[ -z "$month" ]] || [[ -z "$table" ]]; then
         show_message "Error" "Month and table are required"
@@ -1176,7 +1291,12 @@ recover_from_logs() {
 }
 
 clean_stage_files() {
-    local table=$(get_input "Clean Stage Files" "Enter table name (or 'all' for all stages)")
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
+    local table=$(select_table "Clean Stage Files" "" "true")
     
     if [[ -z "$table" ]]; then
         show_message "Error" "Table name is required"
@@ -1217,8 +1337,26 @@ conn.close()
 }
 
 generate_clean_files() {
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
     local source_file=$(get_input "Generate Clean Files" "Enter problematic TSV file path")
-    local month=$(get_input "Generate Clean Files" "Enter month (YYYY-MM) to process")
+    
+    if [[ -z "$source_file" ]]; then
+        show_message "Error" "Source file is required"
+        return
+    fi
+    
+    local table=$(select_table "Generate Clean Files")
+    
+    if [[ -z "$table" ]]; then
+        show_message "Error" "Table selection cancelled"
+        return
+    fi
+    
+    local month=$(get_input "Generate Clean Files" "Enter month (YYYY-MM) to process for table: $table")
     
     if [[ ! -f "$source_file" ]]; then
         show_message "Error" "Source file not found: $source_file"

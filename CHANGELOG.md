@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## [v4.2.0] - 2025-01-22 - Smart Table Selection from Config
+
+### UI/UX Improvements
+- **Unified Wrapper v2.4.0**
+  - Added automatic table detection from config files
+  - Implemented smart table selection with menu when multiple tables exist
+  - Auto-selects table when config contains only one table
+  - Allows custom table entry when needed
+  - Special handling for 'all tables' option where appropriate
+  
+### Enhanced User Experience
+- No longer prompts for table name if config specifies a single table
+- Shows table selection menu when config contains multiple tables
+- Provides context in prompts (e.g., "Enter month for table: TABLE_NAME")
+- Reduces manual input and potential errors
+- Maintains backward compatibility with configs without table specifications
+
 ## [v4.1.0] - 2025-01-22 - Unified Wrapper Complete Implementation
 
 ### Major Enhancements
