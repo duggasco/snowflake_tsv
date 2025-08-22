@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.5.0 - All operations use job management (no more black screens)
+# Version: 2.5.1 - Fixed character encoding in job status display
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.5.0"
+VERSION="2.5.1"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -674,7 +674,12 @@ show_all_jobs_summary() {
             local end_time=$(parse_job_file "$job_file" "END_TIME")
             local log_file=$(parse_job_file "$job_file" "LOG_FILE")
             
-            status_text+="\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            # Truncate long job names for display
+            if [[ ${#job_name} -gt 50 ]]; then
+                job_name="${job_name:0:47}..."
+            fi
+            
+            status_text+="\n----------------------------\n"
             status_text+="Job: $job_name\n"
             status_text+="ID: $job_id\n"
             status_text+="Status: $status\n"
@@ -1503,7 +1508,7 @@ view_preferences() {
     prefs+="Logs Directory: $LOGS_DIR\n"
     
     if [[ -f "$PREFS_FILE" ]]; then
-        prefs+="\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        prefs+="\n----------------------------\n"
         prefs+="Saved Preferences:\n"
         prefs+="$(cat "$PREFS_FILE")"
     fi
@@ -1611,7 +1616,7 @@ parse_cli_args() {
                 # Show job status in non-interactive mode
                 for job_file in "$JOBS_DIR"/*.job; do
                     if [[ -f "$job_file" ]]; then
-                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo "----------------------------"
                         grep "^JOB_NAME=" "$job_file" | cut -d'=' -f2
                         grep "^STATUS=" "$job_file" | cut -d'=' -f2
                         grep "^START_TIME=" "$job_file" | cut -d'=' -f2
