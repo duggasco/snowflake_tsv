@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## [v4.3.0] - 2025-01-22 - All Operations Use Job Management
+
+### Job Management Improvements
+- **Unified Wrapper v2.5.0**
+  - Fixed black screen issue during Snowflake operations
+  - Updated check_duplicates() to use job management system
+  - Updated menu_validate_data() to use job management system
+  - Updated check_table_info() to use job management system
+  - All operations now offer foreground/background execution choice
+  - Created check_duplicates_interactive.py for progress feedback
+  
+### User Experience
+- No more black screens during long operations
+- Real-time progress visible when selecting foreground mode
+- Background jobs can be monitored via Job Status menu
+- Consistent execution model across all operations
+
 ## [v4.2.0] - 2025-01-22 - Smart Table Selection from Config
 
 ### UI/UX Improvements

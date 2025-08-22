@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.4.0 - Smart table selection from config
+# Version: 2.5.0 - All operations use job management (no more black screens)
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.4.0"
+VERSION="2.5.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -943,9 +943,18 @@ menu_validate_data() {
     local month=$(get_input "Validate Data" "Enter month (YYYY-MM)" "$(date +%Y-%m)")
     
     if confirm_action "Validate data for $month?\nUsing config: $(basename "$CONFIG_FILE")"; then
-        show_message "Running" "Validating data for $month..."
-        local output=$(python3 tsv_loader.py --config "$CONFIG_FILE" --month "$month" --validate-only 2>&1)
-        show_message "Validation Results" "$output"
+        # Ask user for execution mode
+        local response=$(get_input "Execution Mode" "Show real-time progress? (Y=foreground, N=background)" "Y")
+        
+        if [[ "${response^^}" == "Y" ]]; then
+            # Run in foreground with visible progress
+            with_lock start_foreground_job "validate_${month}" \
+                python3 tsv_loader.py --config "$CONFIG_FILE" --month "$month" --validate-only
+        else
+            # Run in background
+            with_lock start_background_job "validate_${month}" \
+                python3 tsv_loader.py --config "$CONFIG_FILE" --month "$month" --validate-only
+        fi
     fi
 }
 
@@ -1015,10 +1024,29 @@ check_duplicates() {
         fi
     fi
     
-    show_message "Running" "Checking for duplicates in $table...\nKey columns: $key_columns\nDate range: ${start_date:-'all'} to ${end_date:-'all'}"
-    
-    # Run parameterized duplicate check
-    local output=$(python3 -c "
+    if confirm_action "Check for duplicates in $table?\nKey columns: $key_columns\nDate range: ${start_date:-'all'} to ${end_date:-'all'}"; then
+        # Check if the interactive script exists
+        if [[ -f "check_duplicates_interactive.py" ]]; then
+            # Use the interactive script with job management
+            local response=$(get_input "Execution Mode" "Show real-time progress? (Y=foreground, N=background)" "Y")
+            
+            # Set date parameters
+            local date_start="${start_date:-none}"
+            local date_end="${end_date:-none}"
+            
+            if [[ "${response^^}" == "Y" ]]; then
+                # Run in foreground with visible progress
+                with_lock start_foreground_job "check_duplicates_${table}" \
+                    python3 check_duplicates_interactive.py "$CONFIG_FILE" "$table" "$key_columns" "$date_start" "$date_end"
+            else
+                # Run in background
+                with_lock start_background_job "check_duplicates_${table}" \
+                    python3 check_duplicates_interactive.py "$CONFIG_FILE" "$table" "$key_columns" "$date_start" "$date_end"
+            fi
+        else
+            # Fall back to inline execution
+            show_message "Running" "Checking for duplicates..."
+            local output=$(python3 -c "
 import json
 import sys
 from datetime import datetime
@@ -1094,8 +1122,10 @@ try:
 finally:
     validator.close()
 " 2>&1 | head -100)
-    
-    show_message "Duplicate Check Results" "$output"
+            
+            show_message "Duplicate Check Results" "$output"
+        fi
+    fi
 }
 
 # Compare files
@@ -1204,14 +1234,19 @@ check_table_info() {
         return
     fi
     
-    show_message "Running" "Checking table $table in Snowflake...\nUsing config: $(basename "$CONFIG_FILE")"
-    
-    local output=$(python3 check_snowflake_table.py "$CONFIG_FILE" "$table" 2>&1 | head -50)
-    
-    if [[ $? -eq 0 ]]; then
-        show_message "Table Information" "$output"
-    else
-        show_message "Error" "Failed to check table:\n$output"
+    if confirm_action "Check table $table in Snowflake?"; then
+        # Ask user for execution mode
+        local response=$(get_input "Execution Mode" "Show real-time progress? (Y=foreground, N=background)" "Y")
+        
+        if [[ "${response^^}" == "Y" ]]; then
+            # Run in foreground with visible progress
+            with_lock start_foreground_job "check_table_${table}" \
+                python3 check_snowflake_table.py "$CONFIG_FILE" "$table"
+        else
+            # Run in background
+            with_lock start_background_job "check_table_${table}" \
+                python3 check_snowflake_table.py "$CONFIG_FILE" "$table"
+        fi
     fi
 }
 
