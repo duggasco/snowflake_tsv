@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## [v2.10.1] - 2025-01-22 - Auto-refresh Job Status Menu After Cleaning
+
+### Fixed
+- Job Status menu now automatically refreshes after cleaning completed jobs
+- Cleaned jobs immediately disappear from the menu without manual refresh
+- Better user experience with automatic menu update
+
+### Improved
+- Cleaning workflow is now seamless - clean and see results instantly
+- No need to manually select "Refresh" after cleaning
+
 ## [v2.10.0] - 2025-01-22 - Complete Removal of Unicode/Emoji Characters
 
 ### Changed

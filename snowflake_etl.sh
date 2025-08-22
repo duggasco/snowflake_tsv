@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.10.0"
+VERSION="2.10.1"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -799,6 +799,8 @@ show_job_status() {
                 # Check what type of selection it is
                 if [[ "$selected_option" == "Clean Completed Jobs" ]]; then
                     clean_completed_jobs
+                    # Automatically refresh the menu after cleaning
+                    continue
                 elif [[ "$selected_option" == "Refresh" ]]; then
                     continue
                 elif [[ "$selected_option" =~ ^View\ Log:|^View\ Error: ]]; then
