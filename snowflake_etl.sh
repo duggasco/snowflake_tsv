@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.8.0"
+VERSION="2.8.1"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -28,6 +28,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
+GRAY='\033[0;90m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
@@ -894,38 +895,68 @@ show_all_jobs_summary() {
 view_job_full_log() {
     local job_file="$1"
     local job_name=$(parse_job_file "$job_file" "JOB_NAME")
-    local job_id=$(parse_job_file "$job_file" "JOB_ID")
     local status=$(parse_job_file "$job_file" "STATUS")
     local log_file=$(parse_job_file "$job_file" "LOG_FILE")
     
-    if [[ ! -f "$log_file" ]]; then
-        show_message "Error" "Log file not found for job: $job_name"
-        return
+    # Input validation - check if log file path is set
+    if [[ -z "$log_file" ]]; then
+        echo "${RED}Error: Log file path is missing for job: $job_name${NC}" >&2
+        read -p "Press Enter to continue..."
+        return 1
     fi
     
-    # Check if log file has content
-    if [[ ! -s "$log_file" ]]; then
-        show_message "Job Log: $job_name" "No output captured in log file."
-    else
-        # Clear screen and show header
-        clear
-        echo "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════${NC}"
-        echo "${BOLD}  Job Log: ${YELLOW}$job_name${NC} ${BOLD}[${status}]${NC}"
-        echo "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════${NC}"
-        echo "${GRAY}  Log file: $log_file${NC}"
-        echo "${GRAY}  Press 'q' to quit, '/' to search, 'g' for top, 'G' for bottom${NC}"
-        echo "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════${NC}"
-        echo ""
-        
-        # Use less for persistent viewing with color support
-        # --RAW-CONTROL-CHARS: Preserve ANSI color codes
-        # --quit-if-one-screen: Auto-exit if content fits on one screen
-        # --no-init: Don't clear screen when starting/exiting
-        # +Gg: Start at beginning of file
-        less --RAW-CONTROL-CHARS --quit-if-one-screen --no-init +Gg "$log_file"
-        
-        # After exiting less, clear and redraw menu (will happen automatically)
+    # Check if file exists
+    if [[ ! -f "$log_file" ]]; then
+        echo "${RED}Error: Log file not found: $log_file${NC}" >&2
+        read -p "Press Enter to continue..."
+        return 1
     fi
+    
+    # Check if file is readable
+    if [[ ! -r "$log_file" ]]; then
+        echo "${RED}Error: Cannot read log file (permission denied): $log_file${NC}" >&2
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+    
+    # Check if file is empty
+    if [[ ! -s "$log_file" ]]; then
+        echo "${YELLOW}Log for '$job_name' is empty.${NC}"
+        read -p "Press Enter to continue..."
+        return 0
+    fi
+    
+    # Simple, reliable header - no fancy UI that can break
+    echo ""
+    echo "--- Viewing log for: ${BOLD}$job_name${NC} [${status}]"
+    echo "--- File: $log_file"
+    echo "--- (Press 'q' to quit, '/' to search)"
+    echo ""
+    
+    # Small delay to ensure user sees the header
+    sleep 0.5
+    
+    # Use the best available pager with proper fallback
+    if command -v less >/dev/null 2>&1; then
+        # -R = Render ANSI color codes correctly
+        # -F = Quit if entire file fits on one screen
+        # -X = Do not clear screen on exit (prevents blank screen issue)
+        # -S = Disable line wrapping (horizontal scroll for long lines)
+        less -RFXS "$log_file"
+    elif command -v more >/dev/null 2>&1; then
+        # Fallback to more if less is not available
+        more "$log_file"
+    else
+        # Last resort fallback - just cat the file
+        echo "${YELLOW}--- Note: 'less' and 'more' not found. Displaying full log ---${NC}"
+        cat "$log_file"
+        echo ""
+        echo "--- End of log ---"
+        read -p "Press Enter to continue..."
+    fi
+    
+    # Return success
+    return 0
 }
 
 # Monitor a specific job's progress

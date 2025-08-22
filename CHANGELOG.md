@@ -1,5 +1,28 @@
 # CHANGELOG.md
 
+## [v2.8.1] - 2025-01-22 - Robust Log Viewer with Comprehensive Error Handling
+
+### Fixed
+- **Critical**: Fixed unbound variable error (GRAY not defined) that crashed entire script
+- Fixed blank black screen issue when viewing logs
+- Removed screen clearing that caused jarring user experience
+- Fixed handling of permission denied errors
+
+### Improved
+- Complete rewrite of log viewer for maximum reliability
+- Added comprehensive error checking (missing path, non-existent file, permissions, empty file)
+- Implemented intelligent pager selection (less > more > cat fallback)
+- Used less -RFXS flags to prevent screen clearing and handle colors properly
+- Added proper return codes and error messages with pauses
+- Simplified UI to prevent fragility - removed complex headers
+- Added robust test suite covering all edge cases
+
+### Added
+- GRAY color variable definition
+- Comprehensive test script test_log_viewer_robust.sh
+- Permission checks before attempting to read files
+- Fallback to 'more' and 'cat' if 'less' not available
+
 ## [v2.8.0] - 2025-01-22 - Persistent Log Viewer Implementation
 
 ### Added
