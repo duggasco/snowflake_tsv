@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.1.0"
+VERSION="2.1.1"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -516,6 +516,7 @@ menu_data_operations() {
             "Validate Data" \
             "Delete Data" \
             "Check Duplicates" \
+            "Check Table Info" \
             "Compare Files")
         
         case "$choice" in
@@ -523,7 +524,8 @@ menu_data_operations() {
             2) menu_validate_data ;;
             3) menu_delete_data ;;
             4) check_duplicates ;;
-            5) compare_files ;;
+            5) check_table_info ;;
+            6) compare_files ;;
             0|"") pop_menu; break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
@@ -886,6 +888,26 @@ view_file_stats() {
         show_message "File Statistics" "File: $(basename "$file")\nSize: $size\nRows: $lines\nColumns: $cols\nNull bytes: $nulls"
     else
         show_message "Error" "File not found: $file"
+    fi
+}
+
+# Check table existence and info
+check_table_info() {
+    local table=$(get_input "Check Table" "Enter table name to check")
+    
+    if [[ -z "$table" ]]; then
+        show_message "Error" "Table name is required"
+        return
+    fi
+    
+    show_message "Running" "Checking table $table in Snowflake..."
+    
+    local output=$(python3 check_snowflake_table.py "$CONFIG_FILE" "$table" 2>&1 | head -50)
+    
+    if [[ $? -eq 0 ]]; then
+        show_message "Table Information" "$output"
+    else
+        show_message "Error" "Failed to check table:\n$output"
     fi
 }
 
