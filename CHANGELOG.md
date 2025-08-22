@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## [v2.9.3] - 2025-01-22 - Fixed Clean Completed Jobs Function
+
+### Fixed
+- Fixed "Clean Completed Jobs" button not properly removing jobs from status menu
+- Resolved issue where cleaned count was not captured from subshell
+- Jobs are now properly removed and user gets clear feedback
+
+### Improved
+- Added support for cleaning both completed and failed/crashed jobs
+- Better feedback showing number of each type cleaned
+- Log files are preserved for debugging (can be optionally deleted)
+- Handles empty result cases gracefully
+
 ## [v2.9.2] - 2025-01-22 - Fixed ANSI Color Code Display Issues
 
 ### Fixed

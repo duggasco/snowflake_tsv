@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.9.2"
+VERSION="2.9.3"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -984,22 +984,61 @@ monitor_job_progress() {
 
 # Clean completed jobs
 clean_completed_jobs() {
-    local cleaned=0
-    
-    with_lock bash -c "
+    # Capture the result from the subshell
+    local result=$(with_lock bash -c "
+        cleaned=0
+        failed=0
         for job_file in '$JOBS_DIR'/*.job; do
             if [[ -f \"\$job_file\" ]]; then
                 status=\$(grep '^STATUS=' \"\$job_file\" | cut -d'=' -f2)
-                if [[ \"\$status\" == \"COMPLETED\" ]]; then
+                log_file=\$(grep '^LOG_FILE=' \"\$job_file\" | cut -d'=' -f2)
+                
+                if [[ \"\$status\" == \"COMPLETED\" ]] || [[ \"\$status\" == \"FAILED\" ]] || [[ \"\$status\" == \"CRASHED\" ]]; then
+                    # Remove log file if it exists (optional - you may want to keep logs)
+                    # if [[ -n \"\$log_file\" ]] && [[ -f \"\$log_file\" ]]; then
+                    #     rm -f \"\$log_file\"
+                    # fi
+                    
+                    # Remove the job file
                     rm -f \"\$job_file\"
-                    ((cleaned++))
+                    
+                    if [[ \"\$status\" == \"COMPLETED\" ]]; then
+                        ((cleaned++))
+                    else
+                        ((failed++))
+                    fi
                 fi
             fi
         done
-        echo \$cleaned
-    "
+        echo \"\$cleaned,\$failed\"
+    ")
     
-    show_message "Cleanup" "Cleaned $cleaned completed job(s)."
+    # Parse the result (handle empty result)
+    if [[ -z "$result" ]]; then
+        cleaned=0
+        failed=0
+    else
+        cleaned=$(echo "$result" | cut -d',' -f1)
+        failed=$(echo "$result" | cut -d',' -f2)
+        # Handle empty values
+        cleaned=${cleaned:-0}
+        failed=${failed:-0}
+    fi
+    
+    local total=$((cleaned + failed))
+    if [[ $total -eq 0 ]]; then
+        show_message "No Jobs to Clean" "No completed or failed jobs found to clean."
+    else
+        local message="Cleaned $total job(s) from job status:\n\n"
+        if [[ $cleaned -gt 0 ]]; then
+            message+="✓ $cleaned completed job(s)\n"
+        fi
+        if [[ $failed -gt 0 ]]; then
+            message+="✗ $failed failed/crashed job(s)\n"
+        fi
+        message+="\n(Log files preserved for debugging)"
+        show_message "Jobs Cleaned" "$message"
+    fi
 }
 
 # ============================================================================
