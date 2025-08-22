@@ -1,5 +1,64 @@
 # CHANGELOG.md
 
+## [v4.1.0] - 2025-01-22 - Unified Wrapper Complete Implementation
+
+### Major Enhancements
+- **Unified Wrapper v2.1.0**
+  - Implemented all placeholder recovery functions
+  - Added parameterized duplicate checking with custom key columns
+  - Integrated stage file management and cleanup
+  - Added VARCHAR error recovery automation
+  - Implemented clean file generation for problematic TSVs
+  
+### Recovery Tools Implementation
+- **fix_varchar_errors()**: Automated cleanup and retry for VARCHAR date format issues
+- **recover_from_logs()**: Extract and diagnose errors from job logs
+- **clean_stage_files()**: Interactive and batch stage file cleanup
+- **generate_clean_files()**: Create sanitized versions of problematic TSV files
+
+### Duplicate Detection Improvements
+- Parameterized check_duplicates function accepts:
+  - Custom table names
+  - Configurable key columns
+  - Optional date ranges or specific months
+  - Detailed statistics and sample output
+
+### Integration Enhancements  
+- Full integration with recover_failed_load.sh
+- Direct usage of check_stage_and_performance.py
+- Inline Python execution for complex operations
+- Improved error handling and user feedback
+
+### Documentation Updates
+- Updated UNIFIED_WRAPPER_SUMMARY.md with v2.1.0 features
+- Added detailed function descriptions
+- Updated TODO.md with completed tasks
+- Enhanced troubleshooting guide
+
+## [v4.0.0] - 2025-01-22 - Unified Interface & Security Hardening
+
+### Major Changes
+- **Unified Wrapper Script (`snowflake_etl.sh`)**
+  - Single entry point for all ETL operations
+  - Interactive menu system with breadcrumb navigation
+  - CLI mode for automation
+  - Background job management with state tracking
+
+- **Duplicate Detection System**
+  - Efficient ROW_NUMBER() based detection
+  - Configurable composite keys
+  - Severity assessment and sampling
+
+- **Security Improvements**
+  - Eliminated eval/source vulnerabilities
+  - Robust flock locking
+  - Input validation throughout
+
+### Performance Fixes
+- Fixed file comparison hanging on 12GB+ files
+- Added --quick sampling mode
+- Optimized duplicate detection for billion-row tables
+
 ## [v3.1.0] - 2025-08-21 - Async COPY and Performance Optimizations
 
 ### Major Performance Improvements

@@ -1,15 +1,73 @@
 #!/usr/bin/env python3
 """
 Compare TSV files to identify differences between working and failing files
+Optimized for large files (12GB+) with fast counting methods
 """
 
 import sys
 import os
 import csv
+import time
+import subprocess
 from collections import Counter
 import chardet
 
-def compare_files(good_file, bad_file):
+def fast_line_count(file_path):
+    """Use wc -l for fast line counting on Unix systems"""
+    try:
+        result = subprocess.run(['wc', '-l', file_path], 
+                              capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            count = int(result.stdout.split()[0])
+            return count
+    except (subprocess.TimeoutExpired, Exception):
+        pass
+    return None
+
+def buffered_line_count(file_path, show_progress=True, buffer_size=8*1024*1024):
+    """Count lines with large buffer for better performance"""
+    count = 0
+    last_update = time.time()
+    mb_read = 0
+    file_size = os.path.getsize(file_path) / (1024*1024)  # Size in MB
+    
+    with open(file_path, 'rb') as f:
+        while True:
+            buffer = f.read(buffer_size)
+            if not buffer:
+                break
+            count += buffer.count(b'\n')
+            mb_read += len(buffer) / (1024*1024)
+            
+            # Show progress every 2 seconds for large files
+            if show_progress and file_size > 100:  # Only show progress for files > 100MB
+                current_time = time.time()
+                if current_time - last_update > 2:
+                    progress = (mb_read / file_size) * 100
+                    print(f"      Progress: {progress:.1f}% ({mb_read:.0f}/{file_size:.0f} MB)", end='\r')
+                    last_update = current_time
+    
+    if show_progress and file_size > 100:
+        print()  # Clear progress line
+    return count
+
+def sample_line_count(file_path, sample_size_mb=100):
+    """Estimate row count by sampling first N MB of file"""
+    file_size = os.path.getsize(file_path)
+    sample_bytes = min(sample_size_mb * 1024 * 1024, file_size)
+    
+    with open(file_path, 'rb') as f:
+        sample = f.read(sample_bytes)
+        lines_in_sample = sample.count(b'\n')
+    
+    # Extrapolate to full file
+    if sample_bytes < file_size:
+        estimated_lines = int(lines_in_sample * (file_size / sample_bytes))
+        return estimated_lines, True  # True indicates this is an estimate
+    else:
+        return lines_in_sample, False
+
+def compare_files(good_file, bad_file, quick_mode=False):
     """Compare a working file with a problematic file"""
     
     print("="*60)
@@ -120,20 +178,44 @@ def compare_files(good_file, bad_file):
     
     # 6. Row count
     print("6. ROW COUNT:")
-    print("   Counting rows...")
     
-    def count_rows(file_path):
-        count = 0
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            for _ in f:
-                count += 1
-        return count
+    if quick_mode:
+        print("   Using sampling method (--quick mode)...")
+        good_rows, good_estimated = sample_line_count(good_file, sample_size_mb=100)
+        bad_rows, bad_estimated = sample_line_count(bad_file, sample_size_mb=100)
+        
+        good_suffix = " (estimated)" if good_estimated else ""
+        bad_suffix = " (estimated)" if bad_estimated else ""
+        print(f"   Good: ~{good_rows:,} rows{good_suffix}")
+        print(f"   Bad:  ~{bad_rows:,} rows{bad_suffix}")
+    else:
+        # For files > 1GB, inform user
+        if good_size > 1024*1024*1024 or bad_size > 1024*1024*1024:
+            print("   Large files detected. Using optimized counting...")
+            print("   Tip: Use --quick flag for instant sampling-based count")
+        
+        # Try fast wc -l first
+        print("   Counting good file...")
+        start = time.time()
+        good_rows = fast_line_count(good_file)
+        if good_rows is None:
+            # Fallback to buffered counting
+            good_rows = buffered_line_count(good_file, show_progress=True)
+        good_time = time.time() - start
+        print(f"   Good: {good_rows:,} rows (took {good_time:.1f}s)")
+        
+        print("   Counting bad file...")
+        start = time.time()
+        bad_rows = fast_line_count(bad_file)
+        if bad_rows is None:
+            # Fallback to buffered counting
+            bad_rows = buffered_line_count(bad_file, show_progress=True)
+        bad_time = time.time() - start
+        print(f"   Bad:  {bad_rows:,} rows (took {bad_time:.1f}s)")
     
-    good_rows = count_rows(good_file)
-    bad_rows = count_rows(bad_file)
-    
-    print(f"   Good: {good_rows:,} rows")
-    print(f"   Bad:  {bad_rows:,} rows")
+    if isinstance(good_rows, int) and isinstance(bad_rows, int):
+        if abs(good_rows - bad_rows) / good_rows > 0.1:
+            print(f"   ⚠️  Significant row count difference (>10%)")
     print()
     
     # 7. First line comparison
@@ -230,13 +312,22 @@ def compare_files(good_file, bad_file):
     return differences
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python compare_tsv_files.py <good_file.tsv> <bad_file.tsv>")
+    # Check for --quick flag
+    quick_mode = '--quick' in sys.argv
+    
+    # Remove --quick from args if present
+    args = [arg for arg in sys.argv if arg != '--quick']
+    
+    if len(args) < 3:
+        print("Usage: python compare_tsv_files.py [--quick] <good_file.tsv> <bad_file.tsv>")
         print("\nCompares a working TSV file with a problematic one to identify differences.")
+        print("Optimized for large files (12GB+) with fast counting methods.")
+        print("\nOptions:")
+        print("  --quick    Use sampling for row count (instant results for large files)")
         sys.exit(1)
     
-    good_file = sys.argv[1]
-    bad_file = sys.argv[2]
+    good_file = args[1]
+    bad_file = args[2]
     
     if not os.path.exists(good_file):
         print(f"Error: Good file not found: {good_file}")
@@ -246,7 +337,7 @@ def main():
         print(f"Error: Bad file not found: {bad_file}")
         sys.exit(1)
     
-    compare_files(good_file, bad_file)
+    compare_files(good_file, bad_file, quick_mode)
 
 if __name__ == "__main__":
     main()

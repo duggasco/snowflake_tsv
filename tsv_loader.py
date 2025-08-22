@@ -82,6 +82,7 @@ class FileConfig:
     expected_columns: List[str]
     date_column: str
     expected_date_range: tuple
+    duplicate_key_columns: List[str] = None  # Columns for duplicate detection
 
 class ProgressTracker:
     """Track and display progress across multiple files"""
@@ -992,6 +993,255 @@ class SnowflakeDataValidator:
             self.logger.error("Error getting table stats: {}".format(e))
             return {'error': str(e)}
     
+    def check_duplicates(self, table_name: str, key_columns: List[str], 
+                        date_column: str = None, start_date: str = None, 
+                        end_date: str = None, sample_limit: int = 10) -> Dict:
+        """
+        Check for duplicate records based on composite key columns.
+        
+        Args:
+            table_name: Name of the table to check
+            key_columns: List of columns that form the composite key
+            date_column: Optional date column for filtering
+            start_date: Optional start date for range filtering (YYYY-MM-DD)
+            end_date: Optional end date for range filtering (YYYY-MM-DD)
+            sample_limit: Number of sample duplicate records to return
+            
+        Returns:
+            Dict with duplicate statistics and sample records
+        """
+        self.logger.info("Checking duplicates in {} for key columns: {}".format(
+            table_name, key_columns))
+        
+        try:
+            # Build the partition key
+            partition_key = ", ".join(key_columns)
+            
+            # Build WHERE clause for date filtering if provided
+            where_clause = ""
+            if date_column and start_date and end_date:
+                start_yyyymmdd = start_date.replace('-', '')
+                end_yyyymmdd = end_date.replace('-', '')
+                where_clause = "WHERE {date_col} BETWEEN '{start}' AND '{end}'".format(
+                    date_col=date_column,
+                    start=start_yyyymmdd,
+                    end=end_yyyymmdd
+                )
+            
+            # Query 1: Get total duplicate count (fast aggregate)
+            count_query = """
+            WITH duplicates AS (
+                SELECT 
+                    {partition_key},
+                    COUNT(*) as occurrence_count
+                FROM {table}
+                {where_clause}
+                GROUP BY {partition_key}
+                HAVING COUNT(*) > 1
+            )
+            SELECT 
+                COUNT(*) as duplicate_key_combinations,
+                SUM(occurrence_count) as total_duplicate_rows,
+                SUM(occurrence_count - 1) as excess_rows,
+                MAX(occurrence_count) as max_duplicates_per_key,
+                AVG(occurrence_count) as avg_duplicates_per_key
+            FROM duplicates
+            """.format(
+                partition_key=partition_key,
+                table=table_name,
+                where_clause=where_clause
+            )
+            
+            self.logger.debug("Executing duplicate count query")
+            self.cursor.execute(count_query)
+            count_result = self.cursor.fetchone()
+            
+            if not count_result or count_result[0] is None or count_result[0] == 0:
+                self.logger.info("No duplicates found in {}".format(table_name))
+                return {
+                    'has_duplicates': False,
+                    'table_name': table_name,
+                    'key_columns': key_columns,
+                    'statistics': {
+                        'duplicate_key_combinations': 0,
+                        'total_duplicate_rows': 0,
+                        'excess_rows': 0,
+                        'max_duplicates_per_key': 0,
+                        'avg_duplicates_per_key': 0
+                    },
+                    'sample_duplicates': [],
+                    'checked_at': datetime.now().isoformat()
+                }
+            
+            # Parse count results
+            (duplicate_keys, total_dup_rows, excess_rows, 
+             max_dups, avg_dups) = count_result
+            
+            # Query 2: Get sample duplicate records with details
+            sample_query = """
+            WITH ranked_records AS (
+                SELECT 
+                    *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY {partition_key} 
+                        ORDER BY {order_col}
+                    ) as duplicate_rank,
+                    COUNT(*) OVER (
+                        PARTITION BY {partition_key}
+                    ) as duplicate_count
+                FROM {table}
+                {where_clause}
+            ),
+            duplicate_samples AS (
+                SELECT *
+                FROM ranked_records
+                WHERE duplicate_count > 1
+                ORDER BY duplicate_count DESC, {partition_key}, duplicate_rank
+                LIMIT {limit}
+            )
+            SELECT 
+                {key_select},
+                duplicate_count,
+                duplicate_rank,
+                {sample_cols}
+            FROM duplicate_samples
+            """.format(
+                partition_key=partition_key,
+                order_col=date_column if date_column else key_columns[0],
+                table=table_name,
+                where_clause=where_clause,
+                limit=sample_limit * 2,  # Get more samples to show variety
+                key_select=partition_key,
+                sample_cols=date_column if date_column else "'N/A' as date_info"
+            )
+            
+            self.logger.debug("Executing sample duplicates query")
+            self.cursor.execute(sample_query)
+            sample_results = self.cursor.fetchall()
+            
+            # Format sample duplicates
+            sample_duplicates = []
+            seen_keys = set()
+            for row in sample_results:
+                # Extract key values (depends on number of key columns)
+                key_values = row[:len(key_columns)]
+                key_str = str(key_values)
+                
+                # Limit to unique key combinations for variety
+                if key_str not in seen_keys and len(sample_duplicates) < sample_limit:
+                    sample_duplicates.append({
+                        'key_values': dict(zip(key_columns, key_values)),
+                        'duplicate_count': row[len(key_columns)],
+                        'duplicate_rank': row[len(key_columns) + 1],
+                        'date_info': row[len(key_columns) + 2] if date_column else None
+                    })
+                    seen_keys.add(key_str)
+            
+            # Query 3: Get distribution of duplicate counts
+            distribution_query = """
+            WITH duplicate_counts AS (
+                SELECT 
+                    COUNT(*) as occurrence_count
+                FROM {table}
+                {where_clause}
+                GROUP BY {partition_key}
+                HAVING COUNT(*) > 1
+            )
+            SELECT 
+                occurrence_count,
+                COUNT(*) as key_count
+            FROM duplicate_counts
+            GROUP BY occurrence_count
+            ORDER BY occurrence_count
+            LIMIT 20
+            """.format(
+                partition_key=partition_key,
+                table=table_name,
+                where_clause=where_clause
+            )
+            
+            self.logger.debug("Executing duplicate distribution query")
+            self.cursor.execute(distribution_query)
+            distribution = self.cursor.fetchall()
+            
+            # Format distribution
+            duplicate_distribution = [
+                {'duplicates_per_key': row[0], 'key_combinations': row[1]}
+                for row in distribution
+            ]
+            
+            # Calculate duplicate percentage
+            if date_column and start_date and end_date:
+                # Get total row count for the date range
+                total_query = """
+                SELECT COUNT(*) 
+                FROM {table}
+                WHERE {date_col} BETWEEN '{start}' AND '{end}'
+                """.format(
+                    table=table_name,
+                    date_col=date_column,
+                    start=start_yyyymmdd,
+                    end=end_yyyymmdd
+                )
+            else:
+                total_query = "SELECT COUNT(*) FROM {}".format(table_name)
+            
+            self.cursor.execute(total_query)
+            total_rows = self.cursor.fetchone()[0]
+            
+            duplicate_percentage = (excess_rows / total_rows * 100) if total_rows > 0 else 0
+            
+            # Build result
+            result = {
+                'has_duplicates': True,
+                'table_name': table_name,
+                'key_columns': key_columns,
+                'date_range': {
+                    'start': start_date,
+                    'end': end_date
+                } if date_column and start_date and end_date else None,
+                'statistics': {
+                    'total_rows': total_rows,
+                    'duplicate_key_combinations': int(duplicate_keys),
+                    'total_duplicate_rows': int(total_dup_rows),
+                    'excess_rows': int(excess_rows),
+                    'duplicate_percentage': round(duplicate_percentage, 2),
+                    'max_duplicates_per_key': int(max_dups),
+                    'avg_duplicates_per_key': round(float(avg_dups), 2)
+                },
+                'duplicate_distribution': duplicate_distribution,
+                'sample_duplicates': sample_duplicates,
+                'severity': self._assess_duplicate_severity(duplicate_percentage, max_dups),
+                'checked_at': datetime.now().isoformat()
+            }
+            
+            self.logger.info("Found {} duplicate key combinations with {} excess rows ({:.2f}%)".format(
+                duplicate_keys, excess_rows, duplicate_percentage))
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error("Error checking duplicates: {}".format(e))
+            self.logger.error(traceback.format_exc())
+            return {
+                'has_duplicates': False,
+                'error': str(e),
+                'checked_at': datetime.now().isoformat()
+            }
+    
+    def _assess_duplicate_severity(self, duplicate_percentage: float, max_duplicates: int) -> str:
+        """Assess the severity of duplicate issues"""
+        if duplicate_percentage > 10 or max_duplicates > 100:
+            return 'CRITICAL'
+        elif duplicate_percentage > 5 or max_duplicates > 50:
+            return 'HIGH'
+        elif duplicate_percentage > 1 or max_duplicates > 10:
+            return 'MEDIUM'
+        elif duplicate_percentage > 0:
+            return 'LOW'
+        else:
+            return 'NONE'
+    
     def close(self):
         """Close the connection"""
         if hasattr(self, 'cursor'):
@@ -1639,7 +1889,8 @@ def create_file_configs(config: Dict, base_path: str, month: str = None) -> List
                             table_name=file_def['table_name'],
                             expected_columns=file_def['expected_columns'],
                             date_column=file_def['date_column'],
-                            expected_date_range=(start_date, end_date)
+                            expected_date_range=(start_date, end_date),
+                            duplicate_key_columns=file_def.get('duplicate_key_columns', ['recordDate', 'assetId', 'fundId'])
                         )
                         file_configs.append(config_obj)
                         found_file = True
@@ -1681,7 +1932,8 @@ def create_file_configs(config: Dict, base_path: str, month: str = None) -> List
                     table_name=file_def['table_name'],
                     expected_columns=file_def['expected_columns'],
                     date_column=file_def['date_column'],
-                    expected_date_range=(month_start, month_end)
+                    expected_date_range=(month_start, month_end),
+                    duplicate_key_columns=file_def.get('duplicate_key_columns', ['recordDate', 'assetId', 'fundId'])
                 )
                 file_configs.append(config_obj)
 
@@ -1844,6 +2096,19 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                         end_date=end_date
                     )
                     
+                    # Check for duplicates if key columns are specified
+                    duplicate_result = None
+                    if config.duplicate_key_columns:
+                        duplicate_result = validator.check_duplicates(
+                            table_name=config.table_name,
+                            key_columns=config.duplicate_key_columns,
+                            date_column=config.date_column,
+                            start_date=start_date,
+                            end_date=end_date,
+                            sample_limit=5
+                        )
+                        validation_result['duplicate_check'] = duplicate_result
+                    
                     # Store result for later display
                     validation_results.append(validation_result)
                     
@@ -2001,6 +2266,19 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                         end_date=end_date
                     )
                     
+                    # Check for duplicates if key columns are specified
+                    duplicate_result = None
+                    if config.duplicate_key_columns:
+                        duplicate_result = validator.check_duplicates(
+                            table_name=config.table_name,
+                            key_columns=config.duplicate_key_columns,
+                            date_column=config.date_column,
+                            start_date=start_date,
+                            end_date=end_date,
+                            sample_limit=5
+                        )
+                        validation_result['duplicate_check'] = duplicate_result
+                    
                     # Store result for later display
                     validation_results.append(validation_result)
                     
@@ -2065,6 +2343,36 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
         print("Tables Validated: {}".format(len(results['validation_results'])))
         print("  ✓ Valid: {}".format(valid_count))
         print("  ✗ Invalid: {}".format(invalid_count))
+        
+        # Check for duplicates
+        duplicate_tables = []
+        for result in results['validation_results']:
+            dup_check = result.get('duplicate_check')
+            if dup_check and dup_check.get('has_duplicates'):
+                duplicate_tables.append({
+                    'table': result.get('table_name', 'Unknown'),
+                    'duplicate_info': dup_check
+                })
+        
+        if duplicate_tables:
+            print("\n⚠ DUPLICATE RECORDS DETECTED:")
+            for dup in duplicate_tables:
+                stats = dup['duplicate_info']['statistics']
+                print("  • {}: {} duplicate keys, {} excess rows ({:.2f}% duplicates) - Severity: {}".format(
+                    dup['table'],
+                    stats.get('duplicate_key_combinations', 0),
+                    stats.get('excess_rows', 0),
+                    stats.get('duplicate_percentage', 0),
+                    dup['duplicate_info'].get('severity', 'UNKNOWN')
+                ))
+                
+                # Show sample duplicates if available
+                samples = dup['duplicate_info'].get('sample_duplicates', [])
+                if samples and len(samples) > 0:
+                    print("    Sample duplicate keys (first 3):")
+                    for i, sample in enumerate(samples[:3]):
+                        key_str = ', '.join(["{}: {}".format(k, v) for k, v in sample['key_values'].items()])
+                        print("      - {} (appears {} times)".format(key_str, sample['duplicate_count']))
         
         if invalid_count > 0:
             print("\nFailed Tables:")
@@ -2194,7 +2502,8 @@ def main():
                 table_name=file_config.get('table_name'),
                 expected_columns=file_config.get('expected_columns', []),
                 date_column=file_config.get('date_column'),
-                expected_date_range=expected_date_range
+                expected_date_range=expected_date_range,
+                duplicate_key_columns=file_config.get('duplicate_key_columns', ['recordDate', 'assetId', 'fundId'])
             )
             file_configs.append(fc)
     else:

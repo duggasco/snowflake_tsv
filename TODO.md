@@ -1,5 +1,5 @@
 # TODO.md - Snowflake TSV Loader
-*Last Updated: 2025-08-21*
+*Last Updated: 2025-01-22*
 
 ## ✅ Completed (2025-08-21)
 - [x] Fix critical IndentationError in validation code
@@ -23,6 +23,14 @@
 - [x] **Add warehouse size detection and warnings** ✅
 - [x] **Implement automatic stage cleanup** ✅
 - [x] **Create performance diagnostic tool (check_stage_and_performance.py)** ✅
+
+## ✅ Completed (2025-01-22) - Unified Wrapper v2.1.0
+- [x] Implement all placeholder recovery functions in unified wrapper
+- [x] Parameterize duplicate checking to accept custom columns and dates
+- [x] Add stage cleaning functionality with interactive mode
+- [x] Implement VARCHAR error recovery automation
+- [x] Add clean file generation for problematic TSVs
+- [x] Update wrapper to version 2.1.0 with full recovery capabilities
 
 ## 🔥 High Priority (Next Session)
 
