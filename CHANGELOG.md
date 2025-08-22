@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## [v2.9.2] - 2025-01-22 - Fixed ANSI Color Code Display Issues
+
+### Fixed
+- Fixed raw escape codes (\033[) appearing in job progress headers
+- Added -e flag to echo statements to properly interpret ANSI color codes
+- Job monitoring, log viewing, and status displays now show colors correctly
+
+### Improved
+- Cleaner visual output with properly formatted colored text
+- Better readability of job status messages and headers
+
 ## [v2.9.1] - 2025-01-22 - Enhanced Validation to Support ALL Data
 
 ### Added

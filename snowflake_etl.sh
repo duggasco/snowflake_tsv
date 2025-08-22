@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.9.1"
+VERSION="2.9.2"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -603,7 +603,7 @@ show_message() {
         fi
     else
         echo ""
-        echo "${BOLD}=== $title ===${NC}"
+        echo -e "${BOLD}=== $title ===${NC}"
         echo "$message"
         echo ""
         read -p "Press Enter to continue..."
@@ -622,7 +622,7 @@ get_input() {
         echo "$result"
     else
         echo ""
-        echo "${BOLD}$title${NC}"
+        echo -e "${BOLD}$title${NC}"
         if [[ -n "$default" ]]; then
             read -p "$prompt [$default]: " result
             echo "${result:-$default}"
@@ -677,18 +677,18 @@ start_background_job() {
     
     if [[ "$show_output" == "true" ]]; then
         # Run in foreground with output visible
-        echo "${BOLD}${BLUE}Starting: $job_name${NC}"
+        echo -e "${BOLD}${BLUE}Starting: $job_name${NC}"
         echo "Log: $log_file"
-        echo "${YELLOW}Progress will be shown below:${NC}"
+        echo -e "${YELLOW}Progress will be shown below:${NC}"
         echo "----------------------------------------"
         
         # Use tee to show output and save to log
         if "$@" 2>&1 | tee "$log_file"; then
             update_job_file "$job_file" "STATUS" "COMPLETED"
-            echo "${GREEN}SUCCESS Job completed successfully${NC}"
+            echo -e "${GREEN}SUCCESS Job completed successfully${NC}"
         else
             update_job_file "$job_file" "STATUS" "FAILED"
-            echo "${RED}FAILED Job failed${NC}"
+            echo -e "${RED}FAILED Job failed${NC}"
         fi
         update_job_file "$job_file" "END_TIME" "$(date +"%Y-%m-%d %H:%M:%S")"
     else
@@ -900,35 +900,35 @@ view_job_full_log() {
     
     # Input validation - check if log file path is set
     if [[ -z "$log_file" ]]; then
-        echo "${RED}Error: Log file path is missing for job: $job_name${NC}" >&2
+        echo -e "${RED}Error: Log file path is missing for job: $job_name${NC}" >&2
         read -p "Press Enter to continue..."
         return 1
     fi
     
     # Check if file exists
     if [[ ! -f "$log_file" ]]; then
-        echo "${RED}Error: Log file not found: $log_file${NC}" >&2
+        echo -e "${RED}Error: Log file not found: $log_file${NC}" >&2
         read -p "Press Enter to continue..."
         return 1
     fi
     
     # Check if file is readable
     if [[ ! -r "$log_file" ]]; then
-        echo "${RED}Error: Cannot read log file (permission denied): $log_file${NC}" >&2
+        echo -e "${RED}Error: Cannot read log file (permission denied): $log_file${NC}" >&2
         read -p "Press Enter to continue..."
         return 1
     fi
     
     # Check if file is empty
     if [[ ! -s "$log_file" ]]; then
-        echo "${YELLOW}Log for '$job_name' is empty.${NC}"
+        echo -e "${YELLOW}Log for '$job_name' is empty.${NC}"
         read -p "Press Enter to continue..."
         return 0
     fi
     
     # Simple, reliable header - no fancy UI that can break
     echo ""
-    echo "--- Viewing log for: ${BOLD}$job_name${NC} [${status}]"
+    echo -e "--- Viewing log for: ${BOLD}$job_name${NC} [${status}]"
     echo "--- File: $log_file"
     echo "--- (Press 'q' to quit, '/' to search)"
     echo ""
@@ -948,7 +948,7 @@ view_job_full_log() {
         more "$log_file"
     else
         # Last resort fallback - just cat the file
-        echo "${YELLOW}--- Note: 'less' and 'more' not found. Displaying full log ---${NC}"
+        echo -e "${YELLOW}--- Note: 'less' and 'more' not found. Displaying full log ---${NC}"
         cat "$log_file"
         echo ""
         echo "--- End of log ---"
@@ -974,8 +974,8 @@ monitor_job_progress() {
     fi
     
     clear
-    echo "${BOLD}${BLUE}Monitoring Job: $job_name${NC}"
-    echo "${YELLOW}Press Ctrl+C to stop monitoring${NC}"
+    echo -e "${BOLD}${BLUE}Monitoring Job: $job_name${NC}"
+    echo -e "${YELLOW}Press Ctrl+C to stop monitoring${NC}"
     echo "----------------------------------------"
     
     # Use tail -f to show live output
@@ -2001,7 +2001,7 @@ main_menu() {
             5) show_job_status ;;  # Now has interactive menu
             6) menu_settings ;;
             0|"") 
-                echo "${GREEN}Thank you for using Snowflake ETL Manager!${NC}"
+                echo -e "${GREEN}Thank you for using Snowflake ETL Manager!${NC}"
                 exit 0 
                 ;;
             *) show_message "Error" "Invalid option" ;;
@@ -2050,8 +2050,8 @@ main() {
     # Show welcome message
     if [[ "$USE_DIALOG" == false ]]; then
         echo ""
-        echo "${BOLD}${CYAN}Welcome to Snowflake ETL Pipeline Manager${NC}"
-        echo "${YELLOW}Version $VERSION - Security Hardened${NC}"
+        echo -e "${BOLD}${CYAN}Welcome to Snowflake ETL Pipeline Manager${NC}"
+        echo -e "${YELLOW}Version $VERSION - Security Hardened${NC}"
         echo ""
     fi
     
