@@ -1311,7 +1311,7 @@ class SnowflakeLoader:
                     self.logger.info(f"Using warehouse: {current_wh} (Size: {wh_size})")
                     if wh_size in ['X-Small', 'Small']:
                         self.logger.warning("WARNING: Small warehouse may cause slow performance for large files")
-                        print(f"⚠️  WARNING: Warehouse '{current_wh}' is {wh_size}")
+                        print(f"WARNING: Warehouse '{current_wh}' is {wh_size}")
                         print("   For files >100MB, consider using: ALTER WAREHOUSE {} SET WAREHOUSE_SIZE = 'MEDIUM';".format(current_wh))
                     break
             
@@ -2155,7 +2155,7 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     
                     # Update progress bar with status
                     if pbar:
-                        status = "✓" if validation_result.get('valid') else "✗"
+                        status = "PASS" if validation_result.get('valid') else "FAIL"
                         anomaly_count = validation_result.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
                         if anomaly_count > 0:
                             status += f" ({anomaly_count} anomalies)"
@@ -2330,7 +2330,7 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     
                     # Update progress bar with status
                     if val_pbar:
-                        status = "✓" if validation_result.get('valid') else "✗"
+                        status = "PASS" if validation_result.get('valid') else "FAIL"
                         anomaly_count = validation_result.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
                         if anomaly_count > 0:
                             status += f" ({anomaly_count} anomalies)"
@@ -2359,7 +2359,7 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                 results['validation_results'] = validation_results
                 
                 if validation_failed:
-                    print("\n⚠ WARNING: Some tables have incomplete date ranges")
+                    print("\nWARNING: Some tables have incomplete date ranges")
             finally:
                 validator.close()
 
@@ -2387,8 +2387,8 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
         invalid_count = len(results['validation_results']) - valid_count
         
         print("Tables Validated: {}".format(len(results['validation_results'])))
-        print("  ✓ Valid: {}".format(valid_count))
-        print("  ✗ Invalid: {}".format(invalid_count))
+        print("  [VALID]: {}".format(valid_count))
+        print("  [INVALID]: {}".format(invalid_count))
         
         # Check for duplicates
         duplicate_tables = []
@@ -2401,10 +2401,10 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                 })
         
         if duplicate_tables:
-            print("\n⚠ DUPLICATE RECORDS DETECTED:")
+            print("\nWARNING - DUPLICATE RECORDS DETECTED:")
             for dup in duplicate_tables:
                 stats = dup['duplicate_info']['statistics']
-                print("  • {}: {} duplicate keys, {} excess rows ({:.2f}% duplicates) - Severity: {}".format(
+                print("  - {}: {} duplicate keys, {} excess rows ({:.2f}% duplicates) - Severity: {}".format(
                     dup['table'],
                     stats.get('duplicate_key_combinations', 0),
                     stats.get('excess_rows', 0),
@@ -2427,9 +2427,9 @@ def process_files(file_configs: List[FileConfig], snowflake_params: Dict,
                     table_name = result.get('table_name', 'Unknown')
                     reasons = result.get('failure_reasons', [])
                     if reasons:
-                        print("  • {} - {}".format(table_name, '; '.join(reasons)))
+                        print("  - {} - {}".format(table_name, '; '.join(reasons)))
                     else:
-                        print("  • {} - Unknown failure reason".format(table_name))
+                        print("  - {} - Unknown failure reason".format(table_name))
         
         # Count anomalies across all tables
         total_anomalies = sum(
@@ -2662,10 +2662,10 @@ def main():
             print("\n{}:".format(table_name))
             
             if result.get('error'):
-                print("  Status: ✗ ERROR")
+                print("  Status: [ERROR]")
                 print("  Error: {}".format(result['error']))
             elif result.get('valid'):
-                print("  Status: ✓ VALID")
+                print("  Status: [VALID]")
                 if 'statistics' in result:
                     stats = result['statistics']
                     print("  Date Range: {} to {}".format(
@@ -2678,7 +2678,7 @@ def main():
                     
                     # Show anomalous dates even for valid results as a warning
                     if result.get('anomalous_dates'):
-                        print("\n  ⚠️  WARNING: Anomalous dates detected (but within tolerance):")
+                        print("\n  WARNING: Anomalous dates detected (but within tolerance):")
                         for i, anomaly in enumerate(result['anomalous_dates'][:5], 1):
                             print("    {}) {} - {} rows ({:.1f}% of avg) - {}".format(
                                 i, anomaly['date'], anomaly['count'],
@@ -2687,13 +2687,13 @@ def main():
                             print("    ... and {} more anomalous dates".format(
                                 len(result['anomalous_dates']) - 5))
             else:
-                print("  Status: ✗ INVALID")
+                print("  Status: [INVALID]")
                 
                 # Show clear failure reasons first
                 if result.get('failure_reasons'):
-                    print("\n  ❌ VALIDATION FAILED BECAUSE:")
+                    print("\n  [VALIDATION FAILED] BECAUSE:")
                     for reason in result['failure_reasons']:
-                        print(f"    • {reason}")
+                        print(f"    - {reason}")
                 
                 if 'statistics' in result:
                     stats = result['statistics']
@@ -2725,7 +2725,7 @@ def main():
                     
                     # Show anomalous dates if any
                     if result.get('anomalous_dates'):
-                        print("\n  ⚠️  SPECIFIC DATES WITH ANOMALIES:")
+                        print("\n  WARNING - SPECIFIC DATES WITH ANOMALIES:")
                         
                         # Group by severity for clarity
                         severely_low = [a for a in result['anomalous_dates'] if a.get('severity') == 'SEVERELY_LOW']
@@ -2736,7 +2736,7 @@ def main():
                             print("    CRITICALLY LOW (<10% of average):")
                             for anomaly in severely_low[:5]:
                                 expected_min = anomaly.get('expected_range', [0, 0])[0]
-                                print("      • {} → {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
+                                print("      - {} -> {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
                                     anomaly['date'], anomaly['count'], expected_min,
                                     anomaly['percent_of_avg']))
                         
@@ -2744,7 +2744,7 @@ def main():
                             print("    LOW (<50% of average):")
                             for anomaly in low[:3]:
                                 expected_min = anomaly.get('expected_range', [0, 0])[0]
-                                print("      • {} → {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
+                                print("      - {} -> {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
                                     anomaly['date'], anomaly['count'], expected_min,
                                     anomaly['percent_of_avg']))
                         
@@ -2752,7 +2752,7 @@ def main():
                             print("    OUTLIERS (10-50% below average):")
                             for anomaly in outlier_low[:3]:
                                 expected_min = anomaly.get('expected_range', [0, 0])[0]
-                                print("      • {} → {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
+                                print("      - {} -> {} rows (expected ~{:,}, got {:.1f}% of avg)".format(
                                     anomaly['date'], anomaly['count'], expected_min,
                                     anomaly['percent_of_avg']))
                         
@@ -2772,9 +2772,9 @@ def main():
                     
                     # Show warnings if any
                     if result.get('warnings'):
-                        print("\n  ⚠️  Warnings:")
+                        print("\n  Warnings:")
                         for warning in result['warnings']:
-                            print("    • {}".format(warning))
+                            print("    - {}".format(warning))
 
     logger.info("Main function complete")
     return 0

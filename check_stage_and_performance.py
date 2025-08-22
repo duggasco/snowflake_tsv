@@ -138,7 +138,7 @@ def check_query_history(cursor, hours=24):
             logger.info(f"  Rows: {rows:,}, Data scanned: {mb_scanned:.1f} MB")
             
             if elapsed > 300:  # More than 5 minutes
-                logger.warning(f"  ⚠️  This query took {elapsed/60:.1f} minutes!")
+                logger.warning(f"  WARNING: This query took {elapsed/60:.1f} minutes!")
                 
     except Exception as e:
         logger.error(f"Failed to query history: {e}")
@@ -162,7 +162,7 @@ def check_warehouse_size(cursor):
                 logger.info(f"  Type: {wh[4]}")
                 
                 if wh[2] in ['X-Small', 'Small']:
-                    logger.warning("  ⚠️  Small warehouse size may cause slow COPY performance for large files")
+                    logger.warning("  WARNING: Small warehouse size may cause slow COPY performance for large files")
                     logger.info("  Consider using a larger warehouse (Medium or Large) for 700MB+ files")
                 
     except Exception as e:

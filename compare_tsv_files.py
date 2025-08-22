@@ -169,7 +169,7 @@ def compare_files(good_file, bad_file, quick_mode=False):
         if controls > 0:
             print(f"      ⚠️  Control chars in {controls} lines")
         if nulls == 0 and controls == 0:
-            print(f"      ✓ Clean")
+            print(f"      [OK] Clean")
         return nulls, controls
     
     good_nulls, good_controls = check_special(good_file, "Good")
@@ -303,11 +303,11 @@ def compare_files(good_file, bad_file, quick_mode=False):
     
     print("\nRECOMMENDATIONS:")
     if bad_nulls > 0:
-        print("• Remove NULL bytes: tr -d '\\000' < bad_file.tsv > cleaned.tsv")
+        print("- Remove NULL bytes: tr -d '\\000' < bad_file.tsv > cleaned.tsv")
     if good_encoding['encoding'] != bad_encoding['encoding']:
-        print(f"• Convert encoding: iconv -f {bad_encoding['encoding']} -t {good_encoding['encoding']} bad_file.tsv > converted.tsv")
+        print(f"- Convert encoding: iconv -f {bad_encoding['encoding']} -t {good_encoding['encoding']} bad_file.tsv > converted.tsv")
     if max(bad_cols) != max(good_cols):
-        print("• Check for extra/missing columns or delimiter issues")
+        print("- Check for extra/missing columns or delimiter issues")
     
     return differences
 

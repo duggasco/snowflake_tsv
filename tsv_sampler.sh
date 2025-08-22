@@ -175,7 +175,7 @@ for (( i=1; i<=$NUM_COLS; i++ )); do
     # Check if likely a date column
     if [ "$COL_TYPE" = "DATE" ]; then
         DATE_CANDIDATES+=($i)
-        echo -e "  ${YELLOW}⚠ Likely date column${NC}"
+        echo -e "  ${YELLOW}[NOTE] Likely date column${NC}"
     fi
     
     # Store column info
@@ -294,7 +294,7 @@ echo ""
 
 # Summary
 echo -e "${CYAN}========================================${NC}"
-echo -e "${GREEN}✓ Analysis complete!${NC}"
+echo -e "${GREEN}[DONE] Analysis complete!${NC}"
 echo ""
 echo "Next steps:"
 echo "1. Review the suggested configuration above"

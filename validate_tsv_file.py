@@ -139,7 +139,7 @@ def check_special_characters(file_path, num_lines=1000):
             print(f"   ⚠️  Found invalid UTF-8 in {invalid_utf8} lines")
             
         if not any([null_bytes, control_chars, invalid_utf8]):
-            print("   ✓ No problematic special characters found")
+            print("   [OK] No problematic special characters found")
             
     except Exception as e:
         print(f"   Error checking special characters: {e}")
@@ -176,7 +176,7 @@ def analyze_quotes(file_path, num_lines=100):
         if escaped_quotes:
             print(f"   Found {escaped_quotes} lines with escaped quotes")
         if not unmatched_quotes and not escaped_quotes:
-            print("   ✓ No quote issues found")
+            print("   [OK] No quote issues found")
             
     except Exception as e:
         print(f"   Error analyzing quotes: {e}")
@@ -300,7 +300,7 @@ def compare_with_table(config_path, table_name, file_path):
             else:
                 print(f"      File is missing {len(table_columns) - file_columns} columns")
         else:
-            print("   ✓ Column count matches")
+            print("   [OK] Column count matches")
             
         # Show first few columns for reference
         print("\n   First 5 table columns:")
@@ -394,7 +394,7 @@ def find_problematic_rows(file_path, expected_columns, num_samples=10):
                 print(f"      Line {line_num}: {issue}")
         
         if not any(problems.values()):
-            print("   ✓ No obvious problematic rows found")
+            print("   [OK] No obvious problematic rows found")
             
     except Exception as e:
         print(f"   Error finding problematic rows: {e}")

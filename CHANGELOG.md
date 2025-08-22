@@ -1,5 +1,27 @@
 # CHANGELOG.md
 
+## [v2.10.0] - 2025-01-22 - Complete Removal of Unicode/Emoji Characters
+
+### Changed
+- **CRITICAL**: Removed ALL Unicode/emoji characters from entire codebase
+- Replaced checkmarks (✓) with [VALID] or [OK] or [PASS]
+- Replaced X marks (✗) with [INVALID] or [ERROR] or [FAIL]
+- Replaced warning symbols (⚠️) with WARNING text
+- Replaced bullets (•) with hyphens (-)
+- Replaced arrows (→) with ->
+- Updated all Python files (tsv_loader.py, compare_tsv_files.py, validate_tsv_file.py, check_stage_and_performance.py)
+- Updated all shell scripts (snowflake_etl.sh, run_loader.sh, tsv_sampler.sh)
+
+### Fixed
+- Fixed Unicode encoding errors when running in latin-1 terminals
+- Resolved "ordinal not in range(256)" errors during validation
+- All output now uses pure ASCII characters for maximum compatibility
+
+### Why This Matters
+- Many enterprise terminals use latin-1 or other limited encodings
+- Unicode characters cause crashes and unreadable output
+- ASCII-only output ensures compatibility across all systems
+
 ## [v2.9.3] - 2025-01-22 - Fixed Clean Completed Jobs Function
 
 ### Fixed

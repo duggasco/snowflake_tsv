@@ -821,15 +821,15 @@ for vfile in validation_files:
 # Display aggregate summary
 print(f'OVERALL STATISTICS:')
 print(f'  Total Tables Validated: {total_valid + total_invalid}')
-print(f'  ✓ Valid Tables:        {total_valid}')
-print(f'  ✗ Invalid Tables:      {total_invalid}')
+print(f'  [VALID] Tables:        {total_valid}')
+print(f'  [INVALID] Tables:      {total_invalid}')
 if total_anomalies > 0:
-    print(f'  ⚠ Total Anomalous Dates: {total_anomalies}')
+    print(f'  [WARNING] Total Anomalous Dates: {total_anomalies}')
 
 if all_failures:
     print(f'\nFAILED VALIDATIONS:')
     for month, table, reason in all_failures:
-        print(f'  • [{month}] {table}: {reason}')
+        print(f'  - [{month}] {table}: {reason}')
 "
         
         # Then show detailed results per month
@@ -857,7 +857,7 @@ try:
                 anomalies = r.get('row_count_analysis', {}).get('anomalous_dates_count', 0)
                 status = f'[VALID] ({stats.get(\"total_rows\", 0):,} rows, {stats.get(\"unique_dates\", 0)} dates)'
                 if anomalies > 0:
-                    status += f' - ⚠ {anomalies} anomalies detected'
+                    status += f' - WARNING: {anomalies} anomalies detected'
                 print(f'  {table}: {status}')
             else:
                 failure_reasons = r.get('failure_reasons', [])

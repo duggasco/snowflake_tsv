@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.9.3"
+VERSION="2.10.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -1031,10 +1031,10 @@ clean_completed_jobs() {
     else
         local message="Cleaned $total job(s) from job status:\n\n"
         if [[ $cleaned -gt 0 ]]; then
-            message+="✓ $cleaned completed job(s)\n"
+            message+="[OK] $cleaned completed job(s)\n"
         fi
         if [[ $failed -gt 0 ]]; then
-            message+="✗ $failed failed/crashed job(s)\n"
+            message+="[FAILED] $failed failed/crashed job(s)\n"
         fi
         message+="\n(Log files preserved for debugging)"
         show_message "Jobs Cleaned" "$message"
