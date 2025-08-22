@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.6.0 - Enhanced job results display
+# Version: 2.7.0 - Dynamic UI sizing for full content visibility
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.6.0"
+VERSION="2.7.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -42,6 +42,63 @@ USE_DIALOG=false
 DIALOG_CMD=""
 DIALOG_HEIGHT=20
 DIALOG_WIDTH=70
+DIALOG_MAX_HEIGHT=40  # Maximum height for very long content
+DIALOG_MAX_WIDTH=120  # Maximum width for wide content
+
+# ============================================================================
+# DIALOG SIZING FUNCTIONS
+# ============================================================================
+
+# Calculate dialog dimensions based on content
+calculate_dialog_dimensions() {
+    local content="$1"
+    local min_height="${2:-8}"
+    local min_width="${3:-50}"
+    
+    # Count lines and find max line length
+    local line_count=0
+    local max_length=0
+    
+    while IFS= read -r line; do
+        ((line_count++))
+        local line_length=${#line}
+        if [[ $line_length -gt $max_length ]]; then
+            max_length=$line_length
+        fi
+    done <<< "$content"
+    
+    # Calculate height (add padding for borders and buttons)
+    local calc_height=$((line_count + 6))
+    if [[ $calc_height -lt $min_height ]]; then
+        calc_height=$min_height
+    elif [[ $calc_height -gt $DIALOG_MAX_HEIGHT ]]; then
+        calc_height=$DIALOG_MAX_HEIGHT
+    fi
+    
+    # Calculate width (add padding for borders)
+    local calc_width=$((max_length + 10))
+    if [[ $calc_width -lt $min_width ]]; then
+        calc_width=$min_width
+    elif [[ $calc_width -gt $DIALOG_MAX_WIDTH ]]; then
+        calc_width=$DIALOG_MAX_WIDTH
+    fi
+    
+    # Return dimensions
+    echo "$calc_height $calc_width"
+}
+
+# Get terminal dimensions
+get_terminal_size() {
+    local rows cols
+    if command -v tput >/dev/null 2>&1; then
+        rows=$(tput lines)
+        cols=$(tput cols)
+    else
+        rows=24
+        cols=80
+    fi
+    echo "$rows $cols"
+}
 
 # ============================================================================
 # CRITICAL SECURITY FIXES
@@ -423,16 +480,56 @@ show_menu() {
     if [[ "$USE_DIALOG" == true ]]; then
         local menu_items=()
         local i=1
+        local max_option_length=0
+        
         for opt in "${options[@]}"; do
             if [[ "$opt" != "---" ]]; then
                 menu_items+=("$i" "$opt")
+                # Track longest option for width calculation
+                if [[ ${#opt} -gt $max_option_length ]]; then
+                    max_option_length=${#opt}
+                fi
                 ((i++))
             fi
         done
         
+        # Calculate dynamic dimensions
+        local menu_height=$((${#options[@]} + 8))
+        local menu_width=$((max_option_length + 20))
+        
+        # Apply min/max limits
+        if [[ $menu_height -lt 12 ]]; then
+            menu_height=12
+        elif [[ $menu_height -gt $DIALOG_MAX_HEIGHT ]]; then
+            menu_height=$DIALOG_MAX_HEIGHT
+        fi
+        
+        if [[ $menu_width -lt 60 ]]; then
+            menu_width=60
+        elif [[ $menu_width -gt $DIALOG_MAX_WIDTH ]]; then
+            menu_width=$DIALOG_MAX_WIDTH
+        fi
+        
+        # Ensure it fits in terminal
+        local term_size=$(get_terminal_size)
+        local term_height=$(echo $term_size | cut -d' ' -f1)
+        local term_width=$(echo $term_size | cut -d' ' -f2)
+        
+        if [[ $menu_height -gt $((term_height - 4)) ]]; then
+            menu_height=$((term_height - 4))
+        fi
+        if [[ $menu_width -gt $((term_width - 4)) ]]; then
+            menu_width=$((term_width - 4))
+        fi
+        
+        local menu_list_height=$((menu_height - 8))
+        if [[ $menu_list_height -lt 1 ]]; then
+            menu_list_height=1
+        fi
+        
         local choice
         choice=$($DIALOG_CMD --clear --title "$title" \
-            --menu "Select an option:" $DIALOG_HEIGHT $DIALOG_WIDTH $((DIALOG_HEIGHT-8)) \
+            --menu "Select an option:" $menu_height $menu_width $menu_list_height \
             "${menu_items[@]}" 2>&1 >/dev/tty)
         
         echo "$choice"
@@ -469,13 +566,40 @@ show_menu() {
     fi
 }
 
-# Show message
+# Show message with dynamic sizing
 show_message() {
     local title="$1"
     local message="$2"
     
     if [[ "$USE_DIALOG" == true ]]; then
-        $DIALOG_CMD --title "$title" --msgbox "$message" 10 60
+        # Calculate dynamic dimensions based on content
+        local dimensions=$(calculate_dialog_dimensions "$message" 8 60)
+        local height=$(echo $dimensions | cut -d' ' -f1)
+        local width=$(echo $dimensions | cut -d' ' -f2)
+        
+        # Ensure dialog fits in terminal
+        local term_size=$(get_terminal_size)
+        local term_height=$(echo $term_size | cut -d' ' -f1)
+        local term_width=$(echo $term_size | cut -d' ' -f2)
+        
+        # Leave room for terminal borders
+        if [[ $height -gt $((term_height - 4)) ]]; then
+            height=$((term_height - 4))
+        fi
+        if [[ $width -gt $((term_width - 4)) ]]; then
+            width=$((term_width - 4))
+        fi
+        
+        # Use scrollable text box for very long content
+        if [[ ${#message} -gt 2000 ]]; then
+            # For very long content, use --textbox with temp file
+            local temp_file="/tmp/dialog_msg_$$"
+            echo "$message" > "$temp_file"
+            $DIALOG_CMD --title "$title" --textbox "$temp_file" $height $width
+            rm -f "$temp_file"
+        else
+            $DIALOG_CMD --title "$title" --msgbox "$message" $height $width
+        fi
     else
         echo ""
         echo "${BOLD}=== $title ===${NC}"
@@ -787,6 +911,7 @@ view_job_full_log() {
     else
         # Show the full log with proper title
         local title="Job Results: $job_name [$status]"
+        # Note: show_message now handles long content with scrollable view
         show_message "$title" "$log_content"
     fi
 }
