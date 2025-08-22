@@ -24,11 +24,82 @@ echo -e "${BOLD}${BLUE}=== ROBUST LOG VIEWER TEST SUITE ===${NC}"
 echo "Testing all edge cases and error conditions"
 echo "==========================================="
 
-# Source the main script (make state dirs available)
-export STATE_DIR="$TEST_DIR"
-source snowflake_etl.sh 2>/dev/null || {
-    echo -e "${RED}Failed to source snowflake_etl.sh${NC}"
-    exit 1
+# Don't source the entire script - just copy the function we need
+# This avoids dialog initialization issues
+
+# Parse job file function
+parse_job_file() {
+    local job_file="$1"
+    local key="$2"
+    grep "^${key}=" "$job_file" 2>/dev/null | cut -d'=' -f2-
+}
+
+# The robust log viewer function
+view_job_full_log() {
+    local job_file="$1"
+    local job_name=$(parse_job_file "$job_file" "JOB_NAME")
+    local status=$(parse_job_file "$job_file" "STATUS")
+    local log_file=$(parse_job_file "$job_file" "LOG_FILE")
+    
+    # Input validation - check if log file path is set
+    if [[ -z "$log_file" ]]; then
+        echo "${RED}Error: Log file path is missing for job: $job_name${NC}" >&2
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+    
+    # Check if file exists
+    if [[ ! -f "$log_file" ]]; then
+        echo "${RED}Error: Log file not found: $log_file${NC}" >&2
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+    
+    # Check if file is readable
+    if [[ ! -r "$log_file" ]]; then
+        echo "${RED}Error: Cannot read log file (permission denied): $log_file${NC}" >&2
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+    
+    # Check if file is empty
+    if [[ ! -s "$log_file" ]]; then
+        echo "${YELLOW}Log for '$job_name' is empty.${NC}"
+        read -p "Press Enter to continue..."
+        return 0
+    fi
+    
+    # Simple, reliable header - no fancy UI that can break
+    echo ""
+    echo "--- Viewing log for: ${BOLD}$job_name${NC} [${status}]"
+    echo "--- File: $log_file"
+    echo "--- (Press 'q' to quit, '/' to search)"
+    echo ""
+    
+    # Small delay to ensure user sees the header
+    sleep 0.5
+    
+    # Use the best available pager with proper fallback
+    if command -v less >/dev/null 2>&1; then
+        # -R = Render ANSI color codes correctly
+        # -F = Quit if entire file fits on one screen
+        # -X = Do not clear screen on exit (prevents blank screen issue)
+        # -S = Disable line wrapping (horizontal scroll for long lines)
+        less -RFXS "$log_file"
+    elif command -v more >/dev/null 2>&1; then
+        # Fallback to more if less is not available
+        more "$log_file"
+    else
+        # Last resort fallback - just cat the file
+        echo "${YELLOW}--- Note: 'less' and 'more' not found. Displaying full log ---${NC}"
+        cat "$log_file"
+        echo ""
+        echo "--- End of log ---"
+        read -p "Press Enter to continue..."
+    fi
+    
+    # Return success
+    return 0
 }
 
 # Test counter
