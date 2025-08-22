@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## [v2.10.3] - 2025-01-22 - Fix Menu Indexing Bug (With Gemini's Help)
+
+### Fixed
+- **CRITICAL**: Fixed menu indexing bug that caused wrong functions to be triggered
+- Clean Completed Jobs was opening log viewer due to array index mismatch
+- Menu separators ("---") were causing off-by-one errors in option selection
+- Created clean array without separators for proper menu indexing
+
+### Technical Details
+- show_menu() displays options skipping "---" separators
+- But array indexing was including separators, causing misalignment
+- Solution: Build clean_options array matching what user actually sees
+- Thanks to Gemini for identifying the root cause!
+
 ## [v2.10.2] - 2025-01-22 - Fix Clean Jobs Triggering Log Viewer
 
 ### Fixed

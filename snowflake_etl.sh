@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.10.2"
+VERSION="2.10.3"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -794,7 +794,16 @@ show_job_status() {
             1) show_all_jobs_summary "${all_jobs[@]}" ;;
             0|"") return ;;
             *)
-                local selected_option="${menu_options[$((choice - 1))]}"
+                # Create clean array without separators for proper indexing
+                local clean_options=()
+                for opt in "${menu_options[@]}"; do
+                    if [[ "$opt" != "---" ]]; then
+                        clean_options+=("$opt")
+                    fi
+                done
+                
+                # Now index into the clean array
+                local selected_option="${clean_options[$((choice - 1))]}"
                 
                 # Check what type of selection it is
                 if [[ "$selected_option" == "Clean Completed Jobs" ]]; then
