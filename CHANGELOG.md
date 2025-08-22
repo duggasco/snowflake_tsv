@@ -1,5 +1,21 @@
 # CHANGELOG.md
 
+## [v2.8.0] - 2025-01-22 - Persistent Log Viewer Implementation
+
+### Added
+- **Persistent Log Viewer**
+  - Uses 'less' pager for log viewing (stays open until user quits)
+  - Clear header with job name and status
+  - Navigation hints (q to quit, / to search, g/G for navigation)
+  - Color preservation with --RAW-CONTROL-CHARS flag
+  - Auto-quit for small logs with --quit-if-one-screen
+  - Test script test_log_viewer.sh for verification
+
+### Fixed
+- Job log viewing now persists instead of disappearing immediately
+- Log viewer properly handles empty and missing log files
+- Improved user experience with persistent viewing capability
+
 ## [v2.7.0] - 2025-01-22 - Dynamic UI Sizing & Complete UX Overhaul
 
 ### Major UI/UX Improvements

@@ -1,11 +1,11 @@
 # PLAN.md - Implementation Roadmap
 *Last Updated: 2025-01-22*
-*System Version: 2.7.0*
+*System Version: 2.8.0*
 
 ## Project Vision
 Create a production-ready, enterprise-grade ETL pipeline for Snowflake that handles massive TSV files with comprehensive data quality validation and monitoring.
 
-## Current State (v2.7.0 - UI/UX Complete)
+## Current State (v2.8.0 - Persistent Log Viewer)
 ✅ **Core Functionality**: Loading, validation, progress tracking, data deletion
 ✅ **Data Quality**: Anomaly detection, clear failure reasons, comprehensive validation
 ✅ **Performance**: Async COPY, optimized error handling, stage management
@@ -14,6 +14,7 @@ Create a production-ready, enterprise-grade ETL pipeline for Snowflake that hand
 ✅ **Job Management**: Foreground/background execution, real-time monitoring, result capture
 ✅ **Production Ready**: Security hardened, audit logging, recovery procedures
 ✅ **UI/UX Complete**: No black screens, all content visible, adaptive dialogs
+✅ **Log Viewing**: Persistent log viewer using 'less' pager with search and navigation
 
 ## Phase 1: Performance & Reliability (Next Sprint)
 **Goal**: Handle 100GB+ files efficiently with <8GB memory usage

@@ -1,6 +1,6 @@
 # TODO.md - Snowflake ETL Pipeline Manager
 *Last Updated: 2025-01-22*
-*Current Version: 2.7.0*
+*Current Version: 2.8.0*
 
 ## ✅ Completed (2025-08-21)
 - [x] Fix critical IndentationError in validation code
@@ -25,7 +25,7 @@
 - [x] **Implement automatic stage cleanup** ✅
 - [x] **Create performance diagnostic tool (check_stage_and_performance.py)** ✅
 
-## ✅ Completed (2025-01-22 Session) - Unified Wrapper v2.7.0
+## ✅ Completed (2025-01-22 Session) - Unified Wrapper v2.8.0
 - [x] **Smart table selection from config files** ✅
 - [x] **Auto-detect tables from config and show selection menu** ✅
 - [x] **Implement context-aware prompts with table names** ✅
@@ -36,6 +36,8 @@
 - [x] **Fix character encoding in job status display** ✅
 - [x] **Implement scrollable view for long content** ✅
 - [x] **Test job management system comprehensively** ✅
+- [x] **Implement persistent log viewer using 'less' pager** ✅
+- [x] **Fix job log viewing disappearing immediately after display** ✅
 
 ## ✅ Completed (Previous Session) - Unified Wrapper v2.4.0
 - [x] Implement all placeholder recovery functions in unified wrapper

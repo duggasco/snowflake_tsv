@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.7.0"
+VERSION="2.8.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -903,16 +903,28 @@ view_job_full_log() {
         return
     fi
     
-    # Get log content
-    local log_content=$(cat "$log_file" 2>/dev/null)
-    
-    if [[ -z "$log_content" ]]; then
+    # Check if log file has content
+    if [[ ! -s "$log_file" ]]; then
         show_message "Job Log: $job_name" "No output captured in log file."
     else
-        # Show the full log with proper title
-        local title="Job Results: $job_name [$status]"
-        # Note: show_message now handles long content with scrollable view
-        show_message "$title" "$log_content"
+        # Clear screen and show header
+        clear
+        echo "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════${NC}"
+        echo "${BOLD}  Job Log: ${YELLOW}$job_name${NC} ${BOLD}[${status}]${NC}"
+        echo "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════${NC}"
+        echo "${GRAY}  Log file: $log_file${NC}"
+        echo "${GRAY}  Press 'q' to quit, '/' to search, 'g' for top, 'G' for bottom${NC}"
+        echo "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        
+        # Use less for persistent viewing with color support
+        # --RAW-CONTROL-CHARS: Preserve ANSI color codes
+        # --quit-if-one-screen: Auto-exit if content fits on one screen
+        # --no-init: Don't clear screen when starting/exiting
+        # +Gg: Start at beginning of file
+        less --RAW-CONTROL-CHARS --quit-if-one-screen --no-init +Gg "$log_file"
+        
+        # After exiting less, clear and redraw menu (will happen automatically)
     fi
 }
 

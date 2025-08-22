@@ -1,6 +1,6 @@
 # Context Handover Document
 ## Session Date: 2025-01-22
-## System Version: 2.7.0
+## System Version: 2.8.0
 
 ## Project Overview
 **Snowflake ETL Pipeline Manager** - A comprehensive, production-ready ETL system for processing large TSV files (up to 50GB) and loading them into Snowflake with data quality checks, duplicate detection, and error recovery.
@@ -33,6 +33,12 @@
    - Scrollable view for very long content (>2000 chars)
    - Full visibility for job results and config names
 
+5. **Persistent Log Viewer (v2.8.0)**
+   - Replaced temporary dialog with 'less' pager for log viewing
+   - Logs now persist until user decides to quit
+   - Added navigation hints and color preservation
+   - Proper handling of empty and missing log files
+
 ### 🏗️ System Architecture
 
 ```
@@ -61,7 +67,7 @@ snowflake_etl.sh (v2.7.0 - Main Entry Point)
 ## Key Files and Current Versions
 
 ### Main Scripts
-- **snowflake_etl.sh** (v2.7.0) - Unified wrapper with all enhancements
+- **snowflake_etl.sh** (v2.8.0) - Unified wrapper with persistent log viewer
 - **tsv_loader.py** - Core ETL engine with async COPY support
 - **check_duplicates_interactive.py** - Progress-enabled duplicate checker
 - **drop_month.py** - Safe monthly data deletion
@@ -80,6 +86,7 @@ snowflake_etl.sh (v2.7.0 - Main Entry Point)
 - Lines 593-594: `start_foreground_job()` - Real-time execution wrapper
 - Lines 769-917: Job result display functions
 - Lines 665-765: `show_all_jobs_summary()` - Enhanced with results
+- Lines 894-929: `view_job_full_log()` - Persistent log viewer with 'less'
 
 ### Dynamic UI Sizing (snowflake_etl.sh)
 - Lines 53-88: `calculate_dialog_dimensions()` - Content-based sizing
