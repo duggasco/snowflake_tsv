@@ -1,5 +1,29 @@
 # CHANGELOG.md
 
+## [v2.12.0] - 2025-01-22 - Comprehensive Table Report Generation
+
+### Added
+- **Generate Full Table Report**: New feature under Snowflake Operations menu
+  - Analyzes all tables across all configuration files
+  - Generates comprehensive statistics and validation results
+  - Reuses existing SnowflakeDataValidator for consistency
+  - Parallel processing with ThreadPoolExecutor for performance
+  - Supports filtering by config file or table name patterns
+  
+### Features
+- **Table Statistics**: Row count, column count, date ranges, avg rows/day
+- **Validation Checks**: Date completeness, gaps, anomalies, duplicates
+- **Smart Credential Loading**: Searches multiple locations for credentials
+- **Detailed Reporting**: Groups results by config, shows validation issues
+- **Performance**: Processes multiple tables concurrently
+- **Error Handling**: Distinguishes between table not found vs SQL errors
+
+### Technical Implementation
+- `generate_table_report.py`: Core report generation script
+- Reuses `SnowflakeDataValidator` from tsv_loader.py
+- Single Snowflake connection reused for all tables
+- Comprehensive summary at end of job logs for easy viewing
+
 ## [v2.11.0] - 2025-01-22 - Interactive File Browser with Config Validation
 
 ### Added

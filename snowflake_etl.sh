@@ -1095,7 +1095,8 @@ menu_snowflake_operations() {
             "Validate Data" \
             "Delete Data" \
             "Check Duplicates" \
-            "Check Table Info")
+            "Check Table Info" \
+            "Generate Full Table Report")
         
         case "$choice" in
             1) menu_load_data ;;
@@ -1103,6 +1104,7 @@ menu_snowflake_operations() {
             3) menu_delete_data ;;
             4) check_duplicates ;;
             5) check_table_info ;;
+            6) generate_full_table_report ;;
             0|"") pop_menu; break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
@@ -1715,6 +1717,73 @@ check_table_info() {
             with_lock start_background_job "check_table_${table}" \
                 python3 check_snowflake_table.py "$CONFIG_FILE" "$table"
         fi
+    fi
+}
+
+# Generate comprehensive report for all tables
+generate_full_table_report() {
+    echo -e "${BLUE}Generate Full Table Report${NC}"
+    echo -e "${YELLOW}This will analyze all tables across all configuration files${NC}"
+    echo -e "${YELLOW}and generate a comprehensive report with statistics and validation.${NC}"
+    echo ""
+    
+    # Count configs and tables
+    local config_count=0
+    local table_count=0
+    
+    for config in config/*.json; do
+        [[ -f "$config" ]] || continue
+        # Skip credential files
+        if [[ "$config" == *"creds"* ]] || [[ "$config" == *"credentials"* ]]; then
+            continue
+        fi
+        
+        config_count=$((config_count + 1))
+        local tables=$(jq -r '.files[]?.table_name // empty' "$config" 2>/dev/null | sort -u | wc -l)
+        table_count=$((table_count + tables))
+    done
+    
+    echo -e "${BLUE}Found: $config_count config file(s) with approximately $table_count table(s)${NC}"
+    echo ""
+    
+    # Ask for options
+    local filter_choice=$(get_input "Filter Options" "Apply filters? (Y/N)" "N")
+    local config_filter=""
+    local table_filter=""
+    
+    if [[ "${filter_choice^^}" == "Y" ]]; then
+        config_filter=$(get_input "Config Filter" "Config file pattern (e.g., fact*.json) or leave empty")
+        table_filter=$(get_input "Table Filter" "Table name pattern (e.g., FACT*) or leave empty")
+    fi
+    
+    # Build command
+    local cmd="python3 generate_table_report.py --config-dir config"
+    
+    # Add credentials file if available
+    if [[ -f "snowflake_creds.json" ]]; then
+        cmd="$cmd --creds snowflake_creds.json"
+    elif [[ -f "config/snowflake_creds.json" ]]; then
+        cmd="$cmd --creds config/snowflake_creds.json"
+    fi
+    
+    # Add filters if specified
+    if [[ -n "$config_filter" ]]; then
+        cmd="$cmd --config-filter \"$config_filter\""
+    fi
+    if [[ -n "$table_filter" ]]; then
+        cmd="$cmd --table-filter \"$table_filter\""
+    fi
+    
+    # Confirm and run
+    if confirm_action "Generate comprehensive table report?"; then
+        local job_name="table_report_$(date +%Y%m%d_%H%M%S)"
+        
+        echo -e "${BLUE}Starting report generation...${NC}"
+        echo -e "${YELLOW}This may take several minutes for large numbers of tables${NC}"
+        echo -e "${YELLOW}Check Job Status menu to monitor progress and view results${NC}"
+        
+        # Run as background job so user can continue working
+        with_lock start_background_job "$job_name" bash -c "$cmd"
     fi
 }
 
