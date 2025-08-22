@@ -1,6 +1,7 @@
 # TODO.md - Snowflake ETL Pipeline Manager
 *Last Updated: 2025-01-22*
-*Current Version: 2.10.4*
+*Current Version: 3.0.0-alpha*
+*Major Refactoring In Progress: Dependency Injection Architecture*
 
 ## ✅ Completed (2025-01-22 Session 2) - v2.10.4
 - [x] **Fixed Clean Completed Jobs menu bug** ✅
@@ -88,6 +89,209 @@
 - [x] **Tested with 100+ files and special characters** ✅
 - [x] **Performance: 90,000+ files/second scanning** ✅
 
+## 🔨 REFACTORING INITIATIVE - Python Package Restructuring
+
+### Phase 1: Core Package Structure (Sprint 1 - COMPLETED ✅)
+
+#### 1.1 Package Setup
+- [x] Create `snowflake_etl/` directory structure ✅
+- [x] Create `snowflake_etl/__init__.py` with version info ✅
+- [x] Create subdirectories: `utils/`, `core/`, `validators/`, `tools/`, `cli/` ✅
+- [x] Add `__init__.py` to all subdirectories ✅
+- [ ] Create `setup.py` for package installation
+- [ ] Update `.gitignore` for Python package artifacts
+
+#### 1.2 Utility Modules Creation
+- [x] Create `snowflake_etl/utils/snowflake_connection_v3.py` ✅
+  - [x] Remove singleton pattern ✅
+  - [x] Use native Snowflake connection pooling ✅
+  - [x] Add retry logic with exponential backoff ✅
+  - [x] Add connection health checks ✅
+  - [x] Add context manager support ✅
+- [x] Create `snowflake_etl/utils/config_manager_v2.py` ✅
+  - [x] Implement `ConfigManager` with lru_cache ✅
+  - [x] Add config validation methods ✅
+  - [x] Add support for multiple config files ✅
+  - [x] Add environment variable override support ✅
+  - [x] Add config schema validation ✅
+- [x] Create `snowflake_etl/utils/logging_config.py` ✅
+  - [x] Use dictConfig instead of singleton ✅
+  - [x] Add standardized logger creation ✅
+  - [x] Add log rotation support ✅
+  - [x] Add structured logging (JSON format) ✅
+  - [x] Add performance metrics logging ✅
+- [x] Create `snowflake_etl/core/progress.py` ✅
+  - [x] Abstract ProgressTracker interface ✅
+  - [x] NoOpProgressTracker for quiet/test mode ✅
+  - [x] LoggingProgressTracker for non-interactive ✅
+  - [x] Create `snowflake_etl/ui/progress_bars.py` ✅
+  - [x] TqdmProgressTracker (simplified, no bash complexity) ✅
+- [x] Create `snowflake_etl/core/application_context.py` ✅
+  - [x] Central dependency injection container ✅
+  - [x] Manages all shared resources ✅
+  - [x] Lazy initialization of components ✅
+  - [x] Proper cleanup on shutdown ✅
+
+### Phase 2: Core Module Migration (Sprint 1-2) - IN PROGRESS 🚧
+
+#### 2.1 Migrate tsv_loader.py
+- [ ] Create `snowflake_etl/core/loader.py`
+- [x] Extract `FileConfig` dataclass to `snowflake_etl/models/file_config.py` ✅
+- [x] Extract `FileAnalyzer` to `snowflake_etl/core/file_analyzer.py` ✅
+- [x] Extract `DataQualityChecker` to `snowflake_etl/validators/data_quality.py` ✅
+- [ ] Extract `SnowflakeLoader` to `snowflake_etl/core/snowflake_loader.py` (complex, needs refactoring)
+- [ ] Extract `SnowflakeDataValidator` to `snowflake_etl/validators/snowflake_validator.py`
+- [ ] Create `LoadOperation` class using ApplicationContext
+- [ ] Update imports to use new package structure
+- [ ] Create backward compatibility wrapper at `tsv_loader.py`
+- [ ] Test all existing functionality through wrapper
+- [ ] Update job management integration
+
+#### 2.2 Migrate drop_month.py
+- [ ] Create `snowflake_etl/core/deleter.py`
+- [ ] Extract `DeletionTarget` to `snowflake_etl/models/deletion_target.py`
+- [ ] Extract `DeletionResult` to `snowflake_etl/models/deletion_result.py`
+- [ ] Extract `SnowflakeManager` to utils (merge with connection manager)
+- [ ] Extract `SnowflakeMetadata` to `snowflake_etl/utils/metadata_cache.py`
+- [ ] Move `SnowflakeDeleter` business logic to core module
+- [ ] Create backward compatibility wrapper
+- [ ] Test deletion operations through wrapper
+- [ ] Verify transaction management still works
+
+#### 2.3 Migrate generate_table_report.py
+- [ ] Create `snowflake_etl/core/reporter.py`
+- [ ] Reuse `SnowflakeDataValidator` from new location
+- [ ] Use centralized connection manager
+- [ ] Use centralized config manager
+- [ ] Create backward compatibility wrapper
+- [ ] Test report generation through wrapper
+
+### Phase 3: Tool Migration (Sprint 2)
+
+#### 3.1 Validator Tools
+- [ ] Migrate `check_duplicates_interactive.py` to `snowflake_etl/validators/duplicate_checker.py`
+- [ ] Migrate `validate_tsv_file.py` to `snowflake_etl/validators/file_validator.py`
+- [ ] Create unified validation interface
+- [ ] Add validation result models
+- [ ] Create backward compatibility wrappers
+
+#### 3.2 Diagnostic Tools  
+- [ ] Migrate `check_snowflake_table.py` to `snowflake_etl/tools/table_inspector.py`
+- [ ] Migrate `check_stage_and_performance.py` to `snowflake_etl/tools/stage_manager.py`
+- [ ] Migrate `diagnose_copy_error.py` to `snowflake_etl/tools/error_diagnostics.py`
+- [ ] Migrate `compare_tsv_files.py` to `snowflake_etl/tools/file_comparator.py`
+- [ ] Create backward compatibility wrappers
+- [ ] Test all diagnostic functions
+
+#### 3.3 UI Components
+- [ ] Migrate `tsv_file_browser.py` to `snowflake_etl/ui/file_browser.py`
+- [ ] Migrate `tsv_browser_integration.py` to `snowflake_etl/ui/browser_integration.py`
+- [ ] Extract curses utilities to `snowflake_etl/ui/curses_utils.py`
+- [ ] Create backward compatibility wrappers
+
+### Phase 4: Shell Script Consolidation (Sprint 3)
+
+#### 4.1 Common Functions Library
+- [ ] Create `lib/` directory
+- [ ] Create `lib/common_functions.sh` with shared utilities
+  - [ ] Extract `select_config_file` function
+  - [ ] Extract `get_tables_from_config` function
+  - [ ] Extract `show_colored_message` function
+  - [ ] Extract `check_prerequisites` function
+  - [ ] Extract job management functions
+- [ ] Create `lib/colors.sh` for color definitions
+- [ ] Create `lib/ui_components.sh` for menu/dialog functions
+
+#### 4.2 Update Shell Scripts
+- [ ] Update `snowflake_etl.sh` to source common libraries
+- [ ] Update `run_loader.sh` to source common libraries
+- [ ] Update `drop_month.sh` to source common libraries
+- [ ] Update `generate_config.sh` to source common libraries
+- [ ] Update `recover_failed_load.sh` to source common libraries
+- [ ] Remove duplicated functions from each script
+- [ ] Test all menu options still work
+
+### Phase 5: Testing & Documentation (Sprint 3-4)
+
+#### 5.1 Unit Tests
+- [ ] Create `tests/` directory structure
+- [ ] Write unit tests for `SnowflakeConnectionManager`
+- [ ] Write unit tests for `ConfigManager`
+- [ ] Write unit tests for `LogManager`
+- [ ] Write unit tests for `ProgressTracker`
+- [ ] Write unit tests for error handling utilities
+- [ ] Write unit tests for validators
+- [ ] Write unit tests for core operations
+- [ ] Set up pytest configuration
+- [ ] Add coverage reporting
+
+#### 5.2 Integration Tests
+- [ ] Create integration test suite for full ETL pipeline
+- [ ] Create integration tests for deletion operations
+- [ ] Create integration tests for validation workflows
+- [ ] Add mock Snowflake connection for testing
+- [ ] Test parallel processing scenarios
+- [ ] Test error recovery mechanisms
+
+#### 5.3 Documentation Updates
+- [ ] Update README.md with new package structure
+- [ ] Update CLAUDE.md with refactoring details
+- [ ] Create API documentation with docstrings
+- [ ] Add migration guide for developers
+- [ ] Update all code examples in docs
+- [ ] Create architecture diagrams
+- [ ] Document new import paths
+
+### Phase 6: Advanced Features (Sprint 4+)
+
+#### 6.1 Unified CLI
+- [ ] Create `snowflake_etl/cli/main.py` as single entry point
+- [ ] Implement argument parser for all operations
+- [ ] Add subcommands: load, delete, validate, report, etc.
+- [ ] Support both interactive and non-interactive modes
+- [ ] Add --json output format option
+- [ ] Create man page documentation
+
+#### 6.2 Configuration Schema
+- [ ] Create JSON schema for config validation
+- [ ] Add YAML configuration support
+- [ ] Implement config migration tool
+- [ ] Add config validation command
+- [ ] Support config templates
+
+#### 6.3 Performance Improvements
+- [ ] Implement connection pooling with configurable size
+- [ ] Add async/await support where beneficial
+- [ ] Implement lazy imports for faster startup
+- [ ] Add caching layer for metadata queries
+- [ ] Profile and optimize hot paths
+
+### Phase 7: Deployment & Migration (Final Sprint)
+
+#### 7.1 Package Distribution
+- [ ] Create `requirements.txt` with pinned versions
+- [ ] Create `requirements-dev.txt` for development
+- [ ] Set up package versioning strategy
+- [ ] Create wheel distribution
+- [ ] Document installation procedures
+
+#### 7.2 Migration Execution
+- [ ] Tag current version as `pre-refactoring-stable`
+- [ ] Create feature branch `feature/python-refactoring`
+- [ ] Execute phases 1-6 on feature branch
+- [ ] Run full regression test suite
+- [ ] Perform load testing with large files
+- [ ] Get team review and approval
+- [ ] Merge to main branch
+- [ ] Tag new version as `v3.0.0`
+
+#### 7.3 Post-Migration
+- [ ] Monitor for issues in production
+- [ ] Collect performance metrics
+- [ ] Document lessons learned
+- [ ] Plan next refactoring phase
+- [ ] Update onboarding documentation
+
 ## 📊 Medium Priority (Next Session - Performance & Scale)
 
 ### Performance Optimization
@@ -95,7 +299,7 @@
 - [ ] Optimize memory usage for 50GB+ file processing
 - [ ] Implement chunked processing for anomaly detection
 - [ ] Profile and optimize slow validation queries
-- [ ] Add connection pooling for Snowflake operations
+- [ ] Add connection pooling for Snowflake operations (moved to refactoring)
 
 ### Error Recovery & Resilience
 - [ ] Add retry mechanism for failed Snowflake operations
@@ -166,12 +370,12 @@
 - [x] ~~COPY operations stuck in ping-pong for large files~~ ✅ FIXED
 - [x] ~~ON_ERROR='CONTINUE' causing extremely slow loads~~ ✅ FIXED
 
-## 🔧 Technical Debt
-- [ ] Split tsv_loader.py into modules (validation, loading, progress)
-- [ ] Create abstract base classes for validators
-- [ ] Implement proper logging hierarchy
-- [ ] Add type hints throughout codebase
-- [ ] Refactor duplicate code in run_loader.sh
+## 🔧 Technical Debt (Being Addressed in Refactoring Initiative)
+- [ ] Split tsv_loader.py into modules (validation, loading, progress) - **See Phase 2.1**
+- [ ] Create abstract base classes for validators - **See Phase 3.1**
+- [ ] Implement proper logging hierarchy - **See Phase 1.2**
+- [ ] Add type hints throughout codebase - **See Phase 5.3**
+- [ ] Refactor duplicate code in run_loader.sh - **See Phase 4**
 
 ## 📝 Notes for Next Session
 1. Monitor async COPY performance with new optimizations

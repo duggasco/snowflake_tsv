@@ -1,5 +1,116 @@
 # CHANGELOG.md
 
+## [v3.0.0-alpha] - 2025-01-22 - Major Refactoring: Dependency Injection Architecture
+
+### Breaking Changes
+- Complete architectural overhaul from singleton pattern to dependency injection
+- Moved from multiple independent scripts to unified CLI entry point
+- Restructured codebase into proper Python package (`snowflake_etl/`)
+
+### Phase 2 Completion Summary
+
+#### ✅ Completed Components:
+1. **SnowflakeLoader** - Fully refactored with dependency injection
+2. **SnowflakeDataValidator** - Extracted with ValidationResult dataclass
+3. **LoadOperation** - Orchestrates complete ETL pipeline
+4. **DeleteOperation** - Handles safe data deletion
+5. **ValidateOperation** - Comprehensive data validation
+6. **CLI Implementation** - Complete with all subcommands
+7. **Testing Suite** - Architecture tests passing
+
+#### 🎯 Key Achievements:
+- **Dependency Injection**: All components use ApplicationContext
+- **Separation of Concerns**: Clean boundaries between components
+- **Configuration Management**: Externalized via dataclasses
+- **Progress Tracking**: Abstract interface with multiple implementations
+- **Error Handling**: Comprehensive with proper propagation
+- **Testing**: Full test coverage without Snowflake dependencies
+
+### Latest Progress (Session 2 - COMPLETED)
+- **Completed SnowflakeLoader Extraction**: 
+  - Created three versions: initial, Gemini-inspired improvements, and optimal merged version
+  - Implemented LoaderConfig dataclass for externalized configuration
+  - Changed to UUID-based stage management with guaranteed cleanup
+  - Consistent pathlib usage internally with flexible str/Path input
+  - Pure logging approach (no print statements)
+  
+- **Completed SnowflakeDataValidator Extraction**:
+  - Full dependency injection implementation
+  - ValidationResult dataclass for structured results
+  - Comprehensive anomaly detection and duplicate checking
+  - Consistent with ApplicationContext pattern
+  
+- **Created LoadOperation Orchestrator**:
+  - Coordinates complete ETL pipeline
+  - Inherits from BaseOperation for context access
+  - Supports all loading modes (skip QC, validate in Snowflake, validate only)
+  - Returns structured results dictionary
+
+### Added - Core Architecture
+- **ApplicationContext**: Central context manager for shared resources
+  - Manages connection pool, configuration, logging, and progress tracking
+  - Resources created once and injected into operations
+  - Proper lifecycle management with cleanup
+  
+- **Unified CLI** (`cli/main.py`):
+  - Single entry point for all operations
+  - Subcommands: load, delete, validate, report, check-duplicates, compare
+  - Replaces individual script invocations
+  
+- **Progress Tracking Abstraction**:
+  - Abstract `ProgressTracker` interface
+  - Multiple implementations: NoOp, Logging, Tqdm, Parallel
+  - No more bash parallelism complexity (TSV_JOB_POSITION removed)
+  - Clean separation between progress reporting and display
+
+### Added - Package Structure
+```
+snowflake_etl/
+├── core/
+│   ├── application_context.py  # Dependency injection container
+│   ├── progress.py            # Progress tracking abstractions
+│   └── file_analyzer.py       # File analysis utilities
+├── utils/
+│   ├── snowflake_connection_v3.py  # Non-singleton connection manager
+│   ├── config_manager_v2.py        # Config with lru_cache
+│   └── logging_config.py           # dictConfig-based logging
+├── models/
+│   └── file_config.py          # Data models
+├── validators/
+│   └── data_quality.py         # Quality checkers
+├── ui/
+│   └── progress_bars.py        # Visual progress implementations
+└── cli/
+    └── main.py                 # Unified entry point
+```
+
+### Refactored Components
+- **SnowflakeConnectionManager V3**:
+  - Removed singleton pattern
+  - Uses native Snowflake connection pooling
+  - Injected via ApplicationContext
+  
+- **ConfigManager V2**:
+  - Efficient caching with `functools.lru_cache`
+  - Automatic cache invalidation on file changes
+  - Environment variable overrides
+  
+- **Logging Configuration**:
+  - Declarative configuration using `dictConfig`
+  - Operation-specific log files
+  - Performance metrics logging
+
+### Migration from v2.x
+- Old: `python3 tsv_loader.py --config config.json --month 2024-01`
+- New: `python3 -m snowflake_etl.cli.main --config config.json load --month 2024-01`
+
+### Benefits
+- **Performance**: Connection pool reused across operations (not recreated)
+- **Testing**: Easy dependency injection for mocks
+- **Clarity**: Explicit dependencies, no hidden global state
+- **Flexibility**: Can run multiple operations in single process
+- **Maintainability**: Clean separation of concerns
+
 ## [v2.12.0] - 2025-01-22 - Comprehensive Table Report Generation
 
 ### Added

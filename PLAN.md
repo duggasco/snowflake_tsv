@@ -5,7 +5,7 @@
 ## Project Vision
 Create a production-ready, enterprise-grade ETL pipeline for Snowflake that handles massive TSV files with comprehensive data quality validation and monitoring.
 
-## Current State (v2.8.0 - Persistent Log Viewer)
+## Current State (v3.0.0-alpha - Dependency Injection Architecture)
 ✅ **Core Functionality**: Loading, validation, progress tracking, data deletion
 ✅ **Data Quality**: Anomaly detection, clear failure reasons, comprehensive validation
 ✅ **Performance**: Async COPY, optimized error handling, stage management
@@ -15,6 +15,9 @@ Create a production-ready, enterprise-grade ETL pipeline for Snowflake that hand
 ✅ **Production Ready**: Security hardened, audit logging, recovery procedures
 ✅ **UI/UX Complete**: No black screens, all content visible, adaptive dialogs
 ✅ **Log Viewing**: Persistent log viewer using 'less' pager with search and navigation
+🚧 **Architecture Refactoring**: Moving from singletons to dependency injection
+🚧 **Package Structure**: Proper Python package organization in progress
+🚧 **Unified CLI**: Single entry point replacing multiple scripts
 
 ## Phase 1: Interactive File Browser & Config Validation (Current Sprint)
 **Goal**: Intuitive file selection with automatic config validation
