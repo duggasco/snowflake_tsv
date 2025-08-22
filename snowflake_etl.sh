@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.8.2"
+VERSION="2.9.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -1041,17 +1041,16 @@ menu_quick_load() {
     done
 }
 
-# Data Operations Menu
-menu_data_operations() {
-    push_menu "Data Operations"
+# Snowflake Operations Menu
+menu_snowflake_operations() {
+    push_menu "Snowflake Operations"
     while true; do
         local choice=$(show_menu "$MENU_PATH" \
             "Load Data" \
             "Validate Data" \
             "Delete Data" \
             "Check Duplicates" \
-            "Check Table Info" \
-            "Compare Files")
+            "Check Table Info")
         
         case "$choice" in
             1) menu_load_data ;;
@@ -1059,7 +1058,6 @@ menu_data_operations() {
             3) menu_delete_data ;;
             4) check_duplicates ;;
             5) check_table_info ;;
-            6) compare_files ;;
             0|"") pop_menu; break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
@@ -1075,7 +1073,8 @@ menu_file_tools() {
             "Generate Config" \
             "Analyze File Structure" \
             "Check for Issues" \
-            "View File Stats")
+            "View File Stats" \
+            "Compare Files")
         
         case "$choice" in
             1) sample_tsv_file ;;
@@ -1083,6 +1082,7 @@ menu_file_tools() {
             3) analyze_file_structure ;;
             4) check_file_issues ;;
             5) view_file_stats ;;
+            6) compare_files ;;
             0|"") pop_menu; break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
@@ -1970,8 +1970,8 @@ main_menu() {
         fi
         
         local choice=$(show_menu "$menu_title" \
-            "Quick Load        - Common loading tasks" \
-            "Data Operations   - Load/Validate/Delete" \
+            "Quick Load          - Common loading tasks" \
+            "Snowflake Operations - Load/Validate/Delete" \
             "File Tools        - Analyze/Compare/Generate" \
             "Recovery & Fix    - Error recovery tools" \
             "---" \
@@ -1980,7 +1980,7 @@ main_menu() {
         
         case "$choice" in
             1) menu_quick_load ;;
-            2) menu_data_operations ;;
+            2) menu_snowflake_operations ;;
             3) menu_file_tools ;;
             4) menu_recovery ;;
             5) show_job_status ;;  # Now has interactive menu

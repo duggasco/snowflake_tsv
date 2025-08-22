@@ -25,7 +25,13 @@
 - [x] **Implement automatic stage cleanup** ✅
 - [x] **Create performance diagnostic tool (check_stage_and_performance.py)** ✅
 
-## ✅ Completed (2025-01-22 Session) - Unified Wrapper v2.8.1
+## ✅ Completed (2025-01-22 Session) - Unified Wrapper v2.9.0
+- [x] **Rename Data Operations to Snowflake Operations** ✅
+- [x] **Move Compare Files to File Tools menu** ✅
+- [x] **Fix log viewer screen clearing issue** ✅
+- [x] **Prevent logs from stacking below each other** ✅
+
+## ✅ Completed (Earlier 2025-01-22) - Unified Wrapper v2.8.1
 - [x] **Smart table selection from config files** ✅
 - [x] **Auto-detect tables from config and show selection menu** ✅
 - [x] **Implement context-aware prompts with table names** ✅

@@ -1,6 +1,11 @@
 # CHANGELOG.md
 
-## [v2.8.2] - 2025-01-22 - Log Viewer Screen Clearing Fix
+## [v2.9.0] - 2025-01-22 - Menu Reorganization and Screen Clearing Fix
+
+### Changed
+- Renamed "Data Operations" to "Snowflake Operations" for clarity
+- Moved "Compare Files" from Snowflake Operations to File Tools menu where it belongs logically
+- Better menu organization with related functions grouped together
 
 ### Fixed
 - Log viewer now clears terminal screen after viewing to prevent log stacking
@@ -10,6 +15,7 @@
 ### Improved
 - Better user experience when viewing multiple job logs sequentially
 - Cleaner interface with no residual log content between views
+- More intuitive menu structure with Snowflake-specific operations clearly labeled
 
 ## [v2.8.1] - 2025-01-22 - Robust Log Viewer with Comprehensive Error Handling
 
