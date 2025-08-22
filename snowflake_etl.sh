@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.1.2 - No emojis, CLI-compliant
+# Version: 2.2.0 - Dynamic config selection
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.1.2"
+VERSION="2.2.0"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -32,9 +32,10 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Default configuration
-CONFIG_FILE="${SCRIPT_DIR}/config/config.json"
+CONFIG_FILE=""  # Will be selected by user
 BASE_PATH="${SCRIPT_DIR}/data"
 DEFAULT_WORKERS="auto"
+CONFIG_DIR="${SCRIPT_DIR}/config"
 
 # Dialog/UI configuration
 USE_DIALOG=false
@@ -204,7 +205,12 @@ load_preferences() {
             value="${value#\"}"
             
             case "$key" in
-                LAST_CONFIG) CONFIG_FILE="$value" ;;
+                LAST_CONFIG) 
+                    # Verify config still exists
+                    if [[ -f "$value" ]]; then
+                        CONFIG_FILE="$value"
+                    fi
+                    ;;
                 LAST_BASE_PATH) BASE_PATH="$value" ;;
                 LAST_WORKERS) DEFAULT_WORKERS="$value" ;;
                 USE_COLOR) 
@@ -215,6 +221,81 @@ load_preferences() {
             esac
         done < "$PREFS_FILE"
     fi
+}
+
+# Select config file from available options
+select_config_file() {
+    local require_selection="${1:-false}"  # If true, force selection even if CONFIG_FILE is set
+    
+    # If we already have a valid config and not forcing selection, use it
+    if [[ -f "$CONFIG_FILE" ]] && [[ "$require_selection" != "true" ]]; then
+        return 0
+    fi
+    
+    # Find all JSON config files
+    local config_files=()
+    if [[ -d "$CONFIG_DIR" ]]; then
+        while IFS= read -r -d '' file; do
+            config_files+=("$(basename "$file")")
+        done < <(find "$CONFIG_DIR" -maxdepth 1 -name "*.json" -type f -print0 | sort -z)
+    fi
+    
+    # Check if any configs exist
+    if [[ ${#config_files[@]} -eq 0 ]]; then
+        show_message "Error" "No configuration files found in $CONFIG_DIR\nPlease create a config file first."
+        return 1
+    fi
+    
+    # If only one config exists, use it automatically
+    if [[ ${#config_files[@]} -eq 1 ]] && [[ "$require_selection" != "true" ]]; then
+        CONFIG_FILE="$CONFIG_DIR/${config_files[0]}"
+        save_preference "LAST_CONFIG" "$CONFIG_FILE"
+        return 0
+    fi
+    
+    # Show selection menu
+    local title="Select Configuration File"
+    if [[ -n "$CONFIG_FILE" ]]; then
+        title="$title (Current: $(basename "$CONFIG_FILE"))"
+    fi
+    
+    # Build menu options
+    local menu_options=()
+    for config in "${config_files[@]}"; do
+        # Try to extract description from config
+        local desc=""
+        if [[ -f "$CONFIG_DIR/$config" ]]; then
+            # Try to get database/warehouse from config
+            local db=$(grep -o '"database"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_DIR/$config" 2>/dev/null | head -1 | cut -d'"' -f4)
+            local wh=$(grep -o '"warehouse"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_DIR/$config" 2>/dev/null | head -1 | cut -d'"' -f4)
+            if [[ -n "$db" ]] || [[ -n "$wh" ]]; then
+                desc=" (${db:-?}/${wh:-?})"
+            fi
+        fi
+        menu_options+=("$config$desc")
+    done
+    
+    # Show menu and get selection
+    local choice=$(show_menu "$title" "${menu_options[@]}")
+    
+    if [[ "$choice" == "0" ]] || [[ -z "$choice" ]]; then
+        if [[ -z "$CONFIG_FILE" ]]; then
+            show_message "Error" "No configuration selected. Operation cancelled."
+            return 1
+        fi
+        return 0  # Keep existing config
+    fi
+    
+    # Extract just the filename from the selection (remove description)
+    local selected_index=$((choice - 1))
+    local selected_config="${config_files[$selected_index]}"
+    CONFIG_FILE="$CONFIG_DIR/$selected_config"
+    
+    # Save as preference
+    save_preference "LAST_CONFIG" "$CONFIG_FILE"
+    
+    show_message "Config Selected" "Using configuration: $selected_config"
+    return 0
 }
 
 # Save preferences safely
@@ -580,9 +661,14 @@ menu_recovery() {
 
 # Quick load current month (using arrays)
 quick_load_current_month() {
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
     local current_month=$(date +%Y-%m)
     
-    if confirm_action "Load data for $current_month?"; then
+    if confirm_action "Load data for $current_month?\nUsing config: $(basename "$CONFIG_FILE")"; then
         with_lock start_background_job "load_${current_month}" \
             ./run_loader.sh --month "$current_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
     fi
@@ -590,9 +676,14 @@ quick_load_current_month() {
 
 # Quick load last month (using arrays)
 quick_load_last_month() {
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
     local last_month=$(date -d "last month" +%Y-%m 2>/dev/null || date -v-1m +%Y-%m)
     
-    if confirm_action "Load data for $last_month?"; then
+    if confirm_action "Load data for $last_month?\nUsing config: $(basename "$CONFIG_FILE")"; then
         with_lock start_background_job "load_${last_month}" \
             ./run_loader.sh --month "$last_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
     fi
@@ -657,9 +748,14 @@ menu_load_data() {
 
 # Validate data menu (runs synchronously - quick operation)
 menu_validate_data() {
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
     local month=$(get_input "Validate Data" "Enter month (YYYY-MM)" "$(date +%Y-%m)")
     
-    if confirm_action "Validate data for $month?"; then
+    if confirm_action "Validate data for $month?\nUsing config: $(basename "$CONFIG_FILE")"; then
         show_message "Running" "Validating data for $month..."
         local output=$(python3 tsv_loader.py --config "$CONFIG_FILE" --month "$month" --validate-only 2>&1)
         show_message "Validation Results" "$output"
@@ -668,6 +764,11 @@ menu_validate_data() {
 
 # Delete data menu
 menu_delete_data() {
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
     local table=$(get_input "Delete Data" "Enter table name")
     local month=$(get_input "Delete Data" "Enter month (YYYY-MM)")
     
@@ -692,6 +793,11 @@ menu_delete_data() {
 
 # Check duplicates - now parameterized
 check_duplicates() {
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
     local table=$(get_input "Check Duplicates" "Enter table name")
     
     if [[ -z "$table" ]]; then
@@ -893,6 +999,11 @@ view_file_stats() {
 
 # Check table existence and info
 check_table_info() {
+    # Ensure config is selected
+    if ! select_config_file; then
+        return 1
+    fi
+    
     local table=$(get_input "Check Table" "Enter table name to check")
     
     if [[ -z "$table" ]]; then
@@ -900,7 +1011,7 @@ check_table_info() {
         return
     fi
     
-    show_message "Running" "Checking table $table in Snowflake..."
+    show_message "Running" "Checking table $table in Snowflake...\nUsing config: $(basename "$CONFIG_FILE")"
     
     local output=$(python3 check_snowflake_table.py "$CONFIG_FILE" "$table" 2>&1 | head -50)
     
@@ -1122,7 +1233,7 @@ set_base_path() {
 # View preferences
 view_preferences() {
     local prefs="Current Settings:\n\n"
-    prefs+="Config File: $CONFIG_FILE\n"
+    prefs+="Config File: ${CONFIG_FILE:-'Not selected'}\n"
     prefs+="Base Path: $BASE_PATH\n"
     prefs+="Default Workers: $DEFAULT_WORKERS\n"
     prefs+="Dialog Available: $USE_DIALOG ($DIALOG_CMD)\n"
@@ -1142,7 +1253,7 @@ view_preferences() {
 menu_settings() {
     while true; do
         local choice=$(show_menu "Settings" \
-            "Set Default Config" \
+            "Select/Change Config" \
             "Set Base Path" \
             "Configure Workers" \
             "Toggle Colors" \
@@ -1164,16 +1275,11 @@ menu_settings() {
     done
 }
 
-# Set default config
+# Set/change config
 set_default_config() {
-    local new_config=$(get_input "Set Default Config" "Enter config file path" "$CONFIG_FILE")
-    
-    if [[ -f "$new_config" ]]; then
-        CONFIG_FILE="$new_config"
-        save_preference "LAST_CONFIG" "$CONFIG_FILE"
-        show_message "Success" "Default config set to: $CONFIG_FILE"
-    else
-        show_message "Error" "Config file not found: $new_config"
+    # Force selection menu even if config is already set
+    if select_config_file "true"; then
+        show_message "Success" "Config set to: $(basename "$CONFIG_FILE")"
     fi
 }
 
@@ -1327,7 +1433,15 @@ EOF
 
 main_menu() {
     while true; do
-        local choice=$(show_menu "SNOWFLAKE ETL PIPELINE MANAGER v$VERSION" \
+        # Build menu title with current config
+        local menu_title="SNOWFLAKE ETL PIPELINE MANAGER v$VERSION"
+        if [[ -n "$CONFIG_FILE" ]]; then
+            menu_title="$menu_title [Config: $(basename "$CONFIG_FILE")]"
+        else
+            menu_title="$menu_title [No config selected]"
+        fi
+        
+        local choice=$(show_menu "$menu_title" \
             "Quick Load        - Common loading tasks" \
             "Data Operations   - Load/Validate/Delete" \
             "File Tools        - Analyze/Compare/Generate" \
@@ -1368,7 +1482,17 @@ main() {
     
     # Parse CLI arguments if provided
     if [[ $# -gt 0 ]]; then
-        parse_cli_args "$@"
+        # Check if it's a help/version command that doesn't need config
+        case "$1" in
+            --help|-h|--version|-v|status|jobs|clean)
+                parse_cli_args "$@"
+                ;;
+            *)
+                # For other CLI commands, try to auto-select config if only one exists
+                select_config_file >/dev/null 2>&1 || true
+                parse_cli_args "$@"
+                ;;
+        esac
         # If we get here, no valid CLI command was found
         show_help
         exit 1
