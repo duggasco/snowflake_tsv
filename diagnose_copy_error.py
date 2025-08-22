@@ -14,12 +14,16 @@ def load_config(config_path):
     with open(config_path, 'r') as f:
         return json.load(f)
 
-def analyze_copy_error(cursor):
+def analyze_copy_error(cursor, table_name=None):
     """Analyze recent COPY errors and provide recommendations"""
     
     print("\n" + "="*60)
     print("SNOWFLAKE COPY ERROR DIAGNOSTIC")
     print("="*60)
+    
+    # Use provided table name or default
+    if not table_name:
+        table_name = 'TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK'
     
     # 1. Check recent failed queries
     print("\n1. Checking recent failed COPY operations...")
@@ -66,8 +70,12 @@ def analyze_copy_error(cursor):
     # 2. Check stage files
     print("\n2. Checking stage files that might be problematic...")
     
-    stage_query = """
-    LIST @~/tsv_stage/ PATTERN='.*factMarkitExBlkBenchmark.*'
+    # Extract base table name for pattern matching
+    base_name = table_name.replace('TEST_CUSTOM_', '').replace('TEST_', '')
+    pattern = f".*{base_name}.*" if base_name else ".*"
+    
+    stage_query = f"""
+    LIST @~/tsv_stage/ PATTERN='{pattern}'
     """
     
     try:
@@ -89,10 +97,10 @@ def analyze_copy_error(cursor):
     # 3. Check table structure for issues
     print("\n3. Checking table structure...")
     
-    table_query = """
+    table_query = f"""
     SELECT COUNT(*) as COLUMN_COUNT
     FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_NAME = 'TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK'
+    WHERE TABLE_NAME = '{table_name}'
     """
     
     cursor.execute(table_query)
@@ -129,7 +137,7 @@ def analyze_copy_error(cursor):
     print("RECOMMENDATIONS")
     print("="*60)
     
-    print("""
+    print(f"""
     1. IMMEDIATE ACTIONS:
        - Contact Snowflake Support with incident number: 5452401
        - Try loading a smaller sample file to isolate the issue
@@ -137,13 +145,13 @@ def analyze_copy_error(cursor):
     
     2. VALIDATION STEPS:
        # Check what was loaded (if anything)
-       SELECT COUNT(*) FROM TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK 
+       SELECT COUNT(*) FROM {table_name} 
        WHERE RECORDDATE >= '2023-08-01';
        
        # Validate file format
        SELECT $1, $2, $3, $4, $5 
-       FROM @~/tsv_stage/TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK/
-       (FILE_FORMAT => (TYPE = 'CSV' FIELD_DELIMITER = '\t'))
+       FROM @~/tsv_stage/{table_name}/
+       (FILE_FORMAT => (TYPE = 'CSV' FIELD_DELIMITER = '\\t'))
        LIMIT 10;
     
     3. ALTERNATIVE APPROACHES:
@@ -161,8 +169,8 @@ def analyze_copy_error(cursor):
           - Try with WAREHOUSE_SIZE = 'LARGE' or 'X-LARGE'
     
     4. MODIFIED COPY COMMAND:
-       COPY INTO TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK
-       FROM @~/tsv_stage/TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK/
+       COPY INTO {table_name}
+       FROM @~/tsv_stage/{table_name}/
        FILE_FORMAT = (
            TYPE = 'CSV'
            FIELD_DELIMITER = '\\t'
@@ -182,41 +190,73 @@ def analyze_copy_error(cursor):
     # 6. Check for partial load
     print("\n5. Checking for partial data load...")
     
-    check_query = """
-    SELECT 
-        COUNT(*) as ROW_COUNT,
-        MIN(RECORDDATE) as MIN_DATE,
-        MAX(RECORDDATE) as MAX_DATE
-    FROM TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK
-    WHERE RECORDDATE >= '2023-08-01'
-      AND RECORDDATE <= '2023-08-31'
+    # First determine the date column type
+    type_query = f"""
+    SELECT DATA_TYPE, COLUMN_NAME
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = '{table_name}'
+      AND UPPER(COLUMN_NAME) IN ('RECORDDATE', 'RECORD_DATE', 'DATE')
+    LIMIT 1
     """
     
     try:
-        cursor.execute(check_query)
+        cursor.execute(type_query)
         result = cursor.fetchone()
-        if result and result[0] > 0:
-            print(f"Found {result[0]:,} rows already loaded")
-            print(f"Date range: {result[1]} to {result[2]}")
-            print("\nWARNING: Partial data may have been loaded!")
-            print("Consider cleaning up before retry:")
-            print(f"DELETE FROM TEST_CUSTOM_FACTMARKITEXBLKBENCHMARK")
-            print(f"WHERE RECORDDATE >= '2023-08-01' AND RECORDDATE <= '2023-08-31';")
+        if result:
+            data_type, date_col = result
+            print(f"Date column '{date_col}' is type: {data_type}")
+            
+            # Use appropriate query based on data type
+            if 'VARCHAR' in data_type or 'CHAR' in data_type:
+                check_query = f"""
+                SELECT 
+                    COUNT(*) as ROW_COUNT,
+                    MIN({date_col}) as MIN_DATE,
+                    MAX({date_col}) as MAX_DATE
+                FROM {table_name}
+                WHERE {date_col} LIKE '2023-08-%'
+                   OR {date_col} LIKE '202308%'
+                """
+            else:
+                check_query = f"""
+                SELECT 
+                    COUNT(*) as ROW_COUNT,
+                    MIN({date_col}) as MIN_DATE,
+                    MAX({date_col}) as MAX_DATE
+                FROM {table_name}
+                WHERE {date_col} >= '2023-08-01'
+                  AND {date_col} <= '2023-08-31'
+                """
+            
+            cursor.execute(check_query)
+            result = cursor.fetchone()
+            if result and result[0] > 0:
+                print(f"Found {result[0]:,} rows already loaded")
+                print(f"Date range: {result[1]} to {result[2]}")
+                print("\nWARNING: Partial data may have been loaded!")
+                print("Consider cleaning up before retry:")
+                if 'VARCHAR' in data_type:
+                    print(f"DELETE FROM {table_name}")
+                    print(f"WHERE {date_col} LIKE '2023-08-%' OR {date_col} LIKE '202308%';")
+                else:
+                    print(f"DELETE FROM {table_name}")
+                    print(f"WHERE {date_col} >= '2023-08-01' AND {date_col} <= '2023-08-31';")
     except Exception as e:
         print(f"Could not check for partial load: {e}")
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python diagnose_copy_error.py <config.json>")
+        print("Usage: python diagnose_copy_error.py <config.json> [table_name]")
         sys.exit(1)
     
     config = load_config(sys.argv[1])
+    table_name = sys.argv[2] if len(sys.argv) > 2 else None
     
     try:
         conn = snowflake.connector.connect(**config['snowflake'])
         cursor = conn.cursor()
         
-        analyze_copy_error(cursor)
+        analyze_copy_error(cursor, table_name)
         
     except Exception as e:
         print(f"Error: {e}")

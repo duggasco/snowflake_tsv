@@ -84,14 +84,38 @@ config = json.load(open('$CONFIG'))
 conn = snowflake.connector.connect(**config['snowflake'])
 cursor = conn.cursor()
 
-query = '''
-SELECT COUNT(*) as rows,
-       MIN(RECORDDATE) as min_date,
-       MAX(RECORDDATE) as max_date
-FROM $TABLE
-WHERE YEAR(RECORDDATE) = $YEAR
-  AND MONTH(RECORDDATE) = $MON
+# First check the data type of RECORDDATE
+check_type = '''
+SELECT DATA_TYPE 
+FROM INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = '$TABLE' 
+  AND COLUMN_NAME = 'RECORDDATE'
 '''
+cursor.execute(check_type)
+data_type = cursor.fetchone()[0] if cursor.rowcount else 'UNKNOWN'
+print(f'RECORDDATE column type: {data_type}')
+
+# Use appropriate query based on data type
+if 'VARCHAR' in data_type or 'CHAR' in data_type:
+    # For VARCHAR date columns
+    query = '''
+    SELECT COUNT(*) as rows,
+           MIN(RECORDDATE) as min_date,
+           MAX(RECORDDATE) as max_date
+    FROM $TABLE
+    WHERE RECORDDATE LIKE '$YEAR-$MON-%'
+       OR RECORDDATE LIKE '$YEAR$MON%'
+    '''
+else:
+    # For DATE columns
+    query = '''
+    SELECT COUNT(*) as rows,
+           MIN(RECORDDATE) as min_date,
+           MAX(RECORDDATE) as max_date
+    FROM $TABLE
+    WHERE YEAR(RECORDDATE) = $YEAR
+      AND MONTH(RECORDDATE) = $MON
+    '''
 
 cursor.execute(query)
 result = cursor.fetchone()
@@ -131,16 +155,38 @@ config = json.load(open('$CONFIG'))
 conn = snowflake.connector.connect(**config['snowflake'])
 cursor = conn.cursor()
 
-# Delete partial data
-delete_query = '''
-DELETE FROM $TABLE
-WHERE YEAR(RECORDDATE) = $YEAR
-  AND MONTH(RECORDDATE) = $MON
+# First check the data type of RECORDDATE
+check_type = '''
+SELECT DATA_TYPE 
+FROM INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = '$TABLE' 
+  AND COLUMN_NAME = 'RECORDDATE'
 '''
+cursor.execute(check_type)
+data_type = cursor.fetchone()[0] if cursor.rowcount else 'UNKNOWN'
+print(f'RECORDDATE column type: {data_type}')
+
+# Use appropriate DELETE query based on data type
+if 'VARCHAR' in data_type or 'CHAR' in data_type:
+    # For VARCHAR date columns - handle multiple formats
+    delete_query = '''
+    DELETE FROM $TABLE
+    WHERE RECORDDATE LIKE '$YEAR-$MON-%'     -- Format: 2023-08-01
+       OR RECORDDATE LIKE '$YEAR$MON%'       -- Format: 20230801
+       OR RECORDDATE LIKE '%-$MON-$YEAR'     -- Format: 01-08-2023
+       OR RECORDDATE LIKE '$MON/%/$YEAR'     -- Format: 08/01/2023
+    '''
+else:
+    # For DATE columns
+    delete_query = '''
+    DELETE FROM $TABLE
+    WHERE YEAR(RECORDDATE) = $YEAR
+      AND MONTH(RECORDDATE) = $MON
+    '''
 
 print('Deleting partial data...')
-cursor.execute(delete_query)
-deleted = cursor.fetchone()[0] if cursor.rowcount else 0
+result = cursor.execute(delete_query)
+deleted = result.rowcount if result else 0
 print(f'Deleted {deleted:,} rows')
 
 # Clean up stage
@@ -152,8 +198,8 @@ print('Cleaning up stage...')
 try:
     cursor.execute(stage_query)
     print('Stage cleaned')
-except:
-    print('No stage files to clean')
+except Exception as e:
+    print(f'Stage cleanup note: {e}')
 
 cursor.close()
 conn.close()
