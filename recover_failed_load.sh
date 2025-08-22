@@ -96,7 +96,7 @@ data_type = cursor.fetchone()[0] if cursor.rowcount else 'UNKNOWN'
 print(f'RECORDDATE column type: {data_type}')
 
 # Use appropriate query based on data type
-if 'VARCHAR' in data_type or 'CHAR' in data_type:
+if 'VARCHAR' in data_type or 'CHAR' in data_type or 'TEXT' in data_type or 'STRING' in data_type:
     # For VARCHAR date columns
     query = '''
     SELECT COUNT(*) as rows,
@@ -113,8 +113,8 @@ else:
            MIN(RECORDDATE) as min_date,
            MAX(RECORDDATE) as max_date
     FROM $TABLE
-    WHERE YEAR(RECORDDATE) = $YEAR
-      AND MONTH(RECORDDATE) = $MON
+    WHERE RECORDDATE >= '$YEAR-$MON-01'
+      AND RECORDDATE < DATEADD(MONTH, 1, '$YEAR-$MON-01')
     '''
 
 cursor.execute(query)
@@ -167,7 +167,7 @@ data_type = cursor.fetchone()[0] if cursor.rowcount else 'UNKNOWN'
 print(f'RECORDDATE column type: {data_type}')
 
 # Use appropriate DELETE query based on data type
-if 'VARCHAR' in data_type or 'CHAR' in data_type:
+if 'VARCHAR' in data_type or 'CHAR' in data_type or 'TEXT' in data_type or 'STRING' in data_type:
     # For VARCHAR date columns - handle multiple formats
     delete_query = '''
     DELETE FROM $TABLE
@@ -180,8 +180,8 @@ else:
     # For DATE columns
     delete_query = '''
     DELETE FROM $TABLE
-    WHERE YEAR(RECORDDATE) = $YEAR
-      AND MONTH(RECORDDATE) = $MON
+    WHERE RECORDDATE >= '$YEAR-$MON-01'
+      AND RECORDDATE < DATEADD(MONTH, 1, '$YEAR-$MON-01')
     '''
 
 print('Deleting partial data...')
