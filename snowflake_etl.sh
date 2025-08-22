@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="2.10.3"
+VERSION="2.10.4"
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -998,6 +998,16 @@ clean_completed_jobs() {
     local cleaned=0
     local failed=0
     
+    # Check if jobs directory exists and has job files
+    if [[ ! -d "$JOBS_DIR" ]]; then
+        show_message "No Jobs to Clean" "Jobs directory not found."
+        return 0
+    fi
+    
+    # Use nullglob to handle no matches gracefully
+    local old_nullglob=$(shopt -p nullglob)
+    shopt -s nullglob
+    
     # Simple direct approach without complex subshells
     for job_file in "$JOBS_DIR"/*.job; do
         if [[ -f "$job_file" ]]; then
@@ -1008,13 +1018,16 @@ clean_completed_jobs() {
                 rm -f "$job_file"
                 
                 if [[ "$status" == "COMPLETED" ]]; then
-                    ((cleaned++))
+                    cleaned=$((cleaned + 1))
                 else
-                    ((failed++))
+                    failed=$((failed + 1))
                 fi
             fi
         fi
     done
+    
+    # Restore nullglob setting
+    eval "$old_nullglob"
     
     local total=$((cleaned + failed))
     if [[ $total -eq 0 ]]; then
@@ -1030,6 +1043,8 @@ clean_completed_jobs() {
         message+="\n(Log files preserved for debugging)"
         show_message "Jobs Cleaned" "$message"
     fi
+    
+    return 0
 }
 
 # ============================================================================

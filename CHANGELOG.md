@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## [v2.10.4] - 2025-01-22 - Fix Script Exit on Clean Jobs
+
+### Fixed
+- Fixed script completely exiting when "Clean Completed Jobs" selected
+- Added nullglob handling for when no job files exist
+- Fixed arithmetic operations that could fail with set -e
+- Added explicit return 0 to prevent unexpected exits
+
+### Improved
+- Safer glob expansion with nullglob
+- Better handling of empty jobs directory
+- More robust arithmetic with $(()) instead of (())
+- Explicit return codes for function stability
+
 ## [v2.10.3] - 2025-01-22 - Fix Menu Indexing Bug (With Gemini's Help)
 
 ### Fixed
