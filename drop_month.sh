@@ -4,14 +4,8 @@
 # Usage: ./drop_month.sh --config config.json --table TABLE_NAME --month 2024-01 [options]
 #
 # ============================================================================
-# DEPRECATION WARNING
-# ============================================================================
-# This script is DEPRECATED as of v3.0.0
-# Please use the unified interface instead:
-#   python -m snowflake_etl delete [options]
-# OR use the interactive wrapper:
-#   ./snowflake_etl.sh
-# ============================================================================
+# This script now uses the new snowflake_etl package (v3.0.0)
+# It serves as a wrapper for the unified snowflake_etl CLI delete operation
 
 set -euo pipefail
 
@@ -86,7 +80,7 @@ usage() {
 print_warning "========================================" 
 print_warning "DEPRECATION WARNING"
 print_warning "This script is deprecated as of v3.0.0"
-print_warning "Please use: python -m snowflake_etl delete"
+# Script now properly integrated with v3.0.0 package
 print_warning "OR: ./snowflake_etl.sh"
 print_warning "========================================"
 echo ""
@@ -171,7 +165,7 @@ if [ -z "$MONTH" ] && [ -z "$MONTHS" ]; then
 fi
 
 # Build the command
-cmd="python3 drop_month.py --config $CONFIG"
+cmd="python3 -m snowflake_etl delete --config $CONFIG"
 
 # Add table specifications
 if [ -n "$TABLE" ]; then

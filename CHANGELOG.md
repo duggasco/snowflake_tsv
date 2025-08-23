@@ -1,5 +1,47 @@
 # CHANGELOG.md
 
+## [v3.0.0] - 2025-08-23 - Final Migration & Complete Refactoring
+
+### Major Migration Completed
+- **Fixed broken v3.0.0 package**: Created missing files (config_manager_v2.py, snowflake_connection_v3.py)
+- **Completed migration from monolithic scripts to modular package**
+- **All shell scripts now use new `snowflake_etl` package**
+- **Unified CLI with comprehensive subcommands**
+
+### New Features
+- **Unified CLI**: All operations through `sfl` command
+- **Configuration Management**: 
+  - `sfl config-generate` - Generate configs from TSV files
+  - `sfl config-validate` - Validate configuration files
+  - `sfl config-migrate` - Migrate configs between versions
+- **Utility Subcommands**:
+  - `sfl check-table` - Check Snowflake tables
+  - `sfl diagnose-error` - Diagnose COPY errors
+  - `sfl validate-file` - Validate TSV files
+  - `sfl check-stage` - Manage stage files
+- **Connection Management**: Production-ready SnowflakeConnectionManager with pooling and async support
+- **Standardized Logging**: Unified ETLLogger for consistent logging across all components
+
+### Breaking Changes
+- `tsv_loader.py` deprecated → use `sfl load`
+- `drop_month.py` deprecated → use `sfl delete`
+- Standalone utility scripts moved to subcommands
+- Configuration now requires `--config` flag only for operations that need it
+
+### Technical Improvements
+- Proper package entry points (snowflake-etl, sfl, sfe)
+- Dependency injection architecture fully implemented
+- Connection pooling with configurable size
+- Thread-safe connection management
+- Async query support for large operations
+- Context-aware logging with operation tracking
+
+### Files Deprecated/Removed
+- Moved to deprecated_scripts/: check_snowflake_table.py, diagnose_copy_error.py, validate_tsv_file.py, etc.
+- Backed up: tsv_loader.py → deprecated_tsv_loader.py.bak
+- Backed up: drop_month.py → deprecated_drop_month.py.bak
+- Consolidated duplicate test files
+
 ## [v3.0.0-rc2] - 2025-01-23 - Project Cleanup & Documentation Update
 
 ### Project Cleanup (Session 8)

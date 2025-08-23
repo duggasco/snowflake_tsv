@@ -1113,6 +1113,8 @@ browse_and_load_files() {
     sleep 2
     
     # Run the file browser
+    # Note: File browser needs to be migrated to new subcommand
+    # For now, keeping old script until fully migrated
     if python3 tsv_file_browser.py --start-dir "${BASE_PATH:-$(pwd)}" \
                                    --config-dir "${CONFIG_DIR:-config}" \
                                    --output "$temp_file"; then
@@ -1130,6 +1132,7 @@ browse_and_load_files() {
             
             # Run validation
             echo -e "${BLUE}Validating files against current config...${NC}"
+            # Note: Browser integration needs migration
             local validation_result=$(python3 tsv_browser_integration.py \
                 "${files_array[@]}" \
                 --current-config "$CONFIG_FILE" \
@@ -1504,7 +1507,7 @@ check_file_issues() {
     if [[ -f "$file" ]]; then
         if confirm_action "Check file for issues? This may take time for large files."; then
             with_lock start_background_job "check_issues_$(basename "$file")" \
-                python3 validate_tsv_file.py "$file"
+                sfl validate-file "$file" --config "$CONFIG_FILE"
         fi
     else
         show_message "Error" "File not found: $file"
@@ -1546,11 +1549,11 @@ check_table_info() {
         if [[ "${response^^}" == "Y" ]]; then
             # Run in foreground with visible progress
             with_lock start_foreground_job "check_table_${table}" \
-                python3 check_snowflake_table.py "$CONFIG_FILE" "$table"
+                sfl check-table "$table" --config "$CONFIG_FILE"
         else
             # Run in background
             with_lock start_background_job "check_table_${table}" \
-                python3 check_snowflake_table.py "$CONFIG_FILE" "$table"
+                sfl check-table "$table" --config "$CONFIG_FILE"
         fi
     fi
 }
@@ -1632,7 +1635,7 @@ diagnose_failed_load() {
     fi
     
     if [[ -f "$log_file" ]]; then
-        local output=$(python3 diagnose_copy_error.py "$log_file" 2>&1 | head -100)
+        local output=$(sfl diagnose-error --config "$CONFIG_FILE" 2>&1 | head -100)
         show_message "Diagnosis Results" "$output"
     else
         show_message "Error" "Log file not found: $log_file"
@@ -1713,8 +1716,8 @@ clean_stage_files() {
     if [[ "$table" == "all" ]]; then
         if confirm_action "Clean ALL stage files? This will remove all uploaded TSV files from Snowflake stages."; then
             show_message "Running" "Cleaning all stage files..."
-            local output=$(python3 check_stage_and_performance.py "$CONFIG_FILE" 2>&1 | grep -E "(Found|Total|Would)" | head -20)
-            show_message "Stage Status" "$output\n\nRun 'python3 check_stage_and_performance.py $CONFIG_FILE' to clean interactively."
+            local output=$(sfl check-stage --config "$CONFIG_FILE" 2>&1 | grep -E "(Found|Total|Would)" | head -20)
+            show_message "Stage Status" "$output\n\nRun 'sfl check-stage --config $CONFIG_FILE' to clean interactively."
         fi
     else
         if confirm_action "Clean stage files for table $table?"; then

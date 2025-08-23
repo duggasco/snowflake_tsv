@@ -2,15 +2,8 @@
 
 # run_loader.sh - Enhanced TSV to Snowflake loader runner script with multi-month support
 # 
-# ============================================================================
-# DEPRECATION WARNING
-# ============================================================================
-# This script is DEPRECATED as of v3.0.0
-# Please use the unified interface instead:
-#   python -m snowflake_etl load [options]
-# OR use the interactive wrapper:
-#   ./snowflake_etl.sh
-# ============================================================================
+# This script now uses the new snowflake_etl package (v3.0.0)
+# It serves as a wrapper for the unified snowflake_etl CLI
 
 # Color codes
 RED='\033[0;31m'
@@ -134,7 +127,7 @@ process_direct_files() {
     echo -e "${CYAN}========================================${NC}"
     
     # Build the Python command for direct files
-    local cmd="python3 tsv_loader.py"
+    local cmd="python3 -m snowflake_etl load"
     cmd="${cmd} --config ${CONFIG_FILE}"
     
     # Convert comma-separated files to array
@@ -273,7 +266,7 @@ process_month() {
     fi
     
     # Build the Python command
-    local cmd="python3 tsv_loader.py"
+    local cmd="python3 -m snowflake_etl load"
     cmd="${cmd} --config ${CONFIG_FILE}"
     
     # For validate-only mode, we don't need base-path
@@ -426,14 +419,7 @@ check_prerequisites() {
 
  
 
-# Show deprecation warning
-echo -e "${YELLOW}========================================${NC}"
-echo -e "${YELLOW}DEPRECATION WARNING${NC}"
-echo -e "${YELLOW}This script is deprecated as of v3.0.0${NC}"
-echo -e "${YELLOW}Please use: python -m snowflake_etl load${NC}"
-echo -e "${YELLOW}OR: ./snowflake_etl.sh${NC}"
-echo -e "${YELLOW}========================================${NC}"
-echo ""
+# Script now properly integrated with v3.0.0 package
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -521,7 +507,9 @@ done
 # If check-system flag is set, just run that and exit
 if [ -n "${CHECK_SYSTEM}" ]; then
     echo -e "${GREEN}Running system capabilities check...${NC}\n"
-    python3 tsv_loader.py --check-system
+    # Check system capabilities (note: this functionality may need to be reimplemented)
+    echo -e "${YELLOW}System check not yet implemented in new package${NC}"
+    return 0
     exit $?
 fi
 

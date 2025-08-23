@@ -51,4 +51,4 @@ Thumbs.db
 *.tmp
 *.bak
 temp/
-tmp/
+tmp/etl_venv/

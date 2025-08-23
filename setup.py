@@ -124,7 +124,8 @@ setup(
     entry_points={
         "console_scripts": [
             "snowflake-etl=snowflake_etl.__main__:main",
-            "sfe=snowflake_etl.__main__:main",  # Short alias
+            "sfl=snowflake_etl.__main__:main",  # Short alias for 'snowflake-loader'
+            "sfe=snowflake_etl.__main__:main",  # Alternative short alias
         ],
     },
     

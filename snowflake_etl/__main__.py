@@ -15,9 +15,23 @@ from .core.application_context import ApplicationContext
 from .operations.load_operation import LoadOperation
 from .operations.delete_operation import DeleteOperation
 from .operations.validate_operation import ValidateOperation
-from .operations.report_operation_final import ReportOperation, SeverityConfig
+from .operations.report_operation import ReportOperation
 from .operations.duplicate_check_operation import DuplicateCheckOperation
 from .operations.compare_operation import CompareOperation
+from .operations.utilities import (
+    CheckTableOperation,
+    DiagnoseErrorOperation,
+    ValidateFileOperation,
+    CheckStageOperation,
+    FileBrowserOperation,
+    GenerateReportOperation,
+    TSVSamplerOperation
+)
+from .operations.config import (
+    GenerateConfigOperation,
+    ValidateConfigOperation,
+    MigrateConfigOperation
+)
 
 
 def setup_logging(log_level: str, log_dir: str, quiet: bool) -> logging.Logger:
@@ -61,8 +75,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--config', '-c',
         type=str,
-        required=True,
-        help='Path to configuration file'
+        help='Path to configuration file (required for most operations)'
     )
     parser.add_argument(
         '--log-dir',
@@ -162,6 +175,96 @@ def create_parser() -> argparse.ArgumentParser:
                                help='Sample size in MB for quick mode')
     compare_parser.add_argument('--output', type=str, help='Output file for results')
     
+    # Utilities subcommands
+    # Check table utility
+    check_table_parser = subparsers.add_parser('check-table', 
+                                               help='Check if Snowflake table exists and show column info')
+    check_table_parser.add_argument('table', type=str, help='Table name to check')
+    
+    # Diagnose error utility
+    diagnose_parser = subparsers.add_parser('diagnose-error',
+                                           help='Diagnose Snowflake COPY errors')
+    diagnose_parser.add_argument('--table', type=str, help='Table name to filter errors')
+    diagnose_parser.add_argument('--hours', type=int, default=24,
+                                help='Hours to look back for errors (default: 24)')
+    
+    # Validate file utility
+    validate_file_parser = subparsers.add_parser('validate-file',
+                                                 help='Validate TSV file structure')
+    validate_file_parser.add_argument('file', type=str, help='TSV file to validate')
+    validate_file_parser.add_argument('--expected-columns', type=int,
+                                     help='Expected number of columns')
+    validate_file_parser.add_argument('--sample-rows', type=int, default=10,
+                                     help='Number of rows to sample (default: 10)')
+    
+    # Check stage utility
+    check_stage_parser = subparsers.add_parser('check-stage',
+                                              help='Check and manage Snowflake stage files')
+    check_stage_parser.add_argument('--pattern', type=str, default='*',
+                                   help='File pattern to match (default: *)')
+    check_stage_parser.add_argument('--clean', action='store_true',
+                                   help='Clean old stage files')
+    
+    # File browser utility
+    browse_parser = subparsers.add_parser('browse',
+                                         help='Interactive TSV file browser')
+    browse_parser.add_argument('--start-dir', type=str, default='.',
+                             help='Starting directory (default: current)')
+    
+    # Generate report utility
+    gen_report_parser = subparsers.add_parser('generate-report',
+                                             help='Generate comprehensive table report')
+    gen_report_parser.add_argument('--format', type=str, default='text',
+                                  choices=['text', 'json', 'csv'],
+                                  help='Output format (default: text)')
+    
+    # TSV sampler utility
+    sample_parser = subparsers.add_parser('sample-file',
+                                         help='Sample and analyze TSV file')
+    sample_parser.add_argument('file', type=str, help='TSV file to sample')
+    sample_parser.add_argument('--rows', type=int, default=100,
+                             help='Number of rows to sample (default: 100)')
+    
+    # Configuration management subcommands
+    # Generate config
+    gen_config_parser = subparsers.add_parser('config-generate',
+                                             help='Generate configuration from TSV files')
+    gen_config_parser.add_argument('files', nargs='+', help='TSV files to analyze')
+    gen_config_parser.add_argument('--output', '-o', type=str,
+                                  help='Output configuration file')
+    gen_config_parser.add_argument('--table', '-t', type=str,
+                                  help='Snowflake table name for column info')
+    gen_config_parser.add_argument('--headers', type=str,
+                                  help='Comma-separated column headers')
+    gen_config_parser.add_argument('--base-path', type=str, default='.',
+                                  help='Base path for file patterns')
+    gen_config_parser.add_argument('--date-column', type=str, default='RECORDDATEID',
+                                  help='Date column name')
+    gen_config_parser.add_argument('--merge', type=str,
+                                  help='Merge with existing config file')
+    gen_config_parser.add_argument('--interactive', '-i', action='store_true',
+                                  help='Interactive mode for credentials')
+    gen_config_parser.add_argument('--dry-run', action='store_true',
+                                  help='Show what would be generated')
+    
+    # Validate config
+    val_config_parser = subparsers.add_parser('config-validate',
+                                             help='Validate configuration file')
+    val_config_parser.add_argument('config_file', type=str,
+                                  help='Configuration file to validate')
+    val_config_parser.add_argument('--test-connection', action='store_true',
+                                  help='Test Snowflake connection')
+    
+    # Migrate config
+    mig_config_parser = subparsers.add_parser('config-migrate',
+                                             help='Migrate configuration to new version')
+    mig_config_parser.add_argument('config_file', type=str,
+                                  help='Configuration file to migrate')
+    mig_config_parser.add_argument('--target-version', type=str, default='3.0',
+                                  help='Target version (default: 3.0)')
+    mig_config_parser.add_argument('--no-backup', action='store_true',
+                                  help='Do not create backup')
+    
     return parser
 
 
@@ -175,13 +278,23 @@ def main(args=None):
     logger = setup_logging(args.log_level, args.log_dir, args.quiet)
     
     try:
-        # Create application context
-        logger.info(f"Initializing application context with config: {args.config}")
-        context = ApplicationContext(
-            config_file=args.config,
-            log_dir=args.log_dir,
-            quiet_mode=args.quiet
-        )
+        # Determine if operation requires config
+        config_optional_ops = ['config-generate', 'config-validate', 'config-migrate', 
+                              'validate-file', 'sample-file']
+        
+        # Create application context if needed
+        context = None
+        if args.config or args.operation not in config_optional_ops:
+            if not args.config:
+                logger.error("Config file is required for this operation")
+                parser.error("--config is required for this operation")
+            
+            logger.info(f"Initializing application context with config: {args.config}")
+            context = ApplicationContext(
+                config_file=args.config,
+                log_dir=args.log_dir,
+                quiet_mode=args.quiet
+            )
         
         # Route to appropriate operation
         if args.operation == 'load':
@@ -321,6 +434,93 @@ def main(args=None):
                 with open(args.output, 'w') as f:
                     json.dump(result.to_dict(), f, indent=2, default=str)
                 logger.info(f"Comparison results saved to {args.output}")
+        
+        # Utility operations
+        elif args.operation == 'check-table':
+            logger.info(f"Checking table: {args.table}")
+            operation = CheckTableOperation(context)
+            result = operation.execute(table_name=args.table)
+            
+        elif args.operation == 'diagnose-error':
+            logger.info("Diagnosing Snowflake errors")
+            operation = DiagnoseErrorOperation(context)
+            result = operation.execute(
+                table_name=args.table,
+                hours_back=args.hours
+            )
+            
+        elif args.operation == 'validate-file':
+            logger.info(f"Validating file: {args.file}")
+            # Note: This operation doesn't need Snowflake connection
+            # Could potentially skip context initialization
+            operation = ValidateFileOperation(context)
+            result = operation.execute(
+                file_path=args.file,
+                expected_columns=args.expected_columns,
+                sample_rows=args.sample_rows
+            )
+            
+        elif args.operation == 'check-stage':
+            logger.info("Checking Snowflake stage files")
+            operation = CheckStageOperation(context)
+            result = operation.execute(
+                pattern=args.pattern,
+                clean=args.clean
+            )
+            
+        elif args.operation == 'browse':
+            logger.info("Launching file browser")
+            operation = FileBrowserOperation(context)
+            result = operation.execute(start_dir=args.start_dir)
+            
+        elif args.operation == 'generate-report':
+            logger.info("Generating table report")
+            operation = GenerateReportOperation(context)
+            result = operation.execute(output_format=args.format)
+            
+        elif args.operation == 'sample-file':
+            logger.info(f"Sampling file: {args.file}")
+            operation = TSVSamplerOperation(context)
+            result = operation.execute(
+                file_path=args.file,
+                rows=args.rows
+            )
+        
+        # Configuration operations
+        elif args.operation == 'config-generate':
+            logger.info("Generating configuration")
+            # This operation might not need full context
+            operation = GenerateConfigOperation(context if args.table else None)
+            result = operation.execute(
+                files=args.files,
+                output_file=args.output,
+                table_name=args.table,
+                column_headers=args.headers,
+                base_path=args.base_path,
+                date_column=args.date_column,
+                merge_with=args.merge,
+                interactive=args.interactive,
+                dry_run=args.dry_run
+            )
+            
+        elif args.operation == 'config-validate':
+            logger.info(f"Validating configuration: {args.config_file}")
+            operation = ValidateConfigOperation(context if args.test_connection else None)
+            result = operation.execute(
+                config_file=args.config_file,
+                check_connection=args.test_connection
+            )
+            return 0 if result else 1
+            
+        elif args.operation == 'config-migrate':
+            logger.info(f"Migrating configuration: {args.config_file}")
+            operation = MigrateConfigOperation(context)
+            result = operation.execute(
+                config_file=args.config_file,
+                target_version=args.target_version,
+                backup=not args.no_backup
+            )
+            return 0 if result else 1
         
         else:
             logger.error(f"Unknown operation: {args.operation}")
