@@ -1,6 +1,16 @@
 #!/bin/bash
 
 # run_loader.sh - Enhanced TSV to Snowflake loader runner script with multi-month support
+# 
+# ============================================================================
+# DEPRECATION WARNING
+# ============================================================================
+# This script is DEPRECATED as of v3.0.0
+# Please use the unified interface instead:
+#   python -m snowflake_etl load [options]
+# OR use the interactive wrapper:
+#   ./snowflake_etl.sh
+# ============================================================================
 
 # Color codes
 RED='\033[0;31m'
@@ -415,6 +425,15 @@ check_prerequisites() {
 }
 
  
+
+# Show deprecation warning
+echo -e "${YELLOW}========================================${NC}"
+echo -e "${YELLOW}DEPRECATION WARNING${NC}"
+echo -e "${YELLOW}This script is deprecated as of v3.0.0${NC}"
+echo -e "${YELLOW}Please use: python -m snowflake_etl load${NC}"
+echo -e "${YELLOW}OR: ./snowflake_etl.sh${NC}"
+echo -e "${YELLOW}========================================${NC}"
+echo ""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do

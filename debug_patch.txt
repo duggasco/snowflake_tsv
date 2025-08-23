@@ -1,0 +1,13 @@
+2068a2069,2070
+> echo "DEBUG: main() called with $# args: '$@'" >&2
+> echo "DEBUG: Arg 1 is: '$1'" >&2
+2078a2081
+> echo "DEBUG: Entering argument parsing block" >&2
+2086a2090
+> echo "DEBUG: Calling select_config_file" >&2
+2091a2096
+> echo "DEBUG: After parse_cli_args, about to show_help" >&2
+2096a2102
+> echo "DEBUG: Entering interactive mode" >&2
+2111a2118
+> echo "DEBUG: About to call main_menu" >&2

@@ -1,0 +1,6 @@
+# Development dependencies for Snowflake ETL Pipeline
+# This installs the package in editable mode with all development dependencies
+# Usage: pip install -r requirements-dev.txt
+
+# Install package in editable mode with all dev dependencies
+-e .[dev]

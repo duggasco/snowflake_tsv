@@ -2,6 +2,15 @@
 
 # Recovery script for failed COPY operations
 # Handles Snowflake internal errors and provides recovery options
+#
+# ============================================================================
+# DEPRECATION WARNING
+# ============================================================================
+# This script is DEPRECATED as of v3.0.0
+# Recovery functionality is now integrated into the main CLI.
+# Please use the interactive wrapper:
+#   ./snowflake_etl.sh
+# ============================================================================
 
 set -e
 
@@ -11,6 +20,13 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+echo -e "${YELLOW}============================================================${NC}"
+echo -e "${YELLOW}DEPRECATION WARNING${NC}"
+echo -e "${YELLOW}This script is deprecated as of v3.0.0${NC}"
+echo -e "${YELLOW}Recovery features are now in: ./snowflake_etl.sh${NC}"
+echo -e "${YELLOW}============================================================${NC}"
+echo ""
 
 echo -e "${BLUE}============================================================${NC}"
 echo -e "${BLUE}SNOWFLAKE COPY ERROR RECOVERY TOOL${NC}"

@@ -1,0 +1,53 @@
+# Snowflake ETL Pipeline - MANIFEST.in
+# Controls which files are included in source distributions
+
+# Include important documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+
+# Include type hints marker (though package_data also handles this)
+include snowflake_etl/py.typed
+
+# Include example configurations
+recursive-include config *.json.example
+recursive-include config *.yaml.example
+
+# Exclude build artifacts and caches globally
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
+global-exclude .git*
+global-exclude *.swp
+global-exclude *.bak
+global-exclude *~
+
+# Exclude test and documentation directories from distribution
+prune tests
+prune docs
+prune scripts
+
+# Exclude development configuration files
+exclude .editorconfig
+exclude .gitignore
+exclude .pre-commit-config.yaml
+exclude tox.ini
+exclude Makefile
+exclude pytest.ini
+exclude .coveragerc
+
+# Exclude old standalone scripts (now integrated into package)
+exclude tsv_loader.py
+exclude drop_month.py
+exclude generate_table_report.py
+exclude check_duplicates_interactive.py
+exclude validate_tsv_file.py
+exclude compare_tsv_files.py
+exclude tsv_file_browser.py
+exclude check_snowflake_table.py
+exclude check_stage_and_performance.py
+exclude diagnose_copy_error.py
+
+# Exclude shell scripts (distributed separately)
+exclude *.sh

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.7.0 - Dynamic UI sizing for full content visibility
+# Version: 3.0.0 - Uses new unified CLI (python -m snowflake_etl)
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -14,10 +14,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
 VERSION="3.0.0"
 
-# Source library files
-source "${SCRIPT_DIR}/lib/colors.sh"
-source "${SCRIPT_DIR}/lib/ui_components.sh"
-source "${SCRIPT_DIR}/lib/common_functions.sh"
+# Source library files if they exist
+if [[ -f "${SCRIPT_DIR}/lib/colors.sh" ]]; then
+    source "${SCRIPT_DIR}/lib/colors.sh"
+fi
+if [[ -f "${SCRIPT_DIR}/lib/ui_components.sh" ]]; then
+    source "${SCRIPT_DIR}/lib/ui_components.sh"
+fi
+if [[ -f "${SCRIPT_DIR}/lib/common_functions.sh" ]]; then
+    source "${SCRIPT_DIR}/lib/common_functions.sh"
+fi
 
 # State management directories
 STATE_DIR="${SCRIPT_DIR}/.etl_state"
@@ -26,16 +32,7 @@ LOCKS_DIR="${STATE_DIR}/locks"
 PREFS_FILE="${STATE_DIR}/preferences"
 LOGS_DIR="${SCRIPT_DIR}/logs"
 
-# Color codes (for fallback mode)
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-GRAY='\033[0;90m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+# Color codes are now sourced from lib/colors.sh
 
 # Default configuration
 CONFIG_FILE=""  # Will be selected by user
@@ -110,103 +107,7 @@ get_terminal_size() {
 # CRITICAL SECURITY FIXES
 # ============================================================================
 
-# Extract tables from config file
-get_tables_from_config() {
-    local config_file="${1:-$CONFIG_FILE}"
-    
-    if [[ ! -f "$config_file" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    # Extract table names from the JSON config
-    python3 -c "
-import json
-import sys
-
-try:
-    with open('$config_file', 'r') as f:
-        config = json.load(f)
-    
-    tables = []
-    if 'files' in config:
-        for file_config in config['files']:
-            if 'table_name' in file_config:
-                tables.append(file_config['table_name'])
-    
-    # Return unique tables
-    print(' '.join(sorted(set(tables))))
-except Exception as e:
-    sys.exit(1)
-" 2>/dev/null
-}
-
-# Select table from config or prompt
-select_table() {
-    local prompt_msg="${1:-Select Table}"
-    local default_table="${2:-}"
-    local allow_all="${3:-false}"  # Allow 'all' as an option
-    
-    # Get tables from config
-    local config_tables=$(get_tables_from_config)
-    
-    if [[ -z "$config_tables" ]]; then
-        # No tables in config, prompt for input
-        local table=$(get_input "$prompt_msg" "Enter table name" "$default_table")
-        echo "$table"
-        return
-    fi
-    
-    # Convert to array
-    local tables_array=($config_tables)
-    
-    # If only one table, use it automatically (unless allow_all is true)
-    if [[ ${#tables_array[@]} -eq 1 ]] && [[ "$allow_all" != "true" ]]; then
-        echo "${tables_array[0]}"
-        return
-    fi
-    
-    # Multiple tables or allow_all, show selection menu
-    local menu_options=()
-    
-    # Add 'all' option if requested
-    if [[ "$allow_all" == "true" ]]; then
-        menu_options+=("[ALL TABLES]")
-    fi
-    
-    for table in "${tables_array[@]}"; do
-        menu_options+=("$table")
-    done
-    menu_options+=("[Enter custom table name]")
-    
-    local choice=$(show_menu "$prompt_msg" "${menu_options[@]}")
-    
-    if [[ "$choice" == "0" ]] || [[ -z "$choice" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    local selected_index=$((choice - 1))
-    
-    # Check if 'all' was selected
-    if [[ "$allow_all" == "true" ]] && [[ $selected_index -eq 0 ]]; then
-        echo "all"
-        return
-    fi
-    
-    # Adjust index if 'all' option was included
-    if [[ "$allow_all" == "true" ]]; then
-        selected_index=$((selected_index - 1))
-    fi
-    
-    if [[ $selected_index -eq ${#tables_array[@]} ]]; then
-        # User selected custom entry
-        local table=$(get_input "$prompt_msg" "Enter table name" "$default_table")
-        echo "$table"
-    elif [[ $selected_index -ge 0 ]] && [[ $selected_index -lt ${#tables_array[@]} ]]; then
-        echo "${tables_array[$selected_index]}"
-    fi
-}
+# Functions get_tables_from_config and select_table are now in lib/common_functions.sh
 
 # Safe file parsing - no source/eval
 parse_job_file() {
@@ -252,73 +153,15 @@ update_job_file() {
     fi
 }
 
-# Robust locking mechanism with cleanup
-with_lock() {
-    local lock_file="${LOCKS_DIR}/manager.lock"
-    local lock_fd=200
-    
-    # Create lock file if it doesn't exist
-    touch "$lock_file"
-    
-    # Open lock file on file descriptor
-    eval "exec $lock_fd>\"$lock_file\""
-    
-    # Try to acquire lock
-    if ! flock -n $lock_fd; then
-        echo "ERROR: Another operation is already in progress." >&2
-        eval "exec $lock_fd>&-"
-        return 1
-    fi
-    
-    # Set trap to release lock on exit
-    trap "flock -u $lock_fd; eval \"exec $lock_fd>&-\"" EXIT INT TERM
-    
-    # Execute the command
-    "$@"
-    local result=$?
-    
-    # Release lock
-    flock -u $lock_fd
-    eval "exec $lock_fd>&-"
-    
-    # Remove trap
-    trap - EXIT INT TERM
-    
-    return $result
-}
+# Function with_lock is now in lib/common_functions.sh
 
 # ============================================================================
 # INITIALIZATION
 # ============================================================================
 
-# Create necessary directories
-init_directories() {
-    mkdir -p "$STATE_DIR" "$JOBS_DIR" "$LOCKS_DIR" "$LOGS_DIR"
-    touch "$PREFS_FILE"
-}
+# Function init_directories is now in lib/common_functions.sh
 
-# Check dependencies
-check_dependencies() {
-    local missing=()
-    
-    # Check for required commands
-    for cmd in python3 grep cut wc; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            missing+=("$cmd")
-        fi
-    done
-    
-    # Check for required Python modules (basic check)
-    if ! python3 -c "import sys" 2>/dev/null; then
-        missing+=("python3-functional")
-    fi
-    
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        echo "ERROR: Missing required dependencies: ${missing[*]}"
-        echo "Please install the missing tools and try again."
-        exit 1
-    fi
-}
+# Function check_dependencies is now in lib/common_functions.sh
 
 # Health check - clean up stale jobs
 health_check_jobs() {
@@ -346,8 +189,21 @@ health_check_jobs() {
 
 # Detect dialog/whiptail availability
 detect_ui_system() {
-    # Force text mode if not a TTY (e.g., running in pipes or non-interactive)
-    if ! [[ -t 0 ]] || ! [[ -t 1 ]]; then
+    # Skip detection if USE_DIALOG is explicitly set via environment
+    if [[ -n "${FORCE_TEXT_MODE:-}" ]] || [[ "${USE_DIALOG}" == "false" && -n "${USE_DIALOG_SET:-}" ]]; then
+        USE_DIALOG=false
+        return
+    fi
+    
+    # Check if we're in an interactive terminal
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        USE_DIALOG=false
+        return
+    fi
+    
+    # Check if terminal is too small for dialog
+    local term_cols=$(tput cols 2>/dev/null || echo 80)
+    if [[ $term_cols -lt 60 ]]; then
         USE_DIALOG=false
         return
     fi
@@ -390,99 +246,189 @@ load_preferences() {
     fi
 }
 
-# Select config file from available options
-select_config_file() {
-    local require_selection="${1:-false}"  # If true, force selection even if CONFIG_FILE is set
+# Functions select_config_file and save_preference are now in lib/common_functions.sh
+
+
+# ============================================================================
+# UI FUNCTIONS (unchanged)
+# ============================================================================
+
+# Show dialog or fallback to echo/read
+show_menu() {
+    local title="$1"
+    shift
+    local options=("$@")
     
-    # If we already have a valid config and not forcing selection, use it
-    if [[ -f "$CONFIG_FILE" ]] && [[ "$require_selection" != "true" ]]; then
-        return 0
-    fi
-    
-    # Find all JSON config files
-    local config_files=()
-    if [[ -d "$CONFIG_DIR" ]]; then
-        while IFS= read -r -d '' file; do
-            config_files+=("$(basename "$file")")
-        done < <(find "$CONFIG_DIR" -maxdepth 1 -name "*.json" -type f -print0 | sort -z)
-    fi
-    
-    # Check if any configs exist
-    if [[ ${#config_files[@]} -eq 0 ]]; then
-        show_message "Error" "No configuration files found in $CONFIG_DIR\nPlease create a config file first."
-        return 1
-    fi
-    
-    # If only one config exists, use it automatically
-    if [[ ${#config_files[@]} -eq 1 ]] && [[ "$require_selection" != "true" ]]; then
-        CONFIG_FILE="$CONFIG_DIR/${config_files[0]}"
-        save_preference "LAST_CONFIG" "$CONFIG_FILE"
-        return 0
-    fi
-    
-    # Show selection menu
-    local title="Select Configuration File"
-    if [[ -n "$CONFIG_FILE" ]]; then
-        title="$title (Current: $(basename "$CONFIG_FILE"))"
-    fi
-    
-    # Build menu options
-    local menu_options=()
-    for config in "${config_files[@]}"; do
-        # Try to extract description from config
-        local desc=""
-        if [[ -f "$CONFIG_DIR/$config" ]]; then
-            # Try to get database/warehouse from config
-            local db=$(grep -o '"database"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_DIR/$config" 2>/dev/null | head -1 | cut -d'"' -f4)
-            local wh=$(grep -o '"warehouse"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_DIR/$config" 2>/dev/null | head -1 | cut -d'"' -f4)
-            if [[ -n "$db" ]] || [[ -n "$wh" ]]; then
-                desc=" (${db:-?}/${wh:-?})"
+    if [[ "$USE_DIALOG" == true ]]; then
+        local menu_items=()
+        local i=1
+        local max_option_length=0
+        
+        for opt in "${options[@]}"; do
+            if [[ "$opt" != "---" ]]; then
+                menu_items+=("$i" "$opt")
+                # Track longest option for width calculation
+                if [[ ${#opt} -gt $max_option_length ]]; then
+                    max_option_length=${#opt}
+                fi
+                ((i++))
             fi
+        done
+        
+        # Calculate dynamic dimensions
+        local menu_height=$((${#options[@]} + 8))
+        local menu_width=$((max_option_length + 20))
+        
+        # Apply min/max limits
+        if [[ $menu_height -lt 12 ]]; then
+            menu_height=12
+        elif [[ $menu_height -gt $DIALOG_MAX_HEIGHT ]]; then
+            menu_height=$DIALOG_MAX_HEIGHT
         fi
-        menu_options+=("$config$desc")
-    done
-    
-    # Show menu and get selection
-    local choice=$(show_menu "$title" "${menu_options[@]}")
-    
-    if [[ "$choice" == "0" ]] || [[ -z "$choice" ]]; then
-        if [[ -z "$CONFIG_FILE" ]]; then
-            show_message "Error" "No configuration selected. Operation cancelled."
-            return 1
+        
+        if [[ $menu_width -lt 60 ]]; then
+            menu_width=60
+        elif [[ $menu_width -gt $DIALOG_MAX_WIDTH ]]; then
+            menu_width=$DIALOG_MAX_WIDTH
         fi
-        return 0  # Keep existing config
+        
+        # Ensure it fits in terminal
+        local term_size=$(get_terminal_size)
+        local term_height=$(echo $term_size | cut -d' ' -f1)
+        local term_width=$(echo $term_size | cut -d' ' -f2)
+        
+        if [[ $menu_height -gt $((term_height - 4)) ]]; then
+            menu_height=$((term_height - 4))
+        fi
+        if [[ $menu_width -gt $((term_width - 4)) ]]; then
+            menu_width=$((term_width - 4))
+        fi
+        
+        local menu_list_height=$((menu_height - 8))
+        if [[ $menu_list_height -lt 1 ]]; then
+            menu_list_height=1
+        fi
+        
+        local choice
+        choice=$($DIALOG_CMD --clear --title "$title" \
+            --menu "Select an option:" $menu_height $menu_width $menu_list_height \
+            "${menu_items[@]}" 2>&1 >/dev/tty)
+        
+        echo "$choice"
+    else
+        # Fallback to text menu
+        echo ""
+        echo "╔════════════════════════════════════════════════════════╗"
+        printf "║  %-54s║\n" "$title"
+        echo "╠════════════════════════════════════════════════════════╣"
+        
+        local i=1
+        for opt in "${options[@]}"; do
+            if [[ "$opt" == "---" ]]; then
+                echo "║────────────────────────────────────────────────────────║"
+            else
+                printf "║  ${CYAN}%2d)${NC} %-50s║\n" "$i" "$opt"
+                ((i++))
+            fi
+        done
+        
+        echo "║                                                        ║"
+        printf "║  ${RED}0)${NC} %-50s║\n" "Exit/Back"
+        echo "╚════════════════════════════════════════════════════════╝"
+        echo ""
+        
+        read -p "Enter choice: " choice
+        
+        # Validate input is numeric
+        if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+            echo "0"  # Default to exit on invalid input
+        else
+            echo "$choice"
+        fi
     fi
-    
-    # Extract just the filename from the selection (remove description)
-    local selected_index=$((choice - 1))
-    local selected_config="${config_files[$selected_index]}"
-    CONFIG_FILE="$CONFIG_DIR/$selected_config"
-    
-    # Save as preference
-    save_preference "LAST_CONFIG" "$CONFIG_FILE"
-    
-    show_message "Config Selected" "Using configuration: $selected_config"
-    return 0
 }
-
-# Save preferences safely
-save_preference() {
-    local key="$1"
-    local value="$2"
-    
-    with_lock bash -c "
-        if [[ -f '$PREFS_FILE' ]]; then
-            grep -v '^${key}=' '$PREFS_FILE' > '${PREFS_FILE}.tmp' || true
-            mv '${PREFS_FILE}.tmp' '$PREFS_FILE'
-        fi
-        printf '%s=%q\n' '$key' '$value' >> '$PREFS_FILE'
-    "
-}
-
-# Note: UI functions (show_menu, show_message, show_error, show_success) are now provided by lib/ui_components.sh
 
 # Show message with dynamic sizing
-# Note: show_message, get_input, and confirm_action functions are now provided by lib/ui_components.sh
+show_message() {
+    local title="$1"
+    local message="$2"
+    
+    if [[ "$USE_DIALOG" == true ]]; then
+        # Calculate dynamic dimensions based on content
+        local dimensions=$(calculate_dialog_dimensions "$message" 8 60)
+        local height=$(echo $dimensions | cut -d' ' -f1)
+        local width=$(echo $dimensions | cut -d' ' -f2)
+        
+        # Ensure dialog fits in terminal
+        local term_size=$(get_terminal_size)
+        local term_height=$(echo $term_size | cut -d' ' -f1)
+        local term_width=$(echo $term_size | cut -d' ' -f2)
+        
+        # Leave room for terminal borders
+        if [[ $height -gt $((term_height - 4)) ]]; then
+            height=$((term_height - 4))
+        fi
+        if [[ $width -gt $((term_width - 4)) ]]; then
+            width=$((term_width - 4))
+        fi
+        
+        # Use scrollable text box for very long content
+        if [[ ${#message} -gt 2000 ]]; then
+            # For very long content, use --textbox with temp file
+            local temp_file="/tmp/dialog_msg_$$"
+            echo "$message" > "$temp_file"
+            $DIALOG_CMD --title "$title" --textbox "$temp_file" $height $width
+            rm -f "$temp_file"
+        else
+            $DIALOG_CMD --title "$title" --msgbox "$message" $height $width
+        fi
+    else
+        echo ""
+        echo -e "${BOLD}=== $title ===${NC}"
+        echo "$message"
+        echo ""
+        read -p "Press Enter to continue..."
+    fi
+}
+
+# Get input
+get_input() {
+    local title="$1"
+    local prompt="$2"
+    local default="${3:-}"
+    
+    if [[ "$USE_DIALOG" == true ]]; then
+        local result
+        result=$($DIALOG_CMD --title "$title" --inputbox "$prompt" 10 60 "$default" 2>&1 >/dev/tty)
+        echo "$result"
+    else
+        echo ""
+        echo -e "${BOLD}$title${NC}"
+        if [[ -n "$default" ]]; then
+            read -p "$prompt [$default]: " result
+            echo "${result:-$default}"
+        else
+            read -p "$prompt: " result
+            echo "$result"
+        fi
+    fi
+}
+
+# Yes/No confirmation
+confirm_action() {
+    local message="$1"
+    
+    if [[ "$USE_DIALOG" == true ]]; then
+        $DIALOG_CMD --title "Confirmation" --yesno "$message" 10 60
+        return $?
+    else
+        echo ""
+        read -p "${YELLOW}$message (y/N): ${NC}" -n 1 -r
+        echo ""
+        [[ $REPLY =~ ^[Yy]$ ]]
+        return $?
+    fi
+}
 
 # ============================================================================
 # JOB MANAGEMENT (IMPROVED)
@@ -1248,7 +1194,9 @@ menu_validate_data() {
         local response=$(get_input "Execution Mode" "Show real-time progress? (Y=foreground, N=background)" "Y")
         
         # Build command with or without month parameter
-        local cmd="python -m snowflake_etl validate --config \"$CONFIG_FILE\""
+        # Use new CLI for validation
+        local cmd="python3 -m snowflake_etl --config \"$CONFIG_FILE\" validate"
+        cmd="$cmd --table \"$table\""
         if [[ -n "$month" ]]; then
             cmd="$cmd --month \"$month\""
         fi
@@ -1341,12 +1289,20 @@ check_duplicates() {
             
             if [[ "${response^^}" == "Y" ]]; then
                 # Run in foreground with visible progress
-                with_lock start_foreground_job "check_duplicates_${table}" \
-                    python -m snowflake_etl check-duplicates --config "$CONFIG_FILE" --table "$table" --key-columns "$key_columns" --date-start "$date_start" --date-end "$date_end"
+                local dup_cmd="python3 -m snowflake_etl --config \"$CONFIG_FILE\" check-duplicates"
+                dup_cmd="$dup_cmd --table \"$table\" --key-columns \"$key_columns\""
+                if [[ -n "$date_start" ]] && [[ -n "$date_end" ]]; then
+                    dup_cmd="$dup_cmd --start-date \"$date_start\" --end-date \"$date_end\""
+                fi
+                with_lock start_foreground_job "check_duplicates_${table}" bash -c "$dup_cmd"
             else
                 # Run in background
-                with_lock start_background_job "check_duplicates_${table}" \
-                    python -m snowflake_etl check-duplicates --config "$CONFIG_FILE" --table "$table" --key-columns "$key_columns" --date-start "$date_start" --date-end "$date_end"
+                local dup_cmd="python3 -m snowflake_etl --config \"$CONFIG_FILE\" check-duplicates"
+                dup_cmd="$dup_cmd --table \"$table\" --key-columns \"$key_columns\""
+                if [[ -n "$date_start" ]] && [[ -n "$date_end" ]]; then
+                    dup_cmd="$dup_cmd --start-date \"$date_start\" --end-date \"$date_end\""
+                fi
+                with_lock start_background_job "check_duplicates_${table}" bash -c "$dup_cmd"
             fi
         else
             # Fall back to inline execution
@@ -1450,7 +1406,10 @@ compare_files() {
     
     if confirm_action "Compare files?"; then
         with_lock start_background_job "compare_files" \
-            python -m snowflake_etl compare --config "$CONFIG_FILE" $use_quick "$good_file" "$bad_file"
+            python3 -m snowflake_etl --config "$CONFIG_FILE" compare \
+                --file1 "$good_file" \
+                --file2 "$bad_file" \
+                $use_quick
     fi
 }
 
@@ -1504,7 +1463,7 @@ check_file_issues() {
     if [[ -f "$file" ]]; then
         if confirm_action "Check file for issues? This may take time for large files."; then
             with_lock start_background_job "check_issues_$(basename "$file")" \
-                python3 validate_tsv_file.py "$file"
+                python3 -m snowflake_etl.validators.file_validator --file "$file"
         fi
     else
         show_message "Error" "File not found: $file"
@@ -1546,11 +1505,11 @@ check_table_info() {
         if [[ "${response^^}" == "Y" ]]; then
             # Run in foreground with visible progress
             with_lock start_foreground_job "check_table_${table}" \
-                python3 check_snowflake_table.py "$CONFIG_FILE" "$table"
+                python3 -m snowflake_etl.tools.table_inspector --config "$CONFIG_FILE" --table "$table"
         else
             # Run in background
             with_lock start_background_job "check_table_${table}" \
-                python3 check_snowflake_table.py "$CONFIG_FILE" "$table"
+                python3 -m snowflake_etl.tools.table_inspector --config "$CONFIG_FILE" --table "$table"
         fi
     fi
 }
@@ -1592,7 +1551,9 @@ generate_full_table_report() {
     fi
     
     # Build command
-    local cmd="python -m snowflake_etl report --config \"$CONFIG_FILE\""
+    local cmd="python3 -m snowflake_etl --config \"$CONFIG_FILE\" report"
+    cmd="$cmd --output-format both"
+    cmd="$cmd --max-workers 4"
     
     # Add credentials file if available
     if [[ -f "snowflake_creds.json" ]]; then
@@ -1961,7 +1922,7 @@ parse_cli_args() {
                 shift
                 if [[ "${1:-}" == "--month" ]] && [[ -n "${2:-}" ]]; then
                     shift
-                    python -m snowflake_etl validate --config "$CONFIG_FILE" --month "$1"
+                    python3 tsv_loader.py --config "$CONFIG_FILE" --month "$1" --validate-only
                     exit $?
                 else
                     echo "Usage: $SCRIPT_NAME validate --month YYYY-MM"
@@ -2105,6 +2066,8 @@ main_menu() {
 # ============================================================================
 
 main() {
+echo "DEBUG: main() called with $# args: '$@'" >&2
+echo "DEBUG: Arg 1 is: '$1'" >&2
     # Initialize
     init_directories
     check_dependencies
@@ -2115,6 +2078,7 @@ main() {
     health_check_jobs
     
     # Parse CLI arguments if provided
+echo "DEBUG: Entering argument parsing block" >&2
     if [[ $# -gt 0 ]]; then
         # Check if it's a help/version command that doesn't need config
         case "$1" in
@@ -2123,16 +2087,19 @@ main() {
                 ;;
             *)
                 # For other CLI commands, try to auto-select config if only one exists
+echo "DEBUG: Calling select_config_file" >&2
                 select_config_file >/dev/null 2>&1 || true
                 parse_cli_args "$@"
                 ;;
         esac
         # If we get here, no valid CLI command was found
+echo "DEBUG: After parse_cli_args, about to show_help" >&2
         show_help
         exit 1
     fi
     
     # Interactive mode
+echo "DEBUG: Entering interactive mode" >&2
     # Clear screen for interactive mode
     if [[ "$USE_DIALOG" == true ]]; then
         clear
@@ -2148,6 +2115,7 @@ main() {
     
     # Enter main menu
     main_menu
+echo "DEBUG: About to call main_menu" >&2
 }
 
 # Run main function

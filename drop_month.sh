@@ -2,6 +2,16 @@
 
 # drop_month.sh - Wrapper script for safe data deletion from Snowflake
 # Usage: ./drop_month.sh --config config.json --table TABLE_NAME --month 2024-01 [options]
+#
+# ============================================================================
+# DEPRECATION WARNING
+# ============================================================================
+# This script is DEPRECATED as of v3.0.0
+# Please use the unified interface instead:
+#   python -m snowflake_etl delete [options]
+# OR use the interactive wrapper:
+#   ./snowflake_etl.sh
+# ============================================================================
 
 set -euo pipefail
 
@@ -31,6 +41,11 @@ print_color() {
     local color=$1
     shift
     echo -e "${color}$*${NC}"
+}
+
+# Function to print warning (yellow)
+print_warning() {
+    echo -e "${YELLOW}$*${NC}"
 }
 
 # Function to print usage
@@ -67,6 +82,15 @@ usage() {
 }
 
 # Parse command line arguments
+# Show deprecation warning
+print_warning "========================================" 
+print_warning "DEPRECATION WARNING"
+print_warning "This script is deprecated as of v3.0.0"
+print_warning "Please use: python -m snowflake_etl delete"
+print_warning "OR: ./snowflake_etl.sh"
+print_warning "========================================"
+echo ""
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --config)
