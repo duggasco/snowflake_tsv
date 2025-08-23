@@ -1,6 +1,0 @@
-# CI/CD dependencies for Snowflake ETL Pipeline
-# Minimal dependencies for running tests in CI
-# Usage: pip install -r requirements-ci.txt
-
-# Install package with test dependencies only
--e .[ci-minimal]

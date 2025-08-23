@@ -2,10 +2,10 @@
 Snowflake ETL Pipeline Package
 A comprehensive ETL solution for processing large TSV files into Snowflake
 
-Version: 3.0.0-alpha
+Version: 3.0.0-rc2
 """
 
-__version__ = "3.0.0a1"
+__version__ = "3.0.0rc2"
 __author__ = "Snowflake ETL Team"
 
 # Lazy imports to avoid import errors when connector not installed

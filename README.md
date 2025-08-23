@@ -553,7 +553,8 @@ For issues and questions:
 
 ## Version History
 
-- **v3.0.0** - Complete refactoring with dependency injection architecture
+- **v3.0.0-rc2** - Production-ready release with complete refactoring, dependency injection, and streamlined codebase
+- **v3.0.0-rc1** - Release candidate with all 5 phases complete
 - **v2.x** - Legacy version with singleton pattern (deprecated)
 
 See CHANGELOG.md for detailed version history.

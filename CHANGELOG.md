@@ -1,5 +1,54 @@
 # CHANGELOG.md
 
+## [v3.0.0-rc2] - 2025-01-23 - Project Cleanup & Documentation Update
+
+### Project Cleanup (Session 8)
+
+#### Files Removed (44 total):
+- **Old Documentation & Planning**: 
+  - Removed temporary planning documents (CONTEXT_HANDOVER.md, REFACTORING_PLAN.md, etc.)
+  - Removed implementation plan files (INTERACTIVE_FILE_BROWSER_PLAN*.md, FULL_TABLE_REPORT_PLAN.md)
+  - Removed session notes (NEXT_SESSION_PROMPT.md, gemini_loader_design.md, migration_mapping.md)
+
+- **Test Scripts & Debug Files**:
+  - Consolidated all tests into tests/ directory
+  - Removed standalone test scripts (test_*.py, test_*.sh)
+  - Removed debug files (debug_patch.txt, menu_output.txt, snowflake_etl_debug.sh)
+  - Removed patch files (snowflake_etl_v3_updates.patch)
+
+- **Duplicate Module Versions**:
+  - Cleaned up versioned modules keeping only final versions:
+    - Removed: application_context_documented.py, application_context_final.py
+    - Removed: snowflake_loader_optimal.py, load_operation_documented.py
+    - Removed: report_operation_final.py, report_operation_v2.py
+    - Removed: All old config_manager versions (v1, v2)
+    - Removed: All old snowflake_connection versions (v1, v2, v3)
+
+- **Other Cleanup**:
+  - Removed test_venv/ directory (no longer needed)
+  - Removed Python cache directories (__pycache__, egg-info)
+  - Removed duplicate setup files (setup_gemini.py, setup_original.py)
+  - Removed duplicate manifest files (MANIFEST_gemini.in)
+  - Removed unused requirements file (requirements-ci.txt)
+  - Removed old SQL files (duplicate_check_queries.sql)
+  - Removed deprecated scripts (etl_cli.sh)
+
+#### Final Project Structure:
+- **41 files** in root directory (down from 85+)
+- **46 Python files** total (consolidated and organized)
+- **9 Shell scripts** total (essential tools only)
+- Clean package structure with no duplicate versions
+
+#### Essential Files Preserved:
+- All core Python modules in snowflake_etl/
+- All production shell scripts (snowflake_etl.sh, run_loader.sh, drop_month.sh, etc.)
+- All standalone Python tools (tsv_loader.py, drop_month.py, etc.)
+- Configuration files and templates
+- Core documentation (README, CHANGELOG, TODO, PLAN, CLAUDE, BUGS)
+- Complete test suite in tests/ directory
+- Library scripts in lib/
+- Setup and requirements files
+
 ## [v3.0.0-rc1] - 2025-01-23 - Phase 5: Testing & Documentation COMPLETE
 
 ### Session 6-7 (2025-01-23) - Phase 5 Complete - FINAL
