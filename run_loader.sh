@@ -133,50 +133,11 @@ process_direct_files() {
     # Note: --config is a global flag and must come BEFORE the subcommand
     local cmd="python3 -m snowflake_etl --config ${CONFIG_FILE} load"
     
-    # Convert comma-separated files to array
-    IFS=',' read -ra file_array <<< "$files"
+    # Use the --files argument to pass the files directly
+    cmd="${cmd} --files \"${files}\""
     
-    # For direct files, we need to set base-path to the directory containing the files
-    # and ensure the config matches the file pattern
-    if [ ${#file_array[@]} -gt 0 ]; then
-        # Get the directory of the first file
-        local first_file="${file_array[0]}"
-        local file_dir=$(dirname "$first_file")
-        local file_name=$(basename "$first_file")
-        
-        echo -e "${BLUE}Processing file: ${first_file}${NC}"
-        echo -e "${BLUE}Directory: ${file_dir}${NC}"
-        echo -e "${BLUE}Filename: ${file_name}${NC}"
-        
-        # Set base-path to the directory containing the file
-        cmd="${cmd} --base-path ${file_dir}"
-        
-        # Note for user about config matching
-        echo -e "${YELLOW}Note: Ensure your config.json file_pattern matches the filename pattern${NC}"
-        echo -e "${YELLOW}      File: ${file_name}${NC}"
-    fi
-    
-    # Use the month from the first file if not specified
-    if [ -z "${MONTH}" ] && [ -z "${VALIDATE_ONLY}" ]; then
-        # Try to extract month from filename
-        for file in ${file_list}; do
-            if [[ $(basename "$file") =~ ([0-9]{4})-([0-9]{2}) ]]; then
-                MONTH="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
-                echo -e "${BLUE}Detected month from filename: ${MONTH}${NC}"
-                break
-            elif [[ $(basename "$file") =~ ([0-9]{8})-([0-9]{8}) ]]; then
-                # Extract month from date range (use start date)
-                local start_date="${BASH_REMATCH[1]}"
-                MONTH="${start_date:0:4}-${start_date:4:2}"
-                echo -e "${BLUE}Detected month from date range: ${MONTH}${NC}"
-                break
-            fi
-        done
-    fi
-    
-    if [ -n "${MONTH}" ]; then
-        cmd="${cmd} --month ${MONTH}"
-    fi
+    echo -e "${BLUE}Processing files: ${files}${NC}"
+    echo -e "${YELLOW}Note: Files will be matched against patterns in config.json${NC}"
     
     # Add optional arguments
     if [ -n "${workers_for_job}" ]; then

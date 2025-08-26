@@ -9,6 +9,7 @@ import argparse
 import logging
 import calendar
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -109,8 +110,9 @@ def create_parser() -> argparse.ArgumentParser:
     
     # Load operation
     load_parser = subparsers.add_parser('load', help='Load TSV files to Snowflake')
-    load_parser.add_argument('--base-path', type=str, required=True, help='Base path for TSV files')
+    load_parser.add_argument('--base-path', type=str, help='Base path for TSV files')
     load_parser.add_argument('--month', type=str, help='Month to process (YYYY-MM)')
+    load_parser.add_argument('--files', type=str, help='Comma-separated list of TSV files to process directly')
     load_parser.add_argument('--file-pattern', type=str, help='Pattern to match files')
     load_parser.add_argument('--skip-qc', action='store_true', help='Skip quality checks')
     load_parser.add_argument('--validate-in-snowflake', action='store_true', 
@@ -306,9 +308,60 @@ def main(args=None):
             logger.info("Starting load operation")
             operation = LoadOperation(context)
             
-            # Build file configurations from base_path and month
+            # Build file configurations
             files = []
-            if args.base_path and args.month:
+            
+            # Handle direct files if provided
+            if args.files:
+                # Process comma-separated list of files
+                file_paths = [f.strip() for f in args.files.split(',')]
+                config_data = context.config_manager.get_config()
+                
+                for file_path_str in file_paths:
+                    file_path = Path(file_path_str)
+                    if file_path.exists() and file_path.is_file():
+                        # Find matching config for this file
+                        for file_config in config_data.get('files', []):
+                            pattern = file_config.get('file_pattern', '')
+                            # Extract just the pattern part without placeholders for matching
+                            base_pattern = pattern.replace('{date_range}', '*').replace('{month}', '*')
+                            
+                            if file_path.match(base_pattern):
+                                # Extract date range from filename if possible
+                                filename = file_path.name
+                                expected_date_range = None
+                                
+                                # Try to extract dates from filename
+                                date_range_match = re.search(r'(\d{8})-(\d{8})', filename)
+                                if date_range_match:
+                                    start_str, end_str = date_range_match.groups()
+                                    start_year = start_str[:4]
+                                    start_month = start_str[4:6]
+                                    start_day = start_str[6:8]
+                                    end_year = end_str[:4]
+                                    end_month = end_str[4:6]
+                                    end_day = end_str[6:8]
+                                    expected_date_range = (
+                                        f"{start_year}-{start_month}-{start_day}",
+                                        f"{end_year}-{end_month}-{end_day}"
+                                    )
+                                
+                                config = FileConfig(
+                                    file_path=str(file_path),
+                                    table_name=file_config['table_name'],
+                                    date_column=file_config.get('date_column'),
+                                    expected_columns=file_config.get('expected_columns', []),
+                                    duplicate_key_columns=file_config.get('duplicate_key_columns'),
+                                    expected_date_range=expected_date_range
+                                )
+                                files.append(config)
+                                logger.info(f"Added direct file: {file_path}")
+                                break
+                    else:
+                        logger.warning(f"File not found or not a file: {file_path_str}")
+                        
+            # Otherwise use base_path and month pattern matching
+            elif args.base_path and args.month:
                 config_data = context.config_manager.get_config()
                 base = Path(args.base_path)
                 
