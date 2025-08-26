@@ -919,21 +919,51 @@ monitor_job_progress() {
         return
     fi
     
+    # Set up trap to handle Ctrl+C gracefully
+    # Save the current trap (if any) and restore it when done
+    local old_trap=$(trap -p SIGINT)
+    local monitoring_pid=""
+    
+    # Function to cleanly exit monitoring
+    cleanup_monitoring() {
+        if [[ -n "$monitoring_pid" ]]; then
+            kill $monitoring_pid 2>/dev/null
+        fi
+        # Restore original trap
+        eval "${old_trap:-trap - SIGINT}"
+        echo ""
+        echo -e "${GREEN}Stopped monitoring. Returning to menu...${NC}"
+        sleep 1
+        return 0
+    }
+    
+    # Set trap for this function
+    trap cleanup_monitoring SIGINT
+    
     clear
     echo -e "${BOLD}${BLUE}Monitoring Job: $job_name${NC}"
-    echo -e "${YELLOW}Press Ctrl+C to stop monitoring${NC}"
+    echo -e "${YELLOW}Press Ctrl+C to stop monitoring and return to menu${NC}"
     echo "----------------------------------------"
     
     # Sanitize live output to prevent escape sequence attacks
-    # Use sed to strip ANSI codes and control characters in real-time
+    # Run tail in background so we can control it
     if command -v sed >/dev/null 2>&1 && command -v tr >/dev/null 2>&1; then
         # Strip escape sequences while tailing - use portable syntax
-        tail -f "$log_file" 2>/dev/null | sed -u $'s/\033\\[[0-9;]*[a-zA-Z]//g; s/\033\\].*\007//g' | tr -d '\000-\010\013\014\016-\037\177'
+        tail -f "$log_file" 2>/dev/null | sed -u $'s/\033\\[[0-9;]*[a-zA-Z]//g; s/\033\\].*\007//g' | tr -d '\000-\010\013\014\016-\037\177' &
+        monitoring_pid=$!
     else
         # Fallback without sanitization (with warning)
         echo -e "${YELLOW}Warning: Cannot sanitize live output - be cautious of escape sequences${NC}"
-        tail -f "$log_file" 2>/dev/null
-    fi || show_message "Error" "Could not monitor log file"
+        tail -f "$log_file" 2>/dev/null &
+        monitoring_pid=$!
+    fi
+    
+    # Wait for the tail process (will be interrupted by Ctrl+C)
+    wait $monitoring_pid 2>/dev/null
+    
+    # Cleanup will be called by trap on Ctrl+C
+    # But also clean up if we exit normally (shouldn't happen with tail -f)
+    cleanup_monitoring
 }
 
 # Clean completed jobs
@@ -2387,6 +2417,16 @@ main() {
     fi
     
     # Interactive mode
+    # Set up global trap for interactive mode to prevent accidental exits
+    handle_interrupt() {
+        echo ""
+        echo -e "${YELLOW}Use the menu option '0' to exit properly${NC}"
+        # Don't exit, just continue
+    }
+    
+    # Only trap in interactive mode
+    trap handle_interrupt SIGINT
+    
     # Clear screen for interactive mode
     if [[ "$USE_DIALOG" == true ]]; then
         clear
