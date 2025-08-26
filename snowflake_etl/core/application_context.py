@@ -99,10 +99,11 @@ class ApplicationContext:
         """
         if self._connection_manager is None:
             # Import here to avoid circular dependencies
-            from snowflake_etl.utils.snowflake_connection_v3 import SnowflakeConnectionManager
+            from snowflake_etl.utils.snowflake_connection_v3 import SnowflakeConnectionManager, ConnectionConfig
             
-            self._connection_manager = SnowflakeConnectionManager()
-            self._connection_manager.initialize_pool(self.snowflake_config)
+            # Create connection config from snowflake config
+            conn_config = ConnectionConfig(**self.snowflake_config)
+            self._connection_manager = SnowflakeConnectionManager(config=conn_config)
             self.logger.info("Initialized Snowflake connection pool")
             
         return self._connection_manager

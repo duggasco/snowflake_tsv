@@ -128,7 +128,7 @@ def create_parser() -> argparse.ArgumentParser:
     
     # Validate operation
     validate_parser = subparsers.add_parser('validate', help='Validate data in Snowflake')
-    validate_parser.add_argument('--table', type=str, required=True, help='Table to validate')
+    validate_parser.add_argument('--table', type=str, help='Table to validate (optional, validates all if not specified)')
     validate_parser.add_argument('--date-column', type=str, default='recordDate',
                                 help='Date column for validation')
     validate_parser.add_argument('--month', type=str, help='Month to validate (YYYY-MM)')
@@ -291,9 +291,10 @@ def main(args=None):
             
             logger.info(f"Initializing application context with config: {args.config}")
             context = ApplicationContext(
-                config_file=args.config,
-                log_dir=args.log_dir,
-                quiet_mode=args.quiet
+                config_path=args.config,
+                log_dir=Path(args.log_dir),
+                log_level=args.log_level,
+                quiet=args.quiet
             )
         
         # Route to appropriate operation
@@ -345,36 +346,19 @@ def main(args=None):
             logger.info("Starting validate operation")
             operation = ValidateOperation(context)
             
-            # Handle month vs date range
-            if args.month:
-                from datetime import datetime
-                month_date = datetime.strptime(args.month, '%Y-%m')
-                start_date = month_date.strftime('%Y-%m-01')
-                if month_date.month == 12:
-                    end_date = f"{month_date.year}-12-31"
-                else:
-                    next_month = month_date.replace(month=month_date.month + 1)
-                    from datetime import timedelta
-                    last_day = next_month - timedelta(days=1)
-                    end_date = last_day.strftime('%Y-%m-%d')
-            else:
-                start_date = args.start_date
-                end_date = args.end_date
+            # If table specified, validate single table; otherwise validate all
+            tables = [args.table] if args.table else None
             
-            result = operation.validate_table(
-                table_name=args.table,
-                date_column=args.date_column,
-                start_date=start_date,
-                end_date=end_date
+            # Use the validate_tables method which handles both single and multiple tables
+            result = operation.validate_tables(
+                tables=tables,
+                month=args.month,
+                output_file=args.output
             )
             
-            # Save results if output specified
-            if args.output:
-                import json
-                with open(args.output, 'w') as f:
-                    json.dump(result.to_dict() if hasattr(result, 'to_dict') else result, 
-                             f, indent=2, default=str)
-                logger.info(f"Validation results saved to {args.output}")
+            # Return non-zero exit code if validation failed
+            if result.get('tables_invalid', 0) > 0:
+                return 1
             
         elif args.operation == 'report':
             logger.info("Starting report operation")
