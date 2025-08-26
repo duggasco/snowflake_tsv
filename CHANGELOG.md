@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## [v3.0.3] - 2025-08-26 - CLI and File Loading Fixes
+
+### Bug Fixes
+- **Fixed month format validation**: Now accepts both YYYY-MM and MMYYYY formats in run_loader.sh
+- **Fixed --yes flag error**: Removed incorrect --yes flag for load operations (only needed for delete)
+- **Fixed base_path argument error**: Properly build FileConfig objects instead of passing raw arguments
+- **Fixed UnboundLocalError**: Moved all imports to top of files to prevent shadowing
+- **Fixed base path prompting**: Load menu option 2 now properly prompts for base path
+- **Fixed direct file loading**: Added --files argument to handle specific files without pattern matching
+- **Fixed quoted file paths**: Removed incorrect quotes around --files argument
+- **Fixed tuple format error**: Convert date ranges to datetime objects instead of strings in FileConfig
+
+### Improvements
+- **Better error messages**: Added clearer format hints (YYYY-MM) in prompts
+- **Import cleanup**: Consolidated all imports at file tops for consistency
+- **Code organization**: Separated direct file handling from pattern-based file discovery
+
 ## [v3.0.2] - 2025-08-26 - Report Display Fixes
 
 ### Bug Fixes

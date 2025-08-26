@@ -1,8 +1,76 @@
 # BUGS.md - Issue Tracking and Resolution
 *Last Updated: 2025-08-26*
-*Current Version: 3.0.2*
+*Current Version: 3.0.3*
 
-## ✅ Recently Fixed Issues (2025-08-26)
+## ✅ Recently Fixed Issues (2025-08-26 Session 2)
+
+### CLI and Loading Issues (v3.0.3) ✅
+
+1. **Month Format Validation Error** ✅
+   - **Issue**: "Invalid month format: 2024-07 (expected MMYYYY)" when using YYYY-MM format
+   - **Severity**: HIGH
+   - **Root Cause**: convert_month_format() only accepted MMYYYY format
+   - **Resolution**: Updated function to accept both YYYY-MM and MMYYYY formats
+   - **Files Fixed**: run_loader.sh
+   - **Commit**: Fixed in v3.0.3
+
+2. **--yes Flag Unrecognized Error** ✅
+   - **Issue**: "unrecognized arguments: --yes" for load operations
+   - **Severity**: HIGH
+   - **Root Cause**: Load operation doesn't have interactive prompts, --yes not needed
+   - **Resolution**: Removed --yes flag addition for load operations
+   - **Files Fixed**: run_loader.sh
+   - **Commit**: Fixed in v3.0.3
+
+3. **base_path Unexpected Keyword Argument** ✅
+   - **Issue**: load_files() got unexpected keyword argument 'base_path'
+   - **Severity**: CRITICAL
+   - **Root Cause**: Method signature mismatch - load_files() expects FileConfig list
+   - **Resolution**: Build FileConfig objects from base_path and month before calling
+   - **Files Fixed**: snowflake_etl/__main__.py
+   - **Commit**: Fixed in v3.0.3
+
+4. **UnboundLocalError for Path Variable** ✅
+   - **Issue**: "local variable 'Path' referenced before assignment"
+   - **Severity**: CRITICAL
+   - **Root Cause**: Duplicate imports inside functions shadowing global imports
+   - **Resolution**: Moved all imports to top of file, removed duplicates
+   - **Files Fixed**: snowflake_etl/__main__.py, snowflake_etl/cli/main.py
+   - **Commit**: Fixed in v3.0.3
+
+5. **Base Path Not Prompted in Load Menu** ✅
+   - **Issue**: "Specify base path and month" option only prompted for month
+   - **Severity**: MEDIUM
+   - **Root Cause**: Missing base path prompt in menu_load_data() option 2
+   - **Resolution**: Added base path prompt with directory validation
+   - **Files Fixed**: snowflake_etl.sh
+   - **Commit**: Fixed in v3.0.3
+
+6. **Direct File Loading Failure** ✅
+   - **Issue**: "No files found to process" when using --direct-file
+   - **Severity**: HIGH
+   - **Root Cause**: System trying to use month-based pattern matching for direct files
+   - **Resolution**: Added --files argument to CLI, process direct files separately
+   - **Files Fixed**: snowflake_etl/__main__.py, run_loader.sh
+   - **Commit**: Fixed in v3.0.3
+
+7. **Quoted File Paths Issue** ✅
+   - **Issue**: File paths wrapped in quotes causing path resolution failures
+   - **Severity**: HIGH
+   - **Root Cause**: Escaped quotes in --files argument becoming part of path
+   - **Resolution**: Removed quotes from --files argument in run_loader.sh
+   - **Files Fixed**: run_loader.sh
+   - **Commit**: Fixed in v3.0.3
+
+8. **Tuple Format String Error** ✅
+   - **Issue**: "unsupported format string passed to tuple.__format__"
+   - **Severity**: CRITICAL
+   - **Root Cause**: expected_date_range passed as string tuple instead of datetime tuple
+   - **Resolution**: Convert all date ranges to datetime objects when creating FileConfig
+   - **Files Fixed**: snowflake_etl/__main__.py, snowflake_etl/cli/main.py
+   - **Commit**: Fixed in v3.0.3
+
+## ✅ Recently Fixed Issues (2025-08-26 Session 1)
 
 ### Report Display Issues (v3.0.2) ✅
 1. **Truncated Date Lists** ✅

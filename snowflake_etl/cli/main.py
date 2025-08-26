@@ -9,6 +9,7 @@ import calendar
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -181,14 +182,18 @@ class SnowflakeETLCLI:
         for file_config in config_data.get('files', []):
             pattern = file_config.get('file_pattern', '')
             
+            # Parse month to get year and month integers
+            year_str, mon_str = month.split('-')
+            year_int = int(year_str)
+            mon_int = int(mon_str)
+            last_day = calendar.monthrange(year_int, mon_int)[1]
+            
             # Replace placeholders with actual values
             if '{month}' in pattern:
                 file_pattern = pattern.replace('{month}', month)
             elif '{date_range}' in pattern:
                 # Convert month to date range (assuming full month)
-                year, mon = month.split('-')
-                last_day = calendar.monthrange(int(year), int(mon))[1]
-                date_range = f"{year}{mon}01-{year}{mon}{last_day:02d}"
+                date_range = f"{year_str}{mon_str}01-{year_str}{mon_str}{last_day:02d}"
                 file_pattern = pattern.replace('{date_range}', date_range)
             else:
                 continue
@@ -203,9 +208,9 @@ class SnowflakeETLCLI:
                         expected_columns=file_config.get('expected_columns', []),
                         duplicate_key_columns=file_config.get('duplicate_key_columns'),
                         expected_date_range=(
-                            f"{year}-{mon}-01",
-                            f"{year}-{mon}-{last_day:02d}"
-                        ) if 'year' in locals() else None
+                            datetime(year_int, mon_int, 1),
+                            datetime(year_int, mon_int, last_day)
+                        )
                     )
                     configs.append(config)
         

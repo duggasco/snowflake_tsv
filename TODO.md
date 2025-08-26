@@ -1,12 +1,25 @@
 # TODO.md - Snowflake ETL Pipeline Manager
 *Last Updated: 2025-08-26*
-*Current Version: 3.0.2 (Report Display Fixes)*
-*Status: FULLY MIGRATED WITH COMPLETE DATA VISIBILITY*
+*Current Version: 3.0.3 (CLI and File Loading Fixes)*
+*Status: PRODUCTION READY WITH ALL CRITICAL BUGS FIXED*
 
-## ✅ Report Display Fixes - COMPLETE (2025-08-26)
+## ✅ CLI and File Loading Fixes - COMPLETE (2025-08-26 Session 2)
+**STATUS: 100% Complete - All critical CLI and loading issues resolved**
+
+### ✅ Fixed CLI Issues (v3.0.3)
+- [x] Fixed month format validation to accept YYYY-MM and MMYYYY
+- [x] Removed incorrect --yes flag for load operations
+- [x] Fixed base_path argument handling with proper FileConfig building
+- [x] Resolved UnboundLocalError by cleaning up imports
+- [x] Added base path prompting to Load menu option 2
+- [x] Implemented direct file loading with --files argument
+- [x] Removed problematic quotes from file paths
+- [x] Fixed datetime tuple formatting for expected_date_range
+
+## ✅ Report Display Fixes - COMPLETE (2025-08-26 Session 1)
 **STATUS: 100% Complete - Full data visibility achieved**
 
-### ✅ Fixed Report Issues
+### ✅ Fixed Report Issues (v3.0.2)
 - [x] Fixed truncated date displays showing "... and X more"
 - [x] Fixed "Unknown to Unknown" gap ranges 
 - [x] Fixed percentage calculations showing 0.0%

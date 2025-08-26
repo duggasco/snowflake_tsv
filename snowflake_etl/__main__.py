@@ -342,8 +342,8 @@ def main(args=None):
                                     end_month = end_str[4:6]
                                     end_day = end_str[6:8]
                                     expected_date_range = (
-                                        f"{start_year}-{start_month}-{start_day}",
-                                        f"{end_year}-{end_month}-{end_day}"
+                                        datetime(int(start_year), int(start_month), int(start_day)),
+                                        datetime(int(end_year), int(end_month), int(end_day))
                                     )
                                 
                                 config = FileConfig(
@@ -387,7 +387,9 @@ def main(args=None):
                     for file_path in base.glob(file_pattern):
                         if file_path.is_file():
                             year, mon = args.month.split('-')
-                            last_day = calendar.monthrange(int(year), int(mon))[1]
+                            year_int = int(year)
+                            mon_int = int(mon)
+                            last_day = calendar.monthrange(year_int, mon_int)[1]
                             config = FileConfig(
                                 file_path=str(file_path),
                                 table_name=file_config['table_name'],
@@ -395,8 +397,8 @@ def main(args=None):
                                 expected_columns=file_config.get('expected_columns', []),
                                 duplicate_key_columns=file_config.get('duplicate_key_columns'),
                                 expected_date_range=(
-                                    f"{year}-{mon}-01",
-                                    f"{year}-{mon}-{last_day:02d}"
+                                    datetime(year_int, mon_int, 1),
+                                    datetime(year_int, mon_int, last_day)
                                 )
                             )
                             files.append(config)
