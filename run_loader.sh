@@ -134,7 +134,7 @@ process_direct_files() {
     local cmd="python3 -m snowflake_etl --config ${CONFIG_FILE} load"
     
     # Use the --files argument to pass the files directly
-    cmd="${cmd} --files \"${files}\""
+    cmd="${cmd} --files ${files}"
     
     echo -e "${BLUE}Processing files: ${files}${NC}"
     echo -e "${YELLOW}Note: Files will be matched against patterns in config.json${NC}"
