@@ -5,6 +5,7 @@ Single entry point for all operations, replacing individual script calls
 """
 
 import argparse
+import calendar
 import json
 import logging
 import sys
@@ -165,7 +166,6 @@ class SnowflakeETLCLI:
     
     def _build_file_configs(self, base_path: str, month: str) -> list:
         """Build file configurations from base path and month"""
-        from pathlib import Path
         import re
         
         configs = []
@@ -187,7 +187,6 @@ class SnowflakeETLCLI:
             elif '{date_range}' in pattern:
                 # Convert month to date range (assuming full month)
                 year, mon = month.split('-')
-                import calendar
                 last_day = calendar.monthrange(int(year), int(mon))[1]
                 date_range = f"{year}{mon}01-{year}{mon}{last_day:02d}"
                 file_pattern = pattern.replace('{date_range}', date_range)

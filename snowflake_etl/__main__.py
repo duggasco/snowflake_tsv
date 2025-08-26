@@ -7,11 +7,15 @@ Allows the package to be run as: python -m snowflake_etl
 import sys
 import argparse
 import logging
+import calendar
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 # Import the application context and operations
 from .core.application_context import ApplicationContext
+from .models.file_config import FileConfig
 from .operations.load_operation import LoadOperation
 from .operations.delete_operation import DeleteOperation
 from .operations.validate_operation import ValidateOperation
@@ -303,10 +307,6 @@ def main(args=None):
             operation = LoadOperation(context)
             
             # Build file configurations from base_path and month
-            from pathlib import Path
-            from snowflake_etl.models.file_config import FileConfig
-            import calendar
-            
             files = []
             if args.base_path and args.month:
                 config_data = context.config_manager.get_config()
@@ -388,7 +388,6 @@ def main(args=None):
             output_file = args.output
             if not output_file:
                 # Auto-generate output filename with timestamp
-                from datetime import datetime
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 table_suffix = f"_{args.table}" if args.table else "_all"
                 month_suffix = f"_{args.month.replace('-', '')}" if args.month else ""
@@ -415,7 +414,6 @@ def main(args=None):
             output_file = args.output
             if not output_file:
                 # Auto-generate output filename with timestamp
-                from datetime import datetime
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_file = f"reports/table_report_{timestamp}"
                 Path("reports").mkdir(exist_ok=True)
@@ -456,7 +454,6 @@ def main(args=None):
             
             # Save if output specified
             if args.output:
-                import json
                 with open(args.output, 'w') as f:
                     json.dump(result.to_dict(), f, indent=2, default=str)
                 logger.info(f"Duplicate check results saved to {args.output}")
@@ -477,7 +474,6 @@ def main(args=None):
             
             # Save if output specified
             if args.output:
-                import json
                 with open(args.output, 'w') as f:
                     json.dump(result.to_dict(), f, indent=2, default=str)
                 logger.info(f"Comparison results saved to {args.output}")
