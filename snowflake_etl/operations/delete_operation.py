@@ -296,12 +296,14 @@ class DeleteOperation(BaseOperation):
         cursor.execute(preview_query, (start_yyyymmdd, end_yyyymmdd))
         preview_rows = cursor.fetchall()
         
+        # Log each line separately to avoid \n display issues
+        self.logger.info(f"")
+        self.logger.info(f"Preview of rows to be deleted from {target.table_name}:")
         self.logger.info(
-            f"\nPreview of rows to be deleted from {target.table_name}:\n"
             f"Total rows to delete: {impact_data['rows_to_delete']:,} "
-            f"({impact_data['deletion_percentage']:.2f}% of table)\n"
-            f"Sample rows (first 10):"
+            f"({impact_data['deletion_percentage']:.2f}% of table)"
         )
+        self.logger.info(f"Sample rows (first 10):")
         
         for row in preview_rows:
             self.logger.info(f"  {row}")
@@ -313,11 +315,12 @@ class DeleteOperation(BaseOperation):
         Returns:
             True if confirmed, False otherwise
         """
+        # Build confirmation message without embedded newlines
         message = (
-            f"\nAbout to delete {impact_data['rows_to_delete']:,} rows "
+            f"About to delete {impact_data['rows_to_delete']:,} rows "
             f"({impact_data['deletion_percentage']:.2f}%) from {target.table_name} "
-            f"for month {target.year_month}.\n"
-            f"This action cannot be undone without Time Travel.\n"
+            f"for month {target.year_month}. "
+            f"This action cannot be undone without Time Travel. "
             f"Continue? (yes/no): "
         )
         
@@ -377,15 +380,15 @@ class DeleteOperation(BaseOperation):
         skipped = sum(1 for r in results if r.status == 'skipped')
         dry_run = sum(1 for r in results if r.status == 'dry_run')
         
-        self.logger.info(
-            f"\nDeletion Summary:\n"
-            f"  Total operations: {len(results)}\n"
-            f"  Successful: {successful}\n"
-            f"  Failed: {failed}\n"
-            f"  Skipped: {skipped}\n"
-            f"  Dry run: {dry_run}\n"
-            f"  Total rows deleted: {total_deleted:,}"
-        )
+        # Log summary with separate lines to avoid \n display issues
+        self.logger.info("")
+        self.logger.info("Deletion Summary:")
+        self.logger.info(f"  Total operations: {len(results)}")
+        self.logger.info(f"  Successful: {successful}")
+        self.logger.info(f"  Failed: {failed}")
+        self.logger.info(f"  Skipped: {skipped}")
+        self.logger.info(f"  Dry run: {dry_run}")
+        self.logger.info(f"  Total rows deleted: {total_deleted:,}")
     
     def delete_from_config(self,
                            month: str,

@@ -332,18 +332,19 @@ class ValidateOperation(BaseOperation):
         """Display validation summary to console/logs."""
         summary = results['summary']
         
-        self.logger.info("\n" + "=" * 60)
+        # Log summary with separate lines to avoid \n display issues
+        self.logger.info("")
+        self.logger.info("=" * 60)
         self.logger.info("VALIDATION SUMMARY")
         self.logger.info("=" * 60)
         
-        self.logger.info(
-            f"Tables Validated: {results['tables_validated']}\n"
-            f"  Valid: {results['tables_valid']}\n"
-            f"  Invalid: {results['tables_invalid']}"
-        )
+        self.logger.info(f"Tables Validated: {results['tables_validated']}")
+        self.logger.info(f"  Valid: {results['tables_valid']}")
+        self.logger.info(f"  Invalid: {results['tables_invalid']}")
         
         if summary['total_rows'] > 0:
-            self.logger.info(f"\nTotal Rows Analyzed: {summary['total_rows']:,}")
+            self.logger.info("")
+            self.logger.info(f"Total Rows Analyzed: {summary['total_rows']:,}")
         
         if summary['total_missing_dates'] > 0:
             self.logger.info(f"Missing Dates Found: {summary['total_missing_dates']}")
@@ -358,7 +359,8 @@ class ValidateOperation(BaseOperation):
             self.logger.info(f"Duplicate Keys Found: {summary['total_duplicates']}")
         
         if summary['tables_with_issues']:
-            self.logger.info("\nTables with Issues:")
+            self.logger.info("")
+            self.logger.info("Tables with Issues:")
             for issue in summary['tables_with_issues']:
                 self.logger.info(f"  - {issue['table']}:")
                 for reason in issue['issues']:
