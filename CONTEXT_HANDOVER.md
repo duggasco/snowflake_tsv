@@ -41,9 +41,9 @@ python3 drop_month.py --config config.json --table MY_TABLE --month 2024-01
 python3 check_snowflake_table.py config.json MY_TABLE
 
 # NEW (current)
-sfl load --config config.json --base-path ./data --month 2024-01
-sfl delete --config config.json --table MY_TABLE --month 2024-01
-sfl check-table MY_TABLE --config config.json
+sfl --config config.json load --base-path ./data --month 2024-01
+sfl --config config.json delete --table MY_TABLE --month 2024-01
+sfl --config config.json check-table MY_TABLE
 ```
 
 ### New CLI Structure
@@ -95,12 +95,12 @@ The stub operations need their logic migrated from the old scripts:
 source etl_venv/bin/activate
 
 # Test core operations
-sfl load --config config/config.json --base-path ./data --month 2024-01
-sfl validate --config config/config.json --table MY_TABLE --month 2024-01
+sfl --config config/config.json load --base-path ./data --month 2024-01
+sfl --config config/config.json validate --table MY_TABLE --month 2024-01
 
 # Test utilities
-sfl check-table FACTLENDINGBENCHMARK --config config/config.json
-sfl diagnose-error --config config/config.json
+sfl --config config/config.json check-table FACTLENDINGBENCHMARK
+sfl --config config/config.json diagnose-error
 ```
 
 ### 3. Clean Up Remaining Files
