@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a high-performance Snowflake ETL pipeline for processing large TSV files (up to 50GB) with built-in data quality checks, progress tracking, and parallel processing capabilities. The system emphasizes streaming processing for memory efficiency and uses Snowflake's native bulk loading features.
 
+**Current Version**: 3.0.1 (2025-08-26) - Critical fixes and enhanced reporting
+
 ## Key Components
 
 ### Main Scripts
@@ -97,6 +99,23 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
   - Shows 3 progress bars when doing file-based QC (Files, QC Rows, Compression)
   - Shows 2 progress bars when skipping QC (Files, Compression only)
   - Automatically adjusts spacing based on processing mode
+
+## Recent Improvements (v3.0.1)
+
+### Enhanced Validation Reporting
+- **Detailed Date Information**: Validation now shows actual problematic dates, not just counts
+- **Severity Classification**: Anomalies grouped by severity (SEVERELY_LOW, OUTLIER_LOW, etc.)
+- **Automatic Output Generation**: CLI operations auto-generate comprehensive reports without --output flag
+- **Issues File**: Additional _issues.txt file created with complete list of all problematic dates
+
+### Connection Management
+- **Pool Size**: Increased from 5 to 10 (configurable via `connection_pool_size` in config)
+- **Cursor Reuse**: New `validate_table_with_cursor()` method prevents pool exhaustion
+- **Worker Limiting**: Automatic limiting of parallel workers based on pool size
+
+### Unicode Compatibility
+- **ASCII-Only Output**: Replaced all Unicode characters for terminal compatibility
+- **Status Markers**: [VALID], [INVALID], [ERROR], WARNING: instead of symbols
 
 ## Development Commands
 

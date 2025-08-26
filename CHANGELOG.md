@@ -1,5 +1,41 @@
 # CHANGELOG.md
 
+## [v3.0.1] - 2025-08-26 - Critical Fixes & Enhanced Reporting
+
+### Bug Fixes
+- **Fixed Unicode encoding issues**: Removed all Unicode characters (✓, ✗, ⚠, etc.) that caused latin-1 encoding errors in terminals
+- **Fixed connection pool exhaustion**: 
+  - Added `validate_table_with_cursor()` method to reuse existing connections
+  - Increased default pool size from 5 to 10 (configurable)
+  - Added automatic worker limiting based on pool size
+- **Fixed blank log issue for foreground jobs**: Implemented proper log capture using stdbuf and exit status handling
+- **Fixed CLI argument order**: Global options like `--config` now correctly come before subcommands
+- **Fixed ReportOperation initialization**: Added missing `status` parameter in TableReport instantiation
+- **Fixed ApplicationContext config reference**: Changed from `config_data` to `_config`
+
+### Enhanced Features
+- **Comprehensive validation reporting**:
+  - Now displays actual problematic dates, not just counts
+  - Groups anomalies by severity (SEVERELY_LOW, OUTLIER_LOW, etc.)
+  - Shows expected row count ranges for context
+  - Lists date gaps with exact ranges and missing day counts
+  - Provides actionable tips for common patterns
+- **Automatic output file generation**:
+  - CLI operations now auto-generate detailed output files
+  - Reports saved to `reports/` directory with timestamps
+  - Both text and JSON formats for maximum utility
+  - Validation creates additional `_issues.txt` file with all problematic dates
+- **Full data in reports**:
+  - Fixed report to preserve complete validation details
+  - Shows actual anomalous dates with row counts and percentages
+  - Displays complete gap information
+  - Lists all missing dates for investigation
+
+### Performance Improvements
+- Connection pool management prevents exhaustion during parallel operations
+- Unbuffered output for real-time job progress display
+- Dynamic worker limiting based on available connections
+
 ## [v3.0.0] - 2025-08-23 - Final Migration & Complete Refactoring
 
 ### Major Migration Completed
