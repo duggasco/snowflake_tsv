@@ -301,15 +301,69 @@ def main(args=None):
         if args.operation == 'load':
             logger.info("Starting load operation")
             operation = LoadOperation(context)
+            
+            # Build file configurations from base_path and month
+            from pathlib import Path
+            from snowflake_etl.models.file_config import FileConfig
+            import calendar
+            
+            files = []
+            if args.base_path and args.month:
+                config_data = context.config_manager.get_config()
+                base = Path(args.base_path)
+                
+                # Find matching files for the month
+                for file_config in config_data.get('files', []):
+                    pattern = file_config.get('file_pattern', '')
+                    
+                    # Replace placeholders with actual values
+                    if '{month}' in pattern:
+                        file_pattern = pattern.replace('{month}', args.month)
+                    elif '{date_range}' in pattern:
+                        # Convert month to date range
+                        year, mon = args.month.split('-')
+                        year_int = int(year)
+                        mon_int = int(mon)
+                        last_day = calendar.monthrange(year_int, mon_int)[1]
+                        date_range = f"{year}{mon}01-{year}{mon}{last_day:02d}"
+                        file_pattern = pattern.replace('{date_range}', date_range)
+                    else:
+                        continue
+                    
+                    # Find matching files
+                    for file_path in base.glob(file_pattern):
+                        if file_path.is_file():
+                            year, mon = args.month.split('-')
+                            last_day = calendar.monthrange(int(year), int(mon))[1]
+                            config = FileConfig(
+                                file_path=str(file_path),
+                                table_name=file_config['table_name'],
+                                date_column=file_config.get('date_column'),
+                                expected_columns=file_config.get('expected_columns', []),
+                                duplicate_key_columns=file_config.get('duplicate_key_columns'),
+                                expected_date_range=(
+                                    f"{year}-{mon}-01",
+                                    f"{year}-{mon}-{last_day:02d}"
+                                )
+                            )
+                            files.append(config)
+            
+            if not files:
+                logger.error("No files found to process")
+                return 1
+            
             result = operation.load_files(
-                base_path=args.base_path,
-                month=args.month,
-                file_pattern=args.file_pattern,
+                files=files,
                 skip_qc=args.skip_qc,
                 validate_in_snowflake=args.validate_in_snowflake,
                 validate_only=args.validate_only,
                 max_workers=args.max_workers
             )
+            
+            # Check for failures in load result
+            if result.get('files_failed', 0) > 0:
+                logger.warning(f"Load completed with {result['files_failed']} failures")
+                return 1
             
         elif args.operation == 'delete':
             logger.info("Starting delete operation")
