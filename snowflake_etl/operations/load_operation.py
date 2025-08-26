@@ -149,8 +149,8 @@ class LoadOperation(BaseOperation):
                 self.progress_tracker.update_phase(ProgressPhase.ANALYSIS)
             
             self.logger.info(f"Analyzing {file_config.file_path}")
-            row_count = self.file_analyzer.count_rows_fast(file_config.file_path)
-            file_size_mb = os.path.getsize(file_config.file_path) / (1024 * 1024)
+            row_count, file_size_gb = self.file_analyzer.count_rows_fast(file_config.file_path)
+            file_size_mb = file_size_gb * 1024  # Convert GB to MB
             
             self.logger.info(
                 f"File contains ~{row_count:,} rows ({file_size_mb:.1f} MB)"
@@ -363,9 +363,9 @@ class LoadOperation(BaseOperation):
                     continue
                 
                 # Analyze file
-                row_count = self.file_analyzer.count_rows_fast(file_config.file_path)
-                file_size = os.path.getsize(file_config.file_path)
-                file_size_mb = file_size / (1024 * 1024)
+                row_count, file_size_gb = self.file_analyzer.count_rows_fast(file_config.file_path)
+                file_size = file_size_gb * (1024 * 1024 * 1024)  # Convert GB to bytes
+                file_size_mb = file_size_gb * 1024  # Convert GB to MB
                 
                 # Estimate processing time
                 estimated_time = self.file_analyzer.estimate_processing_time(
