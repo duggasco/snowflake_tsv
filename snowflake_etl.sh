@@ -1186,13 +1186,20 @@ menu_load_data() {
             browse_and_load_files
             ;;
         2)
-            # Traditional month-based loading
-            local month=$(get_input "Load Data" "Enter month(s) - comma separated" "$(date +%Y-%m)")
+            # Traditional month-based loading - prompt for both base path and month
+            local base_path=$(get_input "Load Data" "Enter base path for TSV files" "$BASE_PATH")
             
-            if [[ -n "$month" ]]; then
-                if confirm_action "Load month(s): $month?"; then
+            if [[ ! -d "$base_path" ]]; then
+                show_message "Error" "Base path does not exist: $base_path"
+                return
+            fi
+            
+            local month=$(get_input "Load Data" "Enter month(s) - comma separated (YYYY-MM)" "$(date +%Y-%m)")
+            
+            if [[ -n "$month" ]] && [[ -n "$base_path" ]]; then
+                if confirm_action "Load month(s): $month from $base_path?"; then
                     with_lock start_background_job "load_${month}" \
-                        ./run_loader.sh --months "$month" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+                        ./run_loader.sh --months "$month" --config "$CONFIG_FILE" --base-path "$base_path"
                 fi
             fi
             ;;
