@@ -1013,16 +1013,14 @@ menu_quick_load() {
         local choice=$(show_menu "$MENU_PATH" \
             "Load Current Month" \
             "Load Last Month" \
-            "Load Specific File" \
-            "Load with Validation" \
-            "Load without QC (Fast)")
+            "Load Custom Month" \
+            "Load Specific File")
         
         case "$choice" in
             1) quick_load_current_month ;;
             2) quick_load_last_month ;;
-            3) quick_load_specific_file ;;
-            4) quick_load_with_validation ;;
-            5) quick_load_without_qc ;;
+            3) quick_load_custom_month ;;
+            4) quick_load_specific_file ;;
             0|"") pop_menu; break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
@@ -1102,6 +1100,22 @@ menu_recovery() {
     done
 }
 
+# Helper function to select quality check method
+select_quality_check_method() {
+    local qc_choice=$(show_menu "Quality Check Method" \
+        "File-based quality checks (thorough but slower)" \
+        "Snowflake-based validation (fast, requires connection)" \
+        "Skip quality checks (fastest but no validation)")
+    
+    case "$qc_choice" in
+        1) echo "file" ;;
+        2) echo "snowflake" ;;
+        3) echo "skip" ;;
+        0|"") echo "cancelled" ;;
+        *) echo "cancelled" ;;
+    esac
+}
+
 # Quick load current month (using arrays)
 quick_load_current_month() {
     # Ensure config is selected
@@ -1111,9 +1125,23 @@ quick_load_current_month() {
     
     local current_month=$(date +%Y-%m)
     
-    if confirm_action "Load data for $current_month?\nUsing config: $(basename "$CONFIG_FILE")"; then
+    # Ask for quality check preference
+    local qc_method=$(select_quality_check_method)
+    
+    if [[ "$qc_method" == "cancelled" ]]; then
+        return
+    fi
+    
+    local qc_flags=""
+    case "$qc_method" in
+        "file") qc_flags="" ;;  # Default behavior
+        "snowflake") qc_flags="--validate-in-snowflake" ;;
+        "skip") qc_flags="--skip-qc" ;;
+    esac
+    
+    if confirm_action "Load data for $current_month?\nQC Method: $qc_method\nUsing config: $(basename "$CONFIG_FILE")"; then
         with_lock start_background_job "load_${current_month}" \
-            ./run_loader.sh --month "$current_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+            ./run_loader.sh --month "$current_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
     fi
 }
 
@@ -1126,9 +1154,23 @@ quick_load_last_month() {
     
     local last_month=$(date -d "last month" +%Y-%m 2>/dev/null || date -v-1m +%Y-%m)
     
-    if confirm_action "Load data for $last_month?\nUsing config: $(basename "$CONFIG_FILE")"; then
+    # Ask for quality check preference
+    local qc_method=$(select_quality_check_method)
+    
+    if [[ "$qc_method" == "cancelled" ]]; then
+        return
+    fi
+    
+    local qc_flags=""
+    case "$qc_method" in
+        "file") qc_flags="" ;;  # Default behavior
+        "snowflake") qc_flags="--validate-in-snowflake" ;;
+        "skip") qc_flags="--skip-qc" ;;
+    esac
+    
+    if confirm_action "Load data for $last_month?\nQC Method: $qc_method\nUsing config: $(basename "$CONFIG_FILE")"; then
         with_lock start_background_job "load_${last_month}" \
-            ./run_loader.sh --month "$last_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+            ./run_loader.sh --month "$last_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
     fi
 }
 
@@ -1146,29 +1188,52 @@ quick_load_specific_file() {
         return
     fi
     
-    if confirm_action "Load file: $(basename "$file_path")?"; then
+    # Ask for quality check preference
+    local qc_method=$(select_quality_check_method)
+    
+    if [[ "$qc_method" == "cancelled" ]]; then
+        return
+    fi
+    
+    local qc_flags=""
+    case "$qc_method" in
+        "file") qc_flags="" ;;  # Default behavior
+        "snowflake") qc_flags="--validate-in-snowflake" ;;
+        "skip") qc_flags="--skip-qc" ;;
+    esac
+    
+    if confirm_action "Load file: $(basename "$file_path")?\nQC Method: $qc_method"; then
         with_lock start_background_job "load_file_$(basename "$file_path")" \
-            ./run_loader.sh --direct-file "$file_path" --config "$CONFIG_FILE"
+            ./run_loader.sh --direct-file "$file_path" --config "$CONFIG_FILE" $qc_flags
     fi
 }
 
-# Quick load with validation
-quick_load_with_validation() {
-    local month=$(get_input "Load with Validation" "Enter month (YYYY-MM)" "$(date +%Y-%m)")
+# Quick load with custom month
+quick_load_custom_month() {
+    local month=$(get_input "Load Custom Month" "Enter month (YYYY-MM)" "$(date +%Y-%m)")
     
-    if confirm_action "Load $month with Snowflake validation?"; then
-        with_lock start_background_job "load_validated_${month}" \
-            ./run_loader.sh --month "$month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" --validate-in-snowflake
+    if [[ -z "$month" ]]; then
+        show_message "Error" "No month provided"
+        return
     fi
-}
-
-# Quick load without QC
-quick_load_without_qc() {
-    local month=$(get_input "Load without QC" "Enter month (YYYY-MM)" "$(date +%Y-%m)")
     
-    if confirm_action "Load $month without quality checks (faster but riskier)?"; then
-        with_lock start_background_job "load_fast_${month}" \
-            ./run_loader.sh --month "$month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" --skip-qc
+    # Ask for quality check preference
+    local qc_method=$(select_quality_check_method)
+    
+    if [[ "$qc_method" == "cancelled" ]]; then
+        return
+    fi
+    
+    local qc_flags=""
+    case "$qc_method" in
+        "file") qc_flags="" ;;  # Default behavior
+        "snowflake") qc_flags="--validate-in-snowflake" ;;
+        "skip") qc_flags="--skip-qc" ;;
+    esac
+    
+    if confirm_action "Load $month?\nQC Method: $qc_method\nUsing config: $(basename "$CONFIG_FILE")"; then
+        with_lock start_background_job "load_${month}" \
+            ./run_loader.sh --month "$month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
     fi
 }
 
@@ -1197,17 +1262,45 @@ menu_load_data() {
             local month=$(get_input "Load Data" "Enter month(s) - comma separated (YYYY-MM)" "$(date +%Y-%m)")
             
             if [[ -n "$month" ]] && [[ -n "$base_path" ]]; then
-                if confirm_action "Load month(s): $month from $base_path?"; then
+                # Ask for quality check preference
+                local qc_method=$(select_quality_check_method)
+                
+                if [[ "$qc_method" == "cancelled" ]]; then
+                    return
+                fi
+                
+                local qc_flags=""
+                case "$qc_method" in
+                    "file") qc_flags="" ;;  # Default behavior
+                    "snowflake") qc_flags="--validate-in-snowflake" ;;
+                    "skip") qc_flags="--skip-qc" ;;
+                esac
+                
+                if confirm_action "Load month(s): $month from $base_path?\nQC Method: $qc_method"; then
                     with_lock start_background_job "load_${month}" \
-                        ./run_loader.sh --months "$month" --config "$CONFIG_FILE" --base-path "$base_path"
+                        ./run_loader.sh --months "$month" --config "$CONFIG_FILE" --base-path "$base_path" $qc_flags
                 fi
             fi
             ;;
         3)
             # Load all months
-            if confirm_action "Load ALL months from $BASE_PATH?"; then
+            # Ask for quality check preference
+            local qc_method=$(select_quality_check_method)
+            
+            if [[ "$qc_method" == "cancelled" ]]; then
+                return
+            fi
+            
+            local qc_flags=""
+            case "$qc_method" in
+                "file") qc_flags="" ;;  # Default behavior
+                "snowflake") qc_flags="--validate-in-snowflake" ;;
+                "skip") qc_flags="--skip-qc" ;;
+            esac
+            
+            if confirm_action "Load ALL months from $BASE_PATH?\nQC Method: $qc_method"; then
                 with_lock start_background_job "load_batch_all" \
-                    ./run_loader.sh --batch --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+                    ./run_loader.sh --batch --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
             fi
             ;;
         0|"")
@@ -1313,17 +1406,20 @@ browse_and_load_files() {
             # Build comma-separated list of files
             local files_list=$(tr '\n' ',' < "$temp_file" | sed 's/,$//')
             
-            # Ask for processing options
-            local skip_qc_choice=$(get_input "Quality Checks" "Skip file-based quality checks? (Y/N)" "N")
-            local validate_sf_choice=$(get_input "Validation" "Validate in Snowflake after loading? (Y/N)" "Y")
+            # Ask for quality check preference
+            local qc_method=$(select_quality_check_method)
+            
+            if [[ "$qc_method" == "cancelled" ]]; then
+                rm -f "$temp_file"
+                return
+            fi
             
             local extra_args=""
-            if [[ "${skip_qc_choice^^}" == "Y" ]]; then
-                extra_args="$extra_args --skip-qc"
-            fi
-            if [[ "${validate_sf_choice^^}" == "Y" ]]; then
-                extra_args="$extra_args --validate-in-snowflake"
-            fi
+            case "$qc_method" in
+                "file") extra_args="" ;;  # Default behavior
+                "snowflake") extra_args="--validate-in-snowflake" ;;
+                "skip") extra_args="--skip-qc" ;;
+            esac
             
             # Start the job
             if confirm_action "Process ${num_files} file(s) with config $(basename "$CONFIG_FILE")?"; then
