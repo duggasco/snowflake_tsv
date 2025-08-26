@@ -565,7 +565,14 @@ start_background_job() {
         local bg_pid=$!
         update_job_file "$job_file" "PID" "$bg_pid"
         
-        show_message "Job Started" "Job: $job_name\nID: $job_id\nPID: $bg_pid\nLog: $log_file\n\nTip: Check 'Job Status' menu to monitor progress"
+        # Format message properly for show_message function
+        local msg="Job: $job_name
+ID: $job_id
+PID: $bg_pid
+Log: $log_file
+
+Tip: Check 'Job Status' menu to monitor progress"
+        show_message "Job Started" "$msg"
     fi
     
     return 0

@@ -2,6 +2,17 @@
 # lib/ui_components.sh - UI components for shell scripts
 # Part of Snowflake ETL Pipeline Manager
 
+# Color codes - define if not already defined by parent script
+if [[ -z "$RED" ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    NC='\033[0m' # No Color
+fi
+
 # Dialog configuration - use values from main script if set, otherwise defaults
 DIALOG_CMD=${DIALOG_CMD:-dialog}
 USE_DIALOG=${USE_DIALOG:-false}
@@ -192,7 +203,7 @@ show_message() {
     else
         echo ""
         echo -e "${BOLD}=== $title ===${NC}"
-        echo "$message"
+        echo -e "$message"  # Use -e to interpret escape sequences
         echo ""
         read -p "Press Enter to continue..."
     fi
@@ -230,7 +241,8 @@ confirm_action() {
         return $?
     else
         echo ""
-        read -p "${YELLOW}$message (y/N): ${NC}" -n 1 -r
+        echo -en "${YELLOW}$message (y/N): ${NC}"  # Use -e to interpret colors, -n to avoid newline
+        read -n 1 -r
         echo ""
         [[ $REPLY =~ ^[Yy]$ ]]
         return $?
