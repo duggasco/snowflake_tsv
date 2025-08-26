@@ -743,7 +743,12 @@ show_all_jobs_summary() {
                 status_text+="\n=== RESULTS ===\n"
                 if [[ -f "$log_file" ]]; then
                     # For completed jobs, show last 20 lines which usually contains the results
-                    local results=$(tail -20 "$log_file" 2>/dev/null | head -15)
+                    # Sanitize to prevent escape sequence attacks
+                    if command -v sed >/dev/null 2>&1; then
+                        local results=$(tail -20 "$log_file" 2>/dev/null | head -15 | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\].*\x07//g; s/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]//g')
+                    else
+                        local results=$(tail -20 "$log_file" 2>/dev/null | head -15)
+                    fi
                     if [[ -n "$results" ]]; then
                         status_text+="$results\n"
                     else
@@ -755,7 +760,12 @@ show_all_jobs_summary() {
             elif [[ "$status" == "FAILED" ]] || [[ "$status" == "CRASHED" ]]; then
                 status_text+="\n=== ERROR OUTPUT ===\n"
                 if [[ -f "$log_file" ]]; then
-                    status_text+="$(tail -10 "$log_file" 2>/dev/null || echo "Log file not accessible")\n"
+                    # Sanitize error output to prevent escape sequence attacks
+                    if command -v sed >/dev/null 2>&1; then
+                        status_text+="$(tail -10 "$log_file" 2>/dev/null | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\].*\x07//g; s/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]//g' || echo "Log file not accessible")\n"
+                    else
+                        status_text+="$(tail -10 "$log_file" 2>/dev/null || echo "Log file not accessible")\n"
+                    fi
                 else
                     status_text+="(Log file not found)\n"
                 fi
@@ -813,24 +823,43 @@ view_job_full_log() {
     # Small delay to ensure user sees the header
     sleep 0.5
     
+    # Sanitize log content to prevent escape sequence attacks
+    # Create a temporary file with sanitized content
+    local sanitized_log="/tmp/sanitized_log_$$"
+    
+    # Strip dangerous control sequences while preserving readability
+    # This removes ANSI escape codes, terminal control sequences, etc.
+    if command -v sed >/dev/null 2>&1; then
+        # Remove ANSI escape sequences and control characters
+        # Keep only printable ASCII and newlines/tabs
+        sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\].*\x07//g; s/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]//g' "$log_file" > "$sanitized_log"
+    else
+        # Fallback: copy as-is if sed not available (less safe)
+        cp "$log_file" "$sanitized_log"
+        echo -e "${YELLOW}Warning: Could not sanitize log content${NC}"
+    fi
+    
     # Use the best available pager with proper fallback
     if command -v less >/dev/null 2>&1; then
-        # -R = Render ANSI color codes correctly
+        # Do NOT use -R flag to prevent rendering of any remaining escape codes
         # -F = Quit if entire file fits on one screen
         # -X = Do not clear screen on exit (prevents blank screen issue)
         # -S = Disable line wrapping (horizontal scroll for long lines)
-        less -RFXS "$log_file"
+        less -FXS "$sanitized_log"
     elif command -v more >/dev/null 2>&1; then
         # Fallback to more if less is not available
-        more "$log_file"
+        more "$sanitized_log"
     else
         # Last resort fallback - just cat the file
         echo -e "${YELLOW}--- Note: 'less' and 'more' not found. Displaying full log ---${NC}"
-        cat "$log_file"
+        cat "$sanitized_log"
         echo ""
         echo "--- End of log ---"
         read -p "Press Enter to continue..."
     fi
+    
+    # Clean up temporary file
+    rm -f "$sanitized_log"
     
     # Clear the screen after viewing to prevent log stacking
     clear
@@ -855,8 +884,16 @@ monitor_job_progress() {
     echo -e "${YELLOW}Press Ctrl+C to stop monitoring${NC}"
     echo "----------------------------------------"
     
-    # Use tail -f to show live output
-    tail -f "$log_file" 2>/dev/null || show_message "Error" "Could not monitor log file"
+    # Sanitize live output to prevent escape sequence attacks
+    # Use sed to strip ANSI codes and control characters in real-time
+    if command -v sed >/dev/null 2>&1; then
+        # Strip escape sequences while tailing
+        tail -f "$log_file" 2>/dev/null | sed -u 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\].*\x07//g; s/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]//g'
+    else
+        # Fallback without sanitization (with warning)
+        echo -e "${YELLOW}Warning: Cannot sanitize live output - be cautious of escape sequences${NC}"
+        tail -f "$log_file" 2>/dev/null
+    fi || show_message "Error" "Could not monitor log file"
 }
 
 # Clean completed jobs
