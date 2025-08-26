@@ -264,6 +264,7 @@ class ReportOperation(BaseOperation):
         report = TableReport(
             config_file=Path(config_path).name,
             table_name=table_name,
+            status='PENDING',  # Will be updated based on analysis
             date_column=file_config.get('date_column')
         )
         
