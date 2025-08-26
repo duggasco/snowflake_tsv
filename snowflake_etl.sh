@@ -42,6 +42,7 @@ CONFIG_FILE=""  # Will be selected by user
 BASE_PATH="${SCRIPT_DIR}/data"
 DEFAULT_WORKERS="auto"
 CONFIG_DIR="${SCRIPT_DIR}/config"
+LOG_VIEWER="auto"  # auto, less, nano, cat
 
 # Dialog/UI configuration
 USE_DIALOG=false
@@ -295,6 +296,12 @@ with_lock() {
 init_directories() {
     mkdir -p "$STATE_DIR" "$JOBS_DIR" "$LOCKS_DIR" "$LOGS_DIR"
     touch "$PREFS_FILE"
+    
+    # Load log viewer preference if it exists
+    local viewer_pref_file="${STATE_DIR}/log_viewer.pref"
+    if [[ -f "$viewer_pref_file" ]]; then
+        LOG_VIEWER=$(cat "$viewer_pref_file")
+    fi
 }
 
 # Check dependencies
@@ -842,23 +849,53 @@ view_job_full_log() {
         echo -e "${YELLOW}Warning: Could not sanitize log content${NC}"
     fi
     
-    # Use the best available pager with proper fallback
-    if command -v less >/dev/null 2>&1; then
-        # Do NOT use -R flag to prevent rendering of any remaining escape codes
-        # -F = Quit if entire file fits on one screen
-        # -X = Do not clear screen on exit (prevents blank screen issue)
-        # -S = Disable line wrapping (horizontal scroll for long lines)
-        less -FXS "$sanitized_log"
-    elif command -v more >/dev/null 2>&1; then
-        # Fallback to more if less is not available
-        more "$sanitized_log"
-    else
-        # Last resort fallback - just cat the file
-        echo -e "${YELLOW}--- Note: 'less' and 'more' not found. Displaying full log ---${NC}"
-        cat "$sanitized_log"
-        echo ""
-        echo "--- End of log ---"
-        read -p "Press Enter to continue..."
+    # Use the configured viewer or auto-detect
+    local viewer_choice="${LOG_VIEWER:-auto}"
+    
+    case "$viewer_choice" in
+        "nano")
+            if command -v nano >/dev/null 2>&1; then
+                # Use nano - very stable for problematic logs
+                nano -v "$sanitized_log"  # -v for view mode (read-only)
+            else
+                echo -e "${YELLOW}nano not found, falling back to auto${NC}"
+                viewer_choice="auto"
+            fi
+            ;;
+        "less")
+            if command -v less >/dev/null 2>&1; then
+                less -FXS "$sanitized_log"
+            else
+                echo -e "${YELLOW}less not found, falling back to auto${NC}"
+                viewer_choice="auto"
+            fi
+            ;;
+        "cat")
+            cat "$sanitized_log"
+            echo ""
+            echo "--- End of log ---"
+            read -p "Press Enter to continue..."
+            ;;
+        *)
+            viewer_choice="auto"
+            ;;
+    esac
+    
+    # Auto mode - detect best available
+    if [[ "$viewer_choice" == "auto" ]]; then
+        if command -v nano >/dev/null 2>&1; then
+            # Prefer nano for stability with problematic logs
+            nano -v "$sanitized_log"
+        elif command -v less >/dev/null 2>&1; then
+            less -FXS "$sanitized_log"
+        elif command -v more >/dev/null 2>&1; then
+            more "$sanitized_log"
+        else
+            cat "$sanitized_log"
+            echo ""
+            echo "--- End of log ---"
+            read -p "Press Enter to continue..."
+        fi
     fi
     
     # Clean up temporary file
@@ -1944,6 +1981,7 @@ view_preferences() {
     prefs+="Config File: ${CONFIG_FILE:-'Not selected'}\n"
     prefs+="Base Path: $BASE_PATH\n"
     prefs+="Default Workers: $DEFAULT_WORKERS\n"
+    prefs+="Log Viewer: $LOG_VIEWER\n"
     prefs+="Dialog Available: $USE_DIALOG ($DIALOG_CMD)\n"
     prefs+="State Directory: $STATE_DIR\n"
     prefs+="Logs Directory: $LOGS_DIR\n"
@@ -1965,6 +2003,7 @@ menu_settings() {
             "Set Base Path" \
             "Configure Workers" \
             "Toggle Colors" \
+            "Log Viewer" \
             "View Preferences" \
             "Clear State" \
             "Clean Completed Jobs")
@@ -1974,13 +2013,51 @@ menu_settings() {
             2) set_base_path ;;
             3) configure_workers ;;
             4) toggle_colors ;;
-            5) view_preferences ;;
-            6) clear_state ;;
-            7) clean_completed_jobs ;;
+            5) set_log_viewer ;;
+            6) view_preferences ;;
+            7) clear_state ;;
+            8) clean_completed_jobs ;;
             0|"") break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
     done
+}
+
+# Set log viewer preference
+set_log_viewer() {
+    local current_viewer="${LOG_VIEWER:-auto}"
+    
+    # Show current setting
+    echo ""
+    echo -e "${BOLD}Current Log Viewer: ${CYAN}$current_viewer${NC}"
+    echo ""
+    echo "Available viewers:"
+    echo "  1) Auto (detect best available)"
+    echo "  2) less (powerful pager with search)"
+    echo "  3) nano (text editor - stable for problematic logs)"
+    echo "  4) cat (simple output)"
+    echo ""
+    echo -n "Select viewer [1-4, 0 to cancel]: "
+    read -n 1 choice
+    echo ""
+    
+    case "$choice" in
+        1) LOG_VIEWER="auto" ;;
+        2) LOG_VIEWER="less" ;;
+        3) LOG_VIEWER="nano" ;;
+        4) LOG_VIEWER="cat" ;;
+        0|"") return ;;
+        *) 
+            show_message "Error" "Invalid option"
+            return
+            ;;
+    esac
+    
+    # Save preference to state file
+    local viewer_pref_file="${STATE_DIR}/log_viewer.pref"
+    echo "$LOG_VIEWER" > "$viewer_pref_file"
+    
+    show_message "Success" "Log viewer set to: $LOG_VIEWER"
 }
 
 # Set/change config
