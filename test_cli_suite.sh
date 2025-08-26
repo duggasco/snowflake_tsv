@@ -16,7 +16,7 @@
 # Usage: ./test_cli_suite.sh [config_file]
 #############################################################################
 
-set -e  # Exit on error
+# Don't use set -e initially - we handle errors ourselves
 
 # Colors for output
 RED='\033[0;31m'
@@ -34,6 +34,14 @@ TEST_DATA_DIR="${TEST_DIR}/test_data"
 TEST_LOG="${TEST_DIR}/test_suite_$(date +%Y%m%d_%H%M%S).log"
 SUMMARY_LOG="${TEST_DIR}/test_summary_$(date +%Y%m%d_%H%M%S).log"
 CONFIG_FILE="${1:-${SCRIPT_DIR}/config/factLendingBenchmark_config.json}"
+
+# Setup Python environment
+if [ -f "${SCRIPT_DIR}/etl_venv/bin/activate" ]; then
+    source "${SCRIPT_DIR}/etl_venv/bin/activate"
+    PYTHON_CMD="${SCRIPT_DIR}/etl_venv/bin/python3"
+else
+    PYTHON_CMD="python3"
+fi
 
 # Test counters
 TESTS_RUN=0
@@ -140,7 +148,7 @@ fi
 #############################################################################
 
 log_test_start "System Check"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} --quiet check-system" "Check system capabilities"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} --quiet check-system" "Check system capabilities"; then
     log_success "System check completed"
 else
     log_failure "System check failed"
@@ -151,7 +159,7 @@ fi
 #############################################################################
 
 log_test_start "Configuration Validation"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} config-validate" "Validate configuration"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} config-validate" "Validate configuration"; then
     log_success "Configuration is valid"
 else
     log_failure "Configuration validation failed"
@@ -180,7 +188,7 @@ log_success "Test data generated"
 #############################################################################
 
 log_test_start "Load Operation - Direct File"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} load --files ${TEST_TSV_1} --skip-qc" "Load direct file"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} load --files ${TEST_TSV_1} --skip-qc" "Load direct file"; then
     log_success "Direct file load completed"
 else
     log_failure "Direct file load failed"
@@ -191,7 +199,7 @@ fi
 #############################################################################
 
 log_test_start "Load Operation - Pattern-based"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} load --base-path ${TEST_DATA_DIR} --month 2024-06 --skip-qc" "Load with pattern"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} load --base-path ${TEST_DATA_DIR} --month 2024-06 --skip-qc" "Load with pattern"; then
     log_success "Pattern-based load completed"
 else
     log_failure "Pattern-based load failed"
@@ -202,7 +210,7 @@ fi
 #############################################################################
 
 log_test_start "Validation Operation"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} validate --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-07 --output ${TEST_DIR}/validation_report.json" "Validate table data"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} validate --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-07 --output ${TEST_DIR}/validation_report.json" "Validate table data"; then
     log_success "Validation completed"
     if check_file_exists "${TEST_DIR}/validation_report.json"; then
         log_success "Validation report generated"
@@ -218,7 +226,7 @@ fi
 #############################################################################
 
 log_test_start "Report Generation"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} report --output ${TEST_DIR}/full_report" "Generate full report"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} report --output ${TEST_DIR}/full_report" "Generate full report"; then
     log_success "Report generation completed"
     if check_file_exists "${TEST_DIR}/full_report.txt"; then
         log_success "Text report generated"
@@ -235,7 +243,7 @@ fi
 #############################################################################
 
 log_test_start "Duplicate Check"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} check-duplicates --table TEST_CUSTOM_FACTLENDINGBENCHMARK --key-columns RECORDDATEID,ASSETID --output ${TEST_DIR}/duplicates.json" "Check duplicates"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} check-duplicates --table TEST_CUSTOM_FACTLENDINGBENCHMARK --key-columns RECORDDATEID,ASSETID --output ${TEST_DIR}/duplicates.json" "Check duplicates"; then
     log_success "Duplicate check completed"
 else
     log_failure "Duplicate check failed"
@@ -246,7 +254,7 @@ fi
 #############################################################################
 
 log_test_start "File Comparison"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} compare --file1 ${TEST_TSV_1} --file2 ${TEST_TSV_2} --output ${TEST_DIR}/comparison.json" "Compare files"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} compare --file1 ${TEST_TSV_1} --file2 ${TEST_TSV_2} --output ${TEST_DIR}/comparison.json" "Compare files"; then
     log_success "File comparison completed"
 else
     log_failure "File comparison failed"
@@ -257,7 +265,7 @@ fi
 #############################################################################
 
 log_test_start "Check Table Info"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} check-table TEST_CUSTOM_FACTLENDINGBENCHMARK" "Check table info"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} check-table TEST_CUSTOM_FACTLENDINGBENCHMARK" "Check table info"; then
     log_success "Table info retrieved"
 else
     log_failure "Table info check failed"
@@ -268,7 +276,7 @@ fi
 #############################################################################
 
 log_test_start "Diagnose Errors"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} diagnose-error --hours 24" "Diagnose recent errors"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} diagnose-error --hours 24" "Diagnose recent errors"; then
     log_success "Error diagnosis completed"
 else
     log_failure "Error diagnosis failed"
@@ -279,7 +287,7 @@ fi
 #############################################################################
 
 log_test_start "Validate File Structure"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} validate-file ${TEST_TSV_1} --expected-columns 41" "Validate TSV structure"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} validate-file ${TEST_TSV_1} --expected-columns 41" "Validate TSV structure"; then
     log_success "File structure validation completed"
 else
     log_failure "File structure validation failed"
@@ -290,7 +298,7 @@ fi
 #############################################################################
 
 log_test_start "Check Snowflake Stage"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} check-stage --pattern *.tsv" "Check stage files"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} check-stage --pattern *.tsv" "Check stage files"; then
     log_success "Stage check completed"
 else
     log_failure "Stage check failed"
@@ -301,7 +309,7 @@ fi
 #############################################################################
 
 log_test_start "File Browser"
-if run_command "echo '0' | python3 -m snowflake_etl --config ${CONFIG_FILE} browse --directory ${TEST_DATA_DIR}" "Browse files"; then
+if run_command "echo '0' | ${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} browse --directory ${TEST_DATA_DIR}" "Browse files"; then
     log_success "File browser completed"
 else
     log_skip "File browser test skipped (interactive)"
@@ -312,7 +320,7 @@ fi
 #############################################################################
 
 log_test_start "Sample TSV File"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} sample-file ${TEST_TSV_1} --rows 10" "Sample TSV file"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} sample-file ${TEST_TSV_1} --rows 10" "Sample TSV file"; then
     log_success "File sampling completed"
 else
     log_failure "File sampling failed"
@@ -323,7 +331,7 @@ fi
 #############################################################################
 
 log_test_start "Error Handling - Bad File"
-if ! run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} load --files ${TEST_TSV_BAD} --skip-qc" "Load bad file (should fail)"; then
+if ! run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} load --files ${TEST_TSV_BAD} --skip-qc" "Load bad file (should fail)"; then
     log_success "Bad file correctly rejected"
 else
     log_failure "Bad file was not rejected"
@@ -334,7 +342,7 @@ fi
 #############################################################################
 
 log_test_start "Error Handling - Non-existent File"
-if ! run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} load --files /nonexistent/file.tsv" "Load non-existent file (should fail)"; then
+if ! run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} load --files /nonexistent/file.tsv" "Load non-existent file (should fail)"; then
     log_success "Non-existent file correctly handled"
 else
     log_failure "Non-existent file error not handled"
@@ -345,7 +353,7 @@ fi
 #############################################################################
 
 log_test_start "Delete Operation - Dry Run"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} delete --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-07 --dry-run --yes" "Delete dry run"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} delete --table TEST_CUSTOM_FACTLENDINGBENCHMARK --month 2024-07 --dry-run --yes" "Delete dry run"; then
     log_success "Delete dry run completed"
 else
     log_failure "Delete dry run failed"
@@ -356,7 +364,7 @@ fi
 #############################################################################
 
 log_test_start "Load with Snowflake Validation"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} load --files ${TEST_TSV_1} --validate-in-snowflake" "Load with validation"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} load --files ${TEST_TSV_1} --validate-in-snowflake" "Load with validation"; then
     log_success "Load with validation completed"
 else
     log_failure "Load with validation failed"
@@ -367,7 +375,7 @@ fi
 #############################################################################
 
 log_test_start "Analyze Files Only"
-if run_command "python3 -m snowflake_etl --config ${CONFIG_FILE} load --base-path ${TEST_DATA_DIR} --month 2024-07 --analyze-only" "Analyze files only"; then
+if run_command "${PYTHON_CMD} -m snowflake_etl --config ${CONFIG_FILE} load --base-path ${TEST_DATA_DIR} --month 2024-07 --analyze-only" "Analyze files only"; then
     log_success "File analysis completed"
 else
     log_failure "File analysis failed"

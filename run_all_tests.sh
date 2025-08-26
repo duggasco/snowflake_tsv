@@ -62,11 +62,17 @@ run_test_suite() {
     
     if [ -f "${script_path}" ]; then
         chmod +x "${script_path}"
-        if "${script_path}" "${CONFIG_FILE}" > "${suite_log}" 2>&1; then
+        # Use timeout to prevent hanging (5 minutes max per suite)
+        if timeout 300 "${script_path}" "${CONFIG_FILE}" > "${suite_log}" 2>&1; then
             log "  ${GREEN}✓ ${suite_name} completed successfully${NC}"
             return 0
         else
-            log "  ${RED}✗ ${suite_name} failed (exit code: $?)${NC}"
+            local exit_code=$?
+            if [ $exit_code -eq 124 ]; then
+                log "  ${RED}✗ ${suite_name} timed out after 5 minutes${NC}"
+            else
+                log "  ${RED}✗ ${suite_name} failed (exit code: $exit_code)${NC}"
+            fi
             return 1
         fi
     else
@@ -80,9 +86,20 @@ check_prerequisites() {
     
     local prereq_ok=true
     
+    # Check for virtual environment
+    if [ -f "${SCRIPT_DIR}/etl_venv/bin/activate" ]; then
+        log "  ${GREEN}✓ Virtual environment found${NC}"
+        source "${SCRIPT_DIR}/etl_venv/bin/activate"
+        export PYTHON_CMD="${SCRIPT_DIR}/etl_venv/bin/python3"
+        export PIP_CMD="${SCRIPT_DIR}/etl_venv/bin/pip"
+    else
+        export PYTHON_CMD="python3"
+        export PIP_CMD="pip"
+    fi
+    
     # Check Python
-    if command -v python3 > /dev/null; then
-        local python_version=$(python3 --version 2>&1 | cut -d' ' -f2)
+    if command -v ${PYTHON_CMD} > /dev/null; then
+        local python_version=$(${PYTHON_CMD} --version 2>&1 | cut -d' ' -f2)
         log "  ${GREEN}✓ Python3 installed: ${python_version}${NC}"
     else
         log "  ${RED}✗ Python3 not found${NC}"
@@ -90,12 +107,13 @@ check_prerequisites() {
     fi
     
     # Check required Python packages
-    local packages=("snowflake-connector-python" "pandas" "numpy" "tqdm")
-    for pkg in "${packages[@]}"; do
-        if python3 -c "import ${pkg//-/_}" 2>/dev/null; then
-            log "  ${GREEN}✓ Python package '${pkg}' installed${NC}"
+    local packages=("snowflake.connector:snowflake-connector-python" "pandas:pandas" "numpy:numpy" "tqdm:tqdm")
+    for pkg_spec in "${packages[@]}"; do
+        IFS=':' read -r import_name display_name <<< "$pkg_spec"
+        if ${PYTHON_CMD} -c "import ${import_name}" 2>/dev/null; then
+            log "  ${GREEN}✓ Python package '${display_name}' installed${NC}"
         else
-            log "  ${YELLOW}⚠ Python package '${pkg}' not installed${NC}"
+            log "  ${YELLOW}⚠ Python package '${display_name}' not installed${NC}"
         fi
     done
     
@@ -170,6 +188,20 @@ else
     log "  ${GREEN}✓ Menu test suite ready${NC}"
 fi
 
+# Phase 3.5: Test Snowflake Connectivity
+log "\n${BOLD}${BLUE}PHASE 3.5: Testing Snowflake Connectivity${NC}"
+
+if ${PYTHON_CMD} "${SCRIPT_DIR}/test_connectivity.py" "${CONFIG_FILE}" > "${TEST_DIR}/connectivity.log" 2>&1; then
+    cat "${TEST_DIR}/connectivity.log" | tee -a "${MASTER_LOG}"
+    log "  ${GREEN}✓ Snowflake connection successful${NC}"
+    SNOWFLAKE_AVAILABLE=true
+else
+    cat "${TEST_DIR}/connectivity.log" | tee -a "${MASTER_LOG}"
+    log "  ${YELLOW}⚠ Snowflake connection failed - running in offline mode${NC}"
+    log "  ${YELLOW}  Tests requiring Snowflake will be skipped${NC}"
+    SNOWFLAKE_AVAILABLE=false
+fi
+
 # Phase 4: Run Test Suites
 log "\n${BOLD}${BLUE}PHASE 4: Running Test Suites${NC}"
 
@@ -179,8 +211,12 @@ PASSED_SUITES=0
 FAILED_SUITES=0
 SKIPPED_SUITES=0
 
+log "DEBUG: SNOWFLAKE_AVAILABLE = $SNOWFLAKE_AVAILABLE"
+log "DEBUG: test_cli_basic.sh exists: $([ -f "${SCRIPT_DIR}/test_cli_basic.sh" ] && echo yes || echo no)"
+
 # Run CLI Test Suite
-if [ -f "${SCRIPT_DIR}/test_cli_suite.sh" ]; then
+if [ "$SNOWFLAKE_AVAILABLE" = "true" ] && [ -f "${SCRIPT_DIR}/test_cli_suite.sh" ]; then
+    log "DEBUG: Running full CLI test suite"
     ((TOTAL_SUITES++))
     if run_test_suite "CLI Test Suite" "${SCRIPT_DIR}/test_cli_suite.sh"; then
         ((PASSED_SUITES++))
@@ -189,10 +225,22 @@ if [ -f "${SCRIPT_DIR}/test_cli_suite.sh" ]; then
         ((FAILED_SUITES++))
         TEST_RESULTS+=("CLI Test Suite:FAILED")
     fi
+elif [ "$SNOWFLAKE_AVAILABLE" = "false" ] && [ -f "${SCRIPT_DIR}/test_cli_basic.sh" ]; then
+    log "DEBUG: Running basic CLI test suite (offline mode)"
+    ((TOTAL_SUITES++))
+    if run_test_suite "Basic CLI Test Suite (Offline)" "${SCRIPT_DIR}/test_cli_basic.sh"; then
+        ((PASSED_SUITES++))
+        TEST_RESULTS+=("Basic CLI Test Suite:PASSED")
+    else
+        ((FAILED_SUITES++))
+        TEST_RESULTS+=("Basic CLI Test Suite:FAILED")
+    fi
+else
+    log "DEBUG: No test suite matched conditions"
 fi
 
-# Run Menu Test Suite
-if [ -f "${SCRIPT_DIR}/test_menu_suite.sh" ]; then
+# Run Menu Test Suite (only if Snowflake is available)
+if [ "$SNOWFLAKE_AVAILABLE" = true ] && [ -f "${SCRIPT_DIR}/test_menu_suite.sh" ]; then
     ((TOTAL_SUITES++))
     if run_test_suite "Menu Test Suite" "${SCRIPT_DIR}/test_menu_suite.sh"; then
         ((PASSED_SUITES++))
@@ -201,6 +249,10 @@ if [ -f "${SCRIPT_DIR}/test_menu_suite.sh" ]; then
         ((FAILED_SUITES++))
         TEST_RESULTS+=("Menu Test Suite:FAILED")
     fi
+elif [ "$SNOWFLAKE_AVAILABLE" = false ]; then
+    ((SKIPPED_SUITES++))
+    TEST_RESULTS+=("Menu Test Suite:SKIPPED")
+    log "\n${CYAN}▶ Skipping Menu Test Suite (requires Snowflake)${NC}"
 fi
 
 # Phase 5: Generate Reports
