@@ -1251,7 +1251,7 @@ menu_validate_data() {
         local response=$(get_input "Execution Mode" "Show real-time progress? (Y=foreground, N=background)" "Y")
         
         # Build command with or without month parameter
-        local cmd="python -m snowflake_etl validate --config \"$CONFIG_FILE\""
+        local cmd="python -m snowflake_etl --config \"$CONFIG_FILE\" validate"
         if [[ -n "$month" ]]; then
             cmd="$cmd --month \"$month\""
         fi
@@ -1345,11 +1345,11 @@ check_duplicates() {
             if [[ "${response^^}" == "Y" ]]; then
                 # Run in foreground with visible progress
                 with_lock start_foreground_job "check_duplicates_${table}" \
-                    python -m snowflake_etl check-duplicates --config "$CONFIG_FILE" --table "$table" --key-columns "$key_columns" --date-start "$date_start" --date-end "$date_end"
+                    python -m snowflake_etl --config "$CONFIG_FILE" check-duplicates --table "$table" --key-columns "$key_columns" --date-start "$date_start" --date-end "$date_end"
             else
                 # Run in background
                 with_lock start_background_job "check_duplicates_${table}" \
-                    python -m snowflake_etl check-duplicates --config "$CONFIG_FILE" --table "$table" --key-columns "$key_columns" --date-start "$date_start" --date-end "$date_end"
+                    python -m snowflake_etl --config "$CONFIG_FILE" check-duplicates --table "$table" --key-columns "$key_columns" --date-start "$date_start" --date-end "$date_end"
             fi
         else
             # Fall back to inline execution
@@ -1453,7 +1453,7 @@ compare_files() {
     
     if confirm_action "Compare files?"; then
         with_lock start_background_job "compare_files" \
-            python -m snowflake_etl compare --config "$CONFIG_FILE" $use_quick "$good_file" "$bad_file"
+            python -m snowflake_etl --config "$CONFIG_FILE" compare $use_quick --file1 "$good_file" --file2 "$bad_file"
     fi
 }
 
@@ -1595,7 +1595,7 @@ generate_full_table_report() {
     fi
     
     # Build command
-    local cmd="python -m snowflake_etl report --config \"$CONFIG_FILE\""
+    local cmd="python -m snowflake_etl --config \"$CONFIG_FILE\" report"
     
     # Add credentials file if available
     if [[ -f "snowflake_creds.json" ]]; then
@@ -1964,7 +1964,7 @@ parse_cli_args() {
                 shift
                 if [[ "${1:-}" == "--month" ]] && [[ -n "${2:-}" ]]; then
                     shift
-                    python -m snowflake_etl validate --config "$CONFIG_FILE" --month "$1"
+                    python -m snowflake_etl --config "$CONFIG_FILE" validate --month "$1"
                     exit $?
                 else
                     echo "Usage: $SCRIPT_NAME validate --month YYYY-MM"
