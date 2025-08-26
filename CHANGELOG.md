@@ -1,5 +1,27 @@
 # CHANGELOG.md
 
+## [v3.0.4] - 2025-08-26 - Test Suite and Final Fixes
+
+### New Features
+- **Comprehensive Test Suite**: Created complete testing infrastructure
+  - `test_cli_suite.sh`: Tests all 20+ CLI operations
+  - `test_menu_suite.sh`: Tests interactive menu navigation
+  - `run_all_tests.sh`: Master test orchestrator with reporting
+- **Test Data Generation**: Automatic creation of test TSV files
+- **Advanced Reporting**: HTML reports, text summaries, and archives
+- **Error Scenario Testing**: Includes edge cases and failure scenarios
+
+### Bug Fixes
+- **Fixed tuple unpacking error**: count_rows_fast() return value now properly unpacked
+  - Was causing "unsupported format string passed to tuple.__format__"
+  - Fixed in both _process_file() and analyze_files() methods
+
+### Improvements
+- **Test Coverage**: 20+ test scenarios covering all CLI functionality
+- **Detailed Logging**: Multi-level logging with color-coded output
+- **System Info Collection**: Captures environment details for debugging
+- **Archive Generation**: Creates shareable .tar.gz of all test results
+
 ## [v3.0.3] - 2025-08-26 - CLI and File Loading Fixes
 
 ### Bug Fixes
