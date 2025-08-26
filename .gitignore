@@ -50,4 +50,7 @@ Thumbs.db
 *.tmp
 *.bak
 temp/
-tmp/etl_venv/
+tmp/
+
+# Virtual environments
+etl_venv/
