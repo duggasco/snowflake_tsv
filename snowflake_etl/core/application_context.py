@@ -104,7 +104,7 @@ class ApplicationContext:
             # Create connection config from snowflake config
             conn_config = ConnectionConfig(**self.snowflake_config)
             # Use larger pool size to handle parallel operations (default was 5)
-            pool_size = self.config_data.get('connection_pool_size', 10)
+            pool_size = self._config.get('connection_pool_size', 10) if self._config else 10
             self._connection_manager = SnowflakeConnectionManager(config=conn_config, pool_size=pool_size)
             self.logger.info(f"Initialized Snowflake connection pool (size: {pool_size})")
             
