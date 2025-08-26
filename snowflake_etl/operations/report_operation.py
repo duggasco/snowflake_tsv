@@ -116,9 +116,16 @@ class ReportOperation(BaseOperation):
         self.logger.info(f"Analyzing {len(tables_to_analyze)} table(s)")
         
         # Analyze tables (parallel or sequential based on max_workers)
-        if max_workers > 1:
-            self._analyze_tables_parallel(tables_to_analyze, max_workers)
+        # Limit workers to avoid exhausting connection pool
+        # Each worker needs a connection, so don't exceed pool size minus some buffer
+        pool_size = getattr(self.connection_manager, 'pool_size', 10)
+        safe_max_workers = min(max_workers, max(1, pool_size - 2))  # Leave 2 connections as buffer
+        
+        if safe_max_workers > 1:
+            self.logger.info(f"Using {safe_max_workers} parallel workers (pool size: {pool_size})")
+            self._analyze_tables_parallel(tables_to_analyze, safe_max_workers)
         else:
+            self.logger.info("Using sequential processing")
             self._analyze_tables_sequential(tables_to_analyze)
         
         # Generate summary
@@ -289,9 +296,10 @@ class ReportOperation(BaseOperation):
                     report.validation_issues.append('Table is empty')
                     return report
                 
-                # Run validation using our validator
+                # Run validation using our validator with the existing cursor
                 if report.date_column:
-                    validation_result = self.validator.validate_table(
+                    validation_result = self.validator.validate_table_with_cursor(
+                        cursor=cursor,  # Pass the existing cursor
                         table_name=table_name,
                         date_column=report.date_column,
                         duplicate_key_columns=file_config.get('duplicate_key_columns')

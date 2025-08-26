@@ -63,6 +63,98 @@ class SnowflakeDataValidator:
         self.progress_tracker = progress_tracker
         self.logger = logger or logging.getLogger(__name__)
     
+    def validate_table_with_cursor(self,
+                                   cursor,
+                                   table_name: str,
+                                   date_column: str,
+                                   start_date: Optional[str] = None,
+                                   end_date: Optional[str] = None,
+                                   duplicate_key_columns: Optional[List[str]] = None) -> ValidationResult:
+        """
+        Validate table using provided cursor (avoids connection pool issues).
+        
+        Args:
+            cursor: Existing database cursor to use
+            table_name: Table to validate
+            date_column: Date column for completeness check
+            start_date: Start date for validation (YYYY-MM-DD format)
+            end_date: End date for validation (YYYY-MM-DD format)
+            duplicate_key_columns: Columns for duplicate detection
+            
+        Returns:
+            ValidationResult with comprehensive validation details
+        """
+        start_time = datetime.now()
+        
+        if start_date and end_date:
+            self.logger.info(
+                f"Validating {table_name} from {start_date} to {end_date}"
+            )
+        else:
+            self.logger.info(f"Validating ALL data in {table_name}")
+        
+        # Update progress phase
+        if self.progress_tracker:
+            self.progress_tracker.update_phase(ProgressPhase.VALIDATION)
+        
+        result = ValidationResult(
+            valid=True,
+            table_name=table_name,
+            date_range_start=start_date,
+            date_range_end=end_date,
+            missing_dates=[],
+            gaps=[],
+            anomalous_dates=[],
+            failure_reasons=[]
+        )
+        
+        try:
+            # 1. Check date completeness
+            completeness_data = self._check_date_completeness(
+                cursor, table_name, date_column, start_date, end_date
+            )
+            self._update_result_from_completeness(result, completeness_data)
+            
+            # 2. Detect anomalies
+            if result.total_rows > 0:
+                anomalies = self._detect_anomalies(
+                    cursor, table_name, date_column, start_date, end_date
+                )
+                self._update_result_from_anomalies(result, anomalies)
+            
+            # 3. Check for duplicates
+            if duplicate_key_columns and result.total_rows > 0:
+                duplicate_info = self._check_duplicates(
+                    cursor, table_name, duplicate_key_columns, start_date, end_date, date_column
+                )
+                result.duplicate_info = duplicate_info
+                
+                if duplicate_info['duplicate_keys'] > 0:
+                    result.failure_reasons.append(
+                        f"{duplicate_info['duplicate_keys']} duplicate keys found"
+                    )
+            
+            # Determine overall validity
+            result.valid = len(result.failure_reasons) == 0
+            
+        except Exception as e:
+            self.logger.error(f"Validation error for {table_name}: {e}")
+            result.valid = False
+            result.failure_reasons.append(f"Validation error: {str(e)}")
+        
+        finally:
+            result.execution_time = (datetime.now() - start_time).total_seconds()
+            
+            # Log summary
+            if result.valid:
+                self.logger.info(f"Validation PASSED for {table_name}")
+            else:
+                self.logger.warning(
+                    f"Validation FAILED for {table_name}: {', '.join(result.failure_reasons)}"
+                )
+        
+        return result
+    
     def validate_table(self,
                       table_name: str,
                       date_column: str,
@@ -110,33 +202,11 @@ class SnowflakeDataValidator:
             with self.connection_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # 1. Check date completeness
-                completeness_data = self._check_date_completeness(
-                    cursor, table_name, date_column, start_date, end_date
+                # Delegate to the cursor-based method
+                return self.validate_table_with_cursor(
+                    cursor, table_name, date_column, 
+                    start_date, end_date, duplicate_key_columns
                 )
-                self._update_result_from_completeness(result, completeness_data)
-                
-                # 2. Detect anomalies
-                if result.total_rows > 0:
-                    anomalies = self._detect_anomalies(
-                        cursor, table_name, date_column, start_date, end_date
-                    )
-                    self._update_result_from_anomalies(result, anomalies)
-                
-                # 3. Check for duplicates
-                if duplicate_key_columns and result.total_rows > 0:
-                    duplicate_info = self._check_duplicates(
-                        cursor, table_name, duplicate_key_columns, start_date, end_date, date_column
-                    )
-                    result.duplicate_info = duplicate_info
-                    
-                    if duplicate_info['duplicate_keys'] > 0:
-                        result.failure_reasons.append(
-                            f"{duplicate_info['duplicate_keys']} duplicate keys found"
-                        )
-                
-                # Determine overall validity
-                result.valid = len(result.failure_reasons) == 0
                 
         except Exception as e:
             self.logger.error(f"Validation failed for {table_name}: {e}")
