@@ -315,29 +315,10 @@ def main(args=None):
             logger.info("Starting delete operation")
             operation = DeleteOperation(context)
             
-            # Handle month vs date range
-            if args.month:
-                # Convert month to date range
-                from datetime import datetime
-                month_date = datetime.strptime(args.month, '%Y-%m')
-                start_date = month_date.strftime('%Y-%m-01')
-                # Calculate last day of month
-                if month_date.month == 12:
-                    end_date = f"{month_date.year}-12-31"
-                else:
-                    next_month = month_date.replace(month=month_date.month + 1)
-                    from datetime import timedelta
-                    last_day = next_month - timedelta(days=1)
-                    end_date = last_day.strftime('%Y-%m-%d')
-            else:
-                start_date = args.start_date
-                end_date = args.end_date
-            
-            result = operation.delete_data(
-                table_name=args.table,
-                date_column=args.date_column,
-                start_date=start_date,
-                end_date=end_date,
+            # Use delete_from_config which handles month conversion and gets date_column from config
+            result = operation.delete_from_config(
+                month=args.month,
+                tables=[args.table] if args.table else None,
                 dry_run=args.dry_run,
                 skip_confirmation=args.yes
             )
