@@ -1,0 +1,41 @@
+================================================================================
+SNOWFLAKE TABLES COMPREHENSIVE REPORT
+Generated: 2025-08-26T16:21:00.753252
+Execution Time: 36.4 seconds
+================================================================================
+
+SUMMARY STATISTICS
+----------------------------------------
+Total Tables: 2
+Total Rows: 0
+
+Table Status:
+  ERROR: 2
+
+Validation Status:
+  FAILED: 2
+
+CRITICAL ISSUES
+----------------------------------------
+- TEST_CUSTOM_FACTLENDINGBENCHMARK:
+  - 250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting
+- TEST_CUSTOM_FACTLENDINGBENCHMARK:
+  - 250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting
+
+================================================================================
+DETAILED TABLE REPORTS
+================================================================================
+
+[factLendingBenchmark_config.json] TEST_CUSTOM_FACTLENDINGBENCHMARK
+------------------------------------------------------------
+Status: ERROR
+Error: 250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting
+
+[generated_config.json] TEST_CUSTOM_FACTLENDINGBENCHMARK
+------------------------------------------------------------
+Status: ERROR
+Error: 250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting
+
+================================================================================
+Report Complete
+================================================================================

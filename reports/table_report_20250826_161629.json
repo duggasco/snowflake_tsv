@@ -1,0 +1,84 @@
+{
+  "timestamp": "2025-08-26T16:17:05.799117",
+  "total_tables": 2,
+  "execution_time": 36.354528188705444,
+  "reports": [
+    {
+      "config_file": "factLendingBenchmark_config.json",
+      "table_name": "TEST_CUSTOM_FACTLENDINGBENCHMARK",
+      "status": "ERROR",
+      "row_count": 0,
+      "column_count": 0,
+      "columns": [],
+      "date_column": "RECORDDATEID",
+      "date_range_start": null,
+      "date_range_end": null,
+      "unique_dates": 0,
+      "expected_dates": 0,
+      "missing_dates": [],
+      "gaps": 0,
+      "anomalous_dates": 0,
+      "anomaly_severity": null,
+      "duplicate_keys": 0,
+      "duplicate_rows": 0,
+      "duplicate_severity": null,
+      "avg_rows_per_day": 0,
+      "validation_status": "FAILED",
+      "validation_issues": [],
+      "error_message": "250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting",
+      "execution_time": 18.24388098716736
+    },
+    {
+      "config_file": "generated_config.json",
+      "table_name": "TEST_CUSTOM_FACTLENDINGBENCHMARK",
+      "status": "ERROR",
+      "row_count": 0,
+      "column_count": 0,
+      "columns": [],
+      "date_column": "recordDate",
+      "date_range_start": null,
+      "date_range_end": null,
+      "unique_dates": 0,
+      "expected_dates": 0,
+      "missing_dates": [],
+      "gaps": 0,
+      "anomalous_dates": 0,
+      "anomaly_severity": null,
+      "duplicate_keys": 0,
+      "duplicate_rows": 0,
+      "duplicate_severity": null,
+      "avg_rows_per_day": 0,
+      "validation_status": "FAILED",
+      "validation_issues": [],
+      "error_message": "250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting",
+      "execution_time": 18.11001706123352
+    }
+  ],
+  "summary": {
+    "total_tables": 2,
+    "total_rows": 0,
+    "status_counts": {
+      "ERROR": 2
+    },
+    "validation_counts": {
+      "FAILED": 2
+    },
+    "tables_with_issues": [],
+    "critical_issues": [
+      {
+        "table": "TEST_CUSTOM_FACTLENDINGBENCHMARK",
+        "reason": [
+          "250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting"
+        ]
+      },
+      {
+        "table": "TEST_CUSTOM_FACTLENDINGBENCHMARK",
+        "reason": [
+          "250001: Could not connect to Snowflake backend after 2 attempt(s).Aborting"
+        ]
+      }
+    ],
+    "largest_tables": [],
+    "empty_tables": []
+  }
+}

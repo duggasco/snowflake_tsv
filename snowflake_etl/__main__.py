@@ -349,11 +349,23 @@ def main(args=None):
             # If table specified, validate single table; otherwise validate all
             tables = [args.table] if args.table else None
             
+            # Always generate output files for comprehensive validation details
+            output_file = args.output
+            if not output_file:
+                # Auto-generate output filename with timestamp
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                table_suffix = f"_{args.table}" if args.table else "_all"
+                month_suffix = f"_{args.month.replace('-', '')}" if args.month else ""
+                output_file = f"reports/validation{table_suffix}{month_suffix}_{timestamp}.json"
+                Path("reports").mkdir(exist_ok=True)
+                logger.info(f"Auto-generating detailed validation files: {output_file} and _issues.txt")
+            
             # Use the validate_tables method which handles both single and multiple tables
             result = operation.validate_tables(
                 tables=tables,
                 month=args.month,
-                output_file=args.output
+                output_file=output_file
             )
             
             # Return non-zero exit code if validation failed
@@ -363,12 +375,28 @@ def main(args=None):
         elif args.operation == 'report':
             logger.info("Starting report operation")
             operation = ReportOperation(context)
+            
+            # Always generate output files for comprehensive details
+            output_file = args.output
+            if not output_file:
+                # Auto-generate output filename with timestamp
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_file = f"reports/table_report_{timestamp}"
+                Path("reports").mkdir(exist_ok=True)
+                logger.info(f"Auto-generating detailed report files: {output_file}.[txt/json]")
+            
+            # Always use 'both' format for maximum detail when no output specified
+            output_format = args.output_format
+            if not args.output:
+                output_format = 'both'  # Ensure we get both text and JSON
+            
             result = operation.generate_full_report(
                 config_filter=args.config_filter,
                 table_filter=args.table_filter,
                 max_workers=args.max_workers,
-                output_format=args.output_format,
-                output_file=args.output
+                output_format=output_format,
+                output_file=output_file
             )
             
         elif args.operation == 'check-duplicates':

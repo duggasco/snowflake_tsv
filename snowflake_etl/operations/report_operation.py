@@ -503,8 +503,12 @@ class ReportOperation(BaseOperation):
                 self.logger.info(line)
             
             # Save to file if specified
-            if output_file and output_format == 'text':
-                output_path = Path(output_file)
+            if output_file:
+                if output_format == 'both':
+                    # Save with .txt extension
+                    output_path = Path(output_file).with_suffix('.txt')
+                else:
+                    output_path = Path(output_file)
                 output_path.write_text(text_report)
                 self.logger.info(f"Text report saved to {output_path}")
         
