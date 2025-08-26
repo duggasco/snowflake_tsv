@@ -165,7 +165,8 @@ if [ -z "$MONTH" ] && [ -z "$MONTHS" ]; then
 fi
 
 # Build the command
-cmd="python3 -m snowflake_etl delete --config $CONFIG"
+# Note: --config is a global flag and must come BEFORE the subcommand
+cmd="python3 -m snowflake_etl --config $CONFIG delete"
 
 # Add table specifications
 if [ -n "$TABLE" ]; then

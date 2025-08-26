@@ -127,8 +127,8 @@ process_direct_files() {
     echo -e "${CYAN}========================================${NC}"
     
     # Build the Python command for direct files
-    local cmd="python3 -m snowflake_etl load"
-    cmd="${cmd} --config ${CONFIG_FILE}"
+    # Note: --config is a global flag and must come BEFORE the subcommand
+    local cmd="python3 -m snowflake_etl --config ${CONFIG_FILE} load"
     
     # Convert comma-separated files to array
     IFS=',' read -ra file_array <<< "$files"
@@ -266,8 +266,8 @@ process_month() {
     fi
     
     # Build the Python command
-    local cmd="python3 -m snowflake_etl load"
-    cmd="${cmd} --config ${CONFIG_FILE}"
+    # Note: --config is a global flag and must come BEFORE the subcommand
+    local cmd="python3 -m snowflake_etl --config ${CONFIG_FILE} load"
     
     # For validate-only mode, we don't need base-path
     if [ -z "${VALIDATE_ONLY}" ]; then
