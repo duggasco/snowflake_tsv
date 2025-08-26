@@ -6,7 +6,7 @@ Uses ApplicationContext for dependency injection.
 import json
 import logging
 import time
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Union
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
@@ -33,8 +33,8 @@ class TableReport:
     unique_dates: int = 0
     expected_dates: int = 0
     missing_dates: List[str] = field(default_factory=list)
-    gaps: int = 0
-    anomalous_dates: int = 0
+    gaps: Union[int, List[Dict]] = 0  # Can be count or list of gap details
+    anomalous_dates: Union[int, List[Dict]] = 0  # Can be count or list of anomaly details
     anomaly_severity: Optional[str] = None
     duplicate_keys: int = 0
     duplicate_rows: int = 0
@@ -380,18 +380,18 @@ class ReportOperation(BaseOperation):
         
         # Missing dates and gaps
         if validation_result.missing_dates:
-            report.missing_dates = validation_result.missing_dates[:10]  # Limit to 10
+            report.missing_dates = validation_result.missing_dates  # Store ALL missing dates
             report.validation_issues.append(
                 f"{len(validation_result.missing_dates)} missing dates"
             )
         
         if validation_result.gaps:
-            report.gaps = len(validation_result.gaps)
-            report.validation_issues.append(f"{report.gaps} gaps in date sequence")
+            report.gaps = validation_result.gaps  # Store actual gap details, not just count
+            report.validation_issues.append(f"{len(validation_result.gaps)} gaps in date sequence")
         
         # Anomalies
         if validation_result.anomalous_dates:
-            report.anomalous_dates = len(validation_result.anomalous_dates)
+            report.anomalous_dates = validation_result.anomalous_dates  # Store actual anomaly details
             # Determine severity
             severities = [a['severity'] for a in validation_result.anomalous_dates]
             if 'SEVERELY_LOW' in severities:
@@ -401,7 +401,7 @@ class ReportOperation(BaseOperation):
             else:
                 report.anomaly_severity = 'MEDIUM'
             report.validation_issues.append(
-                f"{report.anomalous_dates} anomalous dates ({report.anomaly_severity})"
+                f"{len(validation_result.anomalous_dates)} anomalous dates ({report.anomaly_severity})"
             )
         
         # Duplicates
@@ -625,16 +625,59 @@ class ReportOperation(BaseOperation):
                         lines.append(f"  ... and {count - 10} more")
                 
                 if report.get('anomalous_dates'):
-                    count = report['anomalous_dates']
-                    lines.append(f"Anomalous Dates: {count}")
-                    lines.append("  [Run validation with --output for detailed list]")
+                    anomalies = report['anomalous_dates']
+                    # Check if it's a list or just a count
+                    if isinstance(anomalies, list):
+                        lines.append(f"Anomalous Dates: {len(anomalies)}")
+                        # Group by severity if available
+                        by_severity = {}
+                        for anomaly in anomalies[:20]:  # Show first 20
+                            if isinstance(anomaly, dict):
+                                severity = anomaly.get('severity', 'UNKNOWN')
+                                if severity not in by_severity:
+                                    by_severity[severity] = []
+                                by_severity[severity].append(anomaly)
+                            else:
+                                # Simple format
+                                lines.append(f"  - {anomaly}")
+                        
+                        if by_severity:
+                            for severity in ['SEVERELY_LOW', 'OUTLIER_LOW', 'LOW', 'OUTLIER_HIGH']:
+                                if severity in by_severity:
+                                    lines.append(f"  {severity}:")
+                                    for anomaly in by_severity[severity][:5]:
+                                        lines.append(
+                                            f"    - {anomaly.get('date', 'Unknown')}: {anomaly.get('row_count', 0):,} rows "
+                                            f"({anomaly.get('pct_of_avg', 0):.1f}% of average)"
+                                        )
+                        
+                        if len(anomalies) > 20:
+                            lines.append(f"  ... and {len(anomalies) - 20} more anomalous dates")
+                    else:
+                        # It's just a count
+                        lines.append(f"Anomalous Dates: {anomalies}")
                 
                 if report.get('gaps'):
-                    lines.append(f"Date Gaps: {report['gaps']}")
+                    gaps = report['gaps']
+                    if isinstance(gaps, list):
+                        lines.append(f"Date Gaps: {len(gaps)}")
+                        for gap in gaps[:5]:  # Show first 5 gaps
+                            if isinstance(gap, dict):
+                                lines.append(
+                                    f"  - {gap.get('gap_start', 'Unknown')} to {gap.get('gap_end', 'Unknown')} "
+                                    f"({gap.get('days_missing', 0)} days)"
+                                )
+                            else:
+                                lines.append(f"  - {gap}")
+                        if len(gaps) > 5:
+                            lines.append(f"  ... and {len(gaps) - 5} more gaps")
+                    else:
+                        lines.append(f"Date Gaps: {gaps}")
                 
                 if report.get('duplicate_keys'):
                     lines.append(f"Duplicate Keys: {report['duplicate_keys']}")
-                    lines.append(f"  Excess Rows: {report['duplicate_rows']}")
+                    if report.get('duplicate_rows'):
+                        lines.append(f"  Excess Rows: {report['duplicate_rows']}")
                 
                 if report['validation_issues']:
                     lines.append("Validation Issues:")
