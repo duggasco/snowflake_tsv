@@ -242,25 +242,76 @@ class ValidateOperation(BaseOperation):
         if hasattr(validation_result, 'avg_rows_per_day') and validation_result.avg_rows_per_day:
             self.logger.info(f"  Average Rows/Day: {validation_result.avg_rows_per_day:,.0f}")
         
-        # Display anomalies if any
-        if validation_result.anomalous_dates:
-            self.logger.info(f"  Anomalous Dates: {len(validation_result.anomalous_dates)}")
-            # Show first few anomalies
-            for anomaly in validation_result.anomalous_dates[:5]:
-                self.logger.info(
-                    f"    - {anomaly['date']}: {anomaly['row_count']:,} rows "
-                    f"({anomaly['severity']}, {anomaly['pct_of_avg']:.1f}% of average)"
-                )
-            if len(validation_result.anomalous_dates) > 5:
-                self.logger.info(f"    ... and {len(validation_result.anomalous_dates) - 5} more")
+        # Display missing dates if any
+        if hasattr(validation_result, 'missing_dates') and validation_result.missing_dates:
+            self.logger.info(f"  [ISSUE] Missing Dates: {len(validation_result.missing_dates)} dates with no data")
+            # Show up to 10 missing dates
+            dates_to_show = validation_result.missing_dates[:10]
+            if len(dates_to_show) <= 5:
+                # Show all if 5 or fewer
+                for date in dates_to_show:
+                    self.logger.info(f"    - {date}")
+            else:
+                # Show in a more compact format for many dates
+                date_list = ', '.join(dates_to_show)
+                self.logger.info(f"    Missing: {date_list}")
+            
+            if len(validation_result.missing_dates) > 10:
+                self.logger.info(f"    ... and {len(validation_result.missing_dates) - 10} more missing dates")
+                # Show date ranges if there are patterns
+                self.logger.info(f"    [TIP] Check for weekend/holiday patterns or data load issues")
         
-        # Display gaps if any
+        # Display anomalies if any - with more detail
+        if validation_result.anomalous_dates:
+            self.logger.info(f"  [ISSUE] Anomalous Dates: {len(validation_result.anomalous_dates)} dates with unusual row counts")
+            
+            # Group by severity
+            by_severity = {}
+            for anomaly in validation_result.anomalous_dates:
+                severity = anomaly.get('severity', 'UNKNOWN')
+                if severity not in by_severity:
+                    by_severity[severity] = []
+                by_severity[severity].append(anomaly)
+            
+            # Show by severity level
+            for severity in ['SEVERELY_LOW', 'OUTLIER_LOW', 'LOW', 'OUTLIER_HIGH']:
+                if severity in by_severity:
+                    anomalies = by_severity[severity]
+                    self.logger.info(f"    {severity}: {len(anomalies)} dates")
+                    # Show first 3 of each severity
+                    for anomaly in anomalies[:3]:
+                        avg_rows = anomaly.get('avg_count', 0)
+                        expected_range = f"(expected ~{avg_rows:,.0f})" if avg_rows > 0 else ""
+                        self.logger.info(
+                            f"      - {anomaly['date']}: {anomaly['row_count']:,} rows "
+                            f"({anomaly['pct_of_avg']:.1f}% of average) {expected_range}"
+                        )
+                    if len(anomalies) > 3:
+                        self.logger.info(f"      ... and {len(anomalies) - 3} more {severity} dates")
+        
+        # Display gaps if any - with more context
         if validation_result.gaps:
-            self.logger.info(f"  Date Gaps: {len(validation_result.gaps)}")
-            for gap in validation_result.gaps[:3]:
-                self.logger.info(f"    - {gap['gap_start']} to {gap['gap_end']} ({gap['days_missing']} days)")
-            if len(validation_result.gaps) > 3:
-                self.logger.info(f"    ... and {len(validation_result.gaps) - 3} more gaps")
+            self.logger.info(f"  [ISSUE] Date Gaps: {len(validation_result.gaps)} continuous periods with missing data")
+            
+            # Calculate total missing days
+            total_missing_days = sum(gap.get('days_missing', 0) for gap in validation_result.gaps)
+            self.logger.info(f"    Total missing days: {total_missing_days}")
+            
+            # Show significant gaps (more than 2 days)
+            significant_gaps = [g for g in validation_result.gaps if g.get('days_missing', 0) > 2]
+            if significant_gaps:
+                self.logger.info(f"    Significant gaps (>2 days):")
+                for gap in significant_gaps[:5]:
+                    self.logger.info(
+                        f"      - {gap['gap_start']} to {gap['gap_end']} "
+                        f"({gap['days_missing']} days missing)"
+                    )
+                if len(significant_gaps) > 5:
+                    self.logger.info(f"      ... and {len(significant_gaps) - 5} more significant gaps")
+            
+            # Show pattern analysis hint
+            if len(validation_result.gaps) > 10:
+                self.logger.info(f"    [TIP] Many gaps detected - check for systematic data collection issues")
         
         # Display duplicate info if available
         if hasattr(validation_result, 'duplicate_info') and validation_result.duplicate_info:
@@ -328,6 +379,62 @@ class ValidateOperation(BaseOperation):
                 json.dump(results, f, indent=2, default=str)
             
             self.logger.info(f"Validation results saved to {output_path}")
+            
+            # If there are issues, also create a detailed issues file
+            if results.get('tables_invalid', 0) > 0:
+                issues_file = output_path.with_stem(output_path.stem + '_issues')
+                issues_file = issues_file.with_suffix('.txt')
+                
+                with open(issues_file, 'w') as f:
+                    f.write("VALIDATION ISSUES DETAIL REPORT\n")
+                    f.write("=" * 80 + "\n")
+                    f.write(f"Generated: {results['timestamp']}\n")
+                    f.write(f"Invalid Tables: {results['tables_invalid']}\n")
+                    f.write("=" * 80 + "\n\n")
+                    
+                    for val_result in results['validation_results']:
+                        if not val_result.get('valid', True):
+                            f.write(f"\nTABLE: {val_result.get('table_name', 'Unknown')}\n")
+                            f.write("-" * 60 + "\n")
+                            
+                            # Missing dates - list all
+                            if val_result.get('missing_dates'):
+                                f.write(f"\nMissing Dates ({len(val_result['missing_dates'])} total):\n")
+                                for date in val_result['missing_dates']:
+                                    f.write(f"  {date}\n")
+                            
+                            # Anomalous dates - list all with details  
+                            if val_result.get('anomalous_dates'):
+                                f.write(f"\nAnomalous Dates ({len(val_result['anomalous_dates'])} total):\n")
+                                for anomaly in val_result['anomalous_dates']:
+                                    f.write(f"  {anomaly['date']}: {anomaly['row_count']:,} rows ")
+                                    f.write(f"({anomaly['severity']}, {anomaly['pct_of_avg']:.1f}% of average)\n")
+                            
+                            # Gaps - list all
+                            if val_result.get('gaps'):
+                                f.write(f"\nDate Gaps ({len(val_result['gaps'])} total):\n")
+                                for gap in val_result['gaps']:
+                                    f.write(f"  {gap['gap_start']} to {gap['gap_end']} ")
+                                    f.write(f"({gap['days_missing']} days missing)\n")
+                            
+                            # Duplicate info
+                            if val_result.get('duplicate_info'):
+                                dup_info = val_result['duplicate_info']
+                                if dup_info.get('duplicate_keys', 0) > 0:
+                                    f.write(f"\nDuplicates:\n")
+                                    f.write(f"  Duplicate Keys: {dup_info['duplicate_keys']}\n")
+                                    f.write(f"  Excess Rows: {dup_info['excess_rows']}\n")
+                                    if dup_info.get('sample_keys'):
+                                        f.write(f"  Sample Keys:\n")
+                                        for sample in dup_info['sample_keys']:
+                                            key_str = ', '.join([f"{k}={v}" for k, v in sample.items() 
+                                                               if k != 'duplicate_count'])
+                                            f.write(f"    - {key_str} ")
+                                            f.write(f"(appears {sample.get('duplicate_count', 2)} times)\n")
+                            
+                            f.write("\n")
+                
+                self.logger.info(f"Detailed issues report saved to {issues_file}")
             
         except Exception as e:
             self.logger.error(f"Failed to save results: {e}")

@@ -610,8 +610,30 @@ class ReportOperation(BaseOperation):
                 
                 lines.append(f"Validation: {report['validation_status']}")
                 
+                # Show detailed validation information
+                if report.get('missing_dates'):
+                    count = len(report['missing_dates'])
+                    lines.append(f"Missing Dates: {count}")
+                    # Show first 10 missing dates
+                    for date in report['missing_dates'][:10]:
+                        lines.append(f"  - {date}")
+                    if count > 10:
+                        lines.append(f"  ... and {count - 10} more")
+                
+                if report.get('anomalous_dates'):
+                    count = report['anomalous_dates']
+                    lines.append(f"Anomalous Dates: {count}")
+                    lines.append("  [Run validation with --output for detailed list]")
+                
+                if report.get('gaps'):
+                    lines.append(f"Date Gaps: {report['gaps']}")
+                
+                if report.get('duplicate_keys'):
+                    lines.append(f"Duplicate Keys: {report['duplicate_keys']}")
+                    lines.append(f"  Excess Rows: {report['duplicate_rows']}")
+                
                 if report['validation_issues']:
-                    lines.append("Issues:")
+                    lines.append("Validation Issues:")
                     for issue in report['validation_issues']:
                         lines.append(f"  - {issue}")
             
