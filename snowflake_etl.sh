@@ -517,15 +517,39 @@ start_background_job() {
         echo -e "${YELLOW}Progress will be shown below:${NC}"
         echo "----------------------------------------"
         
-        # Use tee to show output and save to log
-        if "$@" 2>&1 | tee "$log_file"; then
+        # Create a temporary file for capturing the exit status
+        local exit_status_file="/tmp/job_exit_status_$$"
+        
+        # Run command with tee, capturing both output and exit status
+        # Use unbuffer or stdbuf if available to prevent buffering issues
+        if command -v stdbuf >/dev/null 2>&1; then
+            # Use stdbuf to disable buffering for better real-time output
+            { stdbuf -o0 -e0 "$@" 2>&1; echo $? > "$exit_status_file"; } | tee "$log_file"
+        else
+            # Fallback to regular execution
+            { "$@" 2>&1; echo $? > "$exit_status_file"; } | tee "$log_file"
+        fi
+        
+        # Read the actual exit status
+        local exit_code=$(cat "$exit_status_file" 2>/dev/null || echo 1)
+        rm -f "$exit_status_file"
+        
+        if [[ "$exit_code" -eq 0 ]]; then
             update_job_file "$job_file" "STATUS" "COMPLETED"
             echo -e "${GREEN}SUCCESS Job completed successfully${NC}"
         else
             update_job_file "$job_file" "STATUS" "FAILED"
-            echo -e "${RED}FAILED Job failed${NC}"
+            echo -e "${RED}FAILED Job failed with exit code: $exit_code${NC}"
         fi
         update_job_file "$job_file" "END_TIME" "$(date +"%Y-%m-%d %H:%M:%S")"
+        
+        # Verify log file was written
+        if [[ -s "$log_file" ]]; then
+            local log_size=$(wc -c < "$log_file")
+            echo -e "${BLUE}Log file saved: $log_file (${log_size} bytes)${NC}"
+        else
+            echo -e "${YELLOW}Warning: Log file is empty or missing: $log_file${NC}"
+        fi
     else
         # Original background behavior
         (
