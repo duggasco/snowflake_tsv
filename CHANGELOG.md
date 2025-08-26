@@ -1,5 +1,25 @@
 # CHANGELOG.md
 
+## [v3.0.2] - 2025-08-26 - Report Display Fixes
+
+### Bug Fixes
+- **Fixed truncated report displays**: Report was showing "... and X more" instead of full lists
+  - Now displays all missing dates (up to 100 as limited by validator)
+  - Shows all anomalous dates with complete details
+  - Lists all date gaps without truncation
+- **Fixed gap range display**: Was showing "Unknown to Unknown (0 days)"
+  - Added null checks to skip invalid gaps
+  - Corrected field name mapping (start_date/end_date vs gap_start/gap_end)
+- **Fixed percentage calculations**: Was showing "0.0% of average" for all anomalies
+  - Corrected field name (percent_of_average vs pct_of_avg)
+  - Added null handling and division by zero protection
+  - Now correctly shows percentages like "198.6% of average"
+
+### Improvements
+- Report now provides complete actionable data for investigating issues
+- No information is hidden behind "... and more" truncation
+- All field names properly aligned between validator and report display
+
 ## [v3.0.1] - 2025-08-26 - Critical Fixes & Enhanced Reporting
 
 ### Bug Fixes

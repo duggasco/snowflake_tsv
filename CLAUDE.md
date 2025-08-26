@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a high-performance Snowflake ETL pipeline for processing large TSV files (up to 50GB) with built-in data quality checks, progress tracking, and parallel processing capabilities. The system emphasizes streaming processing for memory efficiency and uses Snowflake's native bulk loading features.
 
-**Current Version**: 3.0.1 (2025-08-26) - Critical fixes and enhanced reporting
+**Current Version**: 3.0.2 (2025-08-26) - Report display fixes and complete data visibility
 
 ## Key Components
 
@@ -100,7 +100,15 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
   - Shows 2 progress bars when skipping QC (Files, Compression only)
   - Automatically adjusts spacing based on processing mode
 
-## Recent Improvements (v3.0.1)
+## Recent Improvements (v3.0.2)
+
+### Report Display Enhancements
+- **Complete Data Visibility**: Reports now show ALL problematic dates, gaps, and anomalies (up to 100 each)
+- **Accurate Percentages**: Fixed calculation and display of anomaly percentages (e.g., "198.6% of average")
+- **Proper Gap Ranges**: Date gaps now show actual start/end dates instead of "Unknown to Unknown"
+- **No Hidden Information**: Removed all "... and X more" truncations for complete transparency
+
+## Previous Improvements (v3.0.1)
 
 ### Enhanced Validation Reporting
 - **Detailed Date Information**: Validation now shows actual problematic dates, not just counts

@@ -1,8 +1,29 @@
 # BUGS.md - Issue Tracking and Resolution
 *Last Updated: 2025-08-26*
-*Current Version: 3.0.1*
+*Current Version: 3.0.2*
 
 ## ✅ Recently Fixed Issues (2025-08-26)
+
+### Report Display Issues (v3.0.2) ✅
+1. **Truncated Date Lists** ✅
+   - **Issue**: Report showing "... and X more" instead of full lists
+   - **Severity**: MEDIUM
+   - **Resolution**: Removed artificial limits, now shows all dates/gaps/anomalies
+   - **Commit**: Fixed in v3.0.2
+
+2. **Unknown Gap Ranges** ✅
+   - **Issue**: Gap ranges displaying as "Unknown to Unknown (0 days)"
+   - **Severity**: MEDIUM
+   - **Resolution**: Added null checks, fixed field name mapping
+   - **Commit**: Fixed in v3.0.2
+
+3. **Zero Percentage Calculations** ✅
+   - **Issue**: All anomalies showing "0.0% of average"
+   - **Severity**: MEDIUM
+   - **Resolution**: Fixed field names, added null handling and division protection
+   - **Commit**: Fixed in v3.0.2
+
+## ✅ Previously Fixed Issues (v3.0.1)
 
 ### 1. Unicode Encoding Errors ✅
 - **Issue**: Latin-1 terminals failed with Unicode characters (✓, ✗, ⚠, etc.)
@@ -51,7 +72,7 @@
   - Fixed data preservation to store full lists
   - Enhanced display to show all anomalous dates with details
   - Auto-generates comprehensive output files
-- **Commit**: Fixed in v3.0.1
+- **Commit**: Partially fixed in v3.0.1, fully fixed in v3.0.2
 
 ## 🔧 Known Issues (Active)
 
