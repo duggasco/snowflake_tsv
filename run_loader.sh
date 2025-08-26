@@ -208,10 +208,7 @@ process_direct_files() {
         cmd="${cmd} ${ANALYZE_ONLY}"
     fi
     
-    # Add --yes flag for automatic processing unless interactive mode is requested
-    if [ -z "${INTERACTIVE_MODE}" ]; then
-        cmd="${cmd} --yes"
-    fi
+    # Note: Load operation doesn't require --yes flag (no interactive prompts)
     
     # Create a log file name with timestamp
     local log_file="logs/run_direct_$(date +%Y%m%d_%H%M%S).log"
@@ -315,12 +312,8 @@ process_month() {
         cmd="${cmd} ${ANALYZE_ONLY}"
     fi
     
-    # Add --yes flag for automatic processing unless interactive mode is requested
-    # By default, always add --yes when running from script to prevent interactive prompts
-    # This is essential for both parallel and single-job modes
-    if [ -z "${INTERACTIVE_MODE}" ]; then
-        cmd="${cmd} --yes"
-    fi
+    # Note: Load operation doesn't require --yes flag (no interactive prompts)
+    # The --yes flag is only used for delete operations which have confirmations
     
     # Create a log file name with timestamp and month
     local log_file="logs/run_${month_dir}_$(date +%Y%m%d_%H%M%S).log"
