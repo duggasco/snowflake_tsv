@@ -1,5 +1,36 @@
 # CHANGELOG.md
 
+## [v3.0.5] - 2025-08-26 Session 3 - Critical Bug Fixes and Menu Enhancements
+
+### Critical Bug Fixes
+- **Fixed LoadOperation method name error**: 
+  - LoadOperation was calling non-existent `check_data_quality()` method
+  - Changed to use `validate_file()` - the actual method in DataQualityChecker
+  - Added `_extract_validation_errors()` helper to parse validation results
+- **Fixed test suite hanging issue**:
+  - Removed problematic timeout command from run_test_suite()
+  - Fixed arithmetic operations using $(()) instead of (())
+  - Fixed string comparisons for SNOWFLAKE_AVAILABLE variable
+- **Resolved remote test execution**:
+  - Test suite now properly detects virtual environment
+  - Uses correct Python package imports (snowflake.connector not snowflake_connector_python)
+  - Tests run in offline mode when Snowflake unavailable
+
+### New Features
+- **Quality Check Selection for All Load Operations**:
+  - Added `select_quality_check_method()` helper function
+  - All load operations now prompt for QC method choice
+  - Three options: File-based (thorough), Snowflake-based (fast), Skip (no validation)
+- **Simplified Menu System**:
+  - Removed redundant "Load with Validation" and "Load without QC" options
+  - Replaced with unified "Load Custom Month" with QC selection
+  - Consistent QC prompts across Quick Load and Normal Load menus
+
+### Improvements
+- **Better User Experience**: Clear descriptions for each QC method help users make informed choices
+- **Flexible Validation**: Users can choose validation method based on their needs and constraints
+- **Cleaner Code**: Eliminated duplicate functions by integrating QC selection into existing operations
+
 ## [v3.0.4] - 2025-08-26 - Test Suite and Final Fixes
 
 ### New Features

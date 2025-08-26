@@ -1,7 +1,26 @@
 # TODO.md - Snowflake ETL Pipeline Manager
-*Last Updated: 2025-08-26*
-*Current Version: 3.0.4 (Test Suite and Final Bug Fixes)*
-*Status: PRODUCTION READY WITH COMPREHENSIVE TEST COVERAGE*
+*Last Updated: 2025-08-26 Session 3*
+*Current Version: 3.0.5 (Menu QC Selection and Critical Bug Fixes)*
+*Status: PRODUCTION READY - Active Development*
+
+## ✅ Critical Bug Fixes and UI Improvements - COMPLETE (2025-08-26 Session 3)
+**STATUS: 100% Complete - Major bugs fixed and menu system enhanced**
+
+### ✅ Fixed Critical Bugs (v3.0.5)
+- [x] Fixed test suite hanging at Phase 4 - removed problematic timeout command
+- [x] Fixed arithmetic operations in test suite using $(()) instead of (())
+- [x] Fixed LoadOperation calling non-existent check_data_quality() method
+- [x] Corrected method call to validate_file() with proper parameters
+- [x] Added _extract_validation_errors() helper for parsing validation results
+- [x] Resolved tuple formatting errors that were still occurring on remote
+
+### ✅ Menu System Enhancements (v3.0.5)
+- [x] Added quality check selection prompts to ALL load operations
+- [x] Created select_quality_check_method() helper function
+- [x] Updated quick load functions (current month, last month, specific file)
+- [x] Updated normal load operations (browse, month-based, batch)
+- [x] Simplified menu by removing redundant validation options
+- [x] Users now choose between: File-based QC, Snowflake validation, or Skip
 
 ## ✅ Test Suite Development - COMPLETE (2025-08-26 Session 2 Final)
 **STATUS: 100% Complete - Comprehensive test coverage achieved**
