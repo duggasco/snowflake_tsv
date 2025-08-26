@@ -256,20 +256,23 @@ class LoadOperation(BaseOperation):
                     file_config.file_path
                 )
             
-            # Run quality checks
-            is_valid, stats = self.quality_checker.check_data_quality(
-                file_config.file_path,
-                file_config.date_column,
-                file_config.expected_columns,
-                expected_start_date=start_date,
-                expected_end_date=end_date,
-                max_workers=max_workers
+            # Run quality checks using validate_file method
+            validation_result = self.quality_checker.validate_file(
+                file_path=file_config.file_path,
+                expected_columns=file_config.expected_columns,
+                date_column=file_config.date_column,
+                expected_start=start_date,
+                expected_end=end_date,
+                delimiter='\t'
             )
+            
+            # Extract validation status
+            is_valid = validation_result.get('validation_passed', False)
             
             return {
                 'valid': is_valid,
-                'stats': stats,
-                'error': stats.get('error') if not is_valid else None
+                'stats': validation_result,
+                'error': self._extract_validation_errors(validation_result) if not is_valid else None
             }
             
         except Exception as e:
@@ -278,6 +281,42 @@ class LoadOperation(BaseOperation):
                 'valid': False,
                 'error': str(e)
             }
+    
+    def _extract_validation_errors(self, validation_result: Dict) -> str:
+        """
+        Extract error messages from validation result.
+        
+        Args:
+            validation_result: Result from validate_file
+            
+        Returns:
+            Error message string
+        """
+        errors = []
+        
+        # Check schema errors
+        schema = validation_result.get('schema', {})
+        if not schema.get('validation_passed', True):
+            if schema.get('missing_columns'):
+                errors.append(f"Missing columns: {', '.join(schema['missing_columns'])}")
+            if schema.get('extra_columns'):
+                errors.append(f"Extra columns: {', '.join(schema['extra_columns'])}")
+            if schema.get('error'):
+                errors.append(f"Schema error: {schema['error']}")
+        
+        # Check date errors
+        dates = validation_result.get('dates', {})
+        if not dates.get('validation_passed', True):
+            if dates.get('missing_dates'):
+                count = len(dates['missing_dates'])
+                errors.append(f"Missing {count} dates")
+            if dates.get('invalid_dates'):
+                count = len(dates['invalid_dates'])
+                errors.append(f"Found {count} invalid dates")
+            if dates.get('error'):
+                errors.append(f"Date error: {dates['error']}")
+        
+        return '; '.join(errors) if errors else 'Validation failed'
     
     def _validate_in_snowflake(self, file_config: FileConfig) -> ValidationResult:
         """
