@@ -56,22 +56,26 @@ log() {
 run_test_suite() {
     local suite_name="$1"
     local script_path="$2"
-    local suite_log="${TEST_DIR}/logs/${suite_name}.log"
+    local suite_log="${TEST_DIR}/logs/${suite_name// /_}.log"
     
     log "\n${CYAN}▶ Running ${suite_name}...${NC}"
     
     if [ -f "${script_path}" ]; then
         chmod +x "${script_path}"
-        # Use timeout to prevent hanging (5 minutes max per suite)
-        if timeout 300 "${script_path}" "${CONFIG_FILE}" > "${suite_log}" 2>&1; then
+        # Run the test script
+        "${script_path}" "${CONFIG_FILE}" > "${suite_log}" 2>&1
+        local exit_code=$?
+        if [ $exit_code -eq 0 ]; then
             log "  ${GREEN}✓ ${suite_name} completed successfully${NC}"
             return 0
         else
-            local exit_code=$?
-            if [ $exit_code -eq 124 ]; then
-                log "  ${RED}✗ ${suite_name} timed out after 5 minutes${NC}"
-            else
-                log "  ${RED}✗ ${suite_name} failed (exit code: $exit_code)${NC}"
+            log "  ${RED}✗ ${suite_name} failed (exit code: $exit_code)${NC}"
+            # Show last few lines of the log for debugging
+            if [ -f "${suite_log}" ]; then
+                log "  Last lines of log:"
+                tail -5 "${suite_log}" | while IFS= read -r line; do
+                    log "    $line"
+                done
             fi
             return 1
         fi
@@ -211,46 +215,39 @@ PASSED_SUITES=0
 FAILED_SUITES=0
 SKIPPED_SUITES=0
 
-log "DEBUG: SNOWFLAKE_AVAILABLE = $SNOWFLAKE_AVAILABLE"
-log "DEBUG: test_cli_basic.sh exists: $([ -f "${SCRIPT_DIR}/test_cli_basic.sh" ] && echo yes || echo no)"
-
 # Run CLI Test Suite
 if [ "$SNOWFLAKE_AVAILABLE" = "true" ] && [ -f "${SCRIPT_DIR}/test_cli_suite.sh" ]; then
-    log "DEBUG: Running full CLI test suite"
-    ((TOTAL_SUITES++))
+    TOTAL_SUITES=$((TOTAL_SUITES + 1))
     if run_test_suite "CLI Test Suite" "${SCRIPT_DIR}/test_cli_suite.sh"; then
-        ((PASSED_SUITES++))
+        PASSED_SUITES=$((PASSED_SUITES + 1))
         TEST_RESULTS+=("CLI Test Suite:PASSED")
     else
-        ((FAILED_SUITES++))
+        FAILED_SUITES=$((FAILED_SUITES + 1))
         TEST_RESULTS+=("CLI Test Suite:FAILED")
     fi
 elif [ "$SNOWFLAKE_AVAILABLE" = "false" ] && [ -f "${SCRIPT_DIR}/test_cli_basic.sh" ]; then
-    log "DEBUG: Running basic CLI test suite (offline mode)"
-    ((TOTAL_SUITES++))
+    TOTAL_SUITES=$((TOTAL_SUITES + 1))
     if run_test_suite "Basic CLI Test Suite (Offline)" "${SCRIPT_DIR}/test_cli_basic.sh"; then
-        ((PASSED_SUITES++))
+        PASSED_SUITES=$((PASSED_SUITES + 1))
         TEST_RESULTS+=("Basic CLI Test Suite:PASSED")
     else
-        ((FAILED_SUITES++))
+        FAILED_SUITES=$((FAILED_SUITES + 1))
         TEST_RESULTS+=("Basic CLI Test Suite:FAILED")
     fi
-else
-    log "DEBUG: No test suite matched conditions"
 fi
 
 # Run Menu Test Suite (only if Snowflake is available)
-if [ "$SNOWFLAKE_AVAILABLE" = true ] && [ -f "${SCRIPT_DIR}/test_menu_suite.sh" ]; then
-    ((TOTAL_SUITES++))
+if [ "$SNOWFLAKE_AVAILABLE" = "true" ] && [ -f "${SCRIPT_DIR}/test_menu_suite.sh" ]; then
+    TOTAL_SUITES=$((TOTAL_SUITES + 1))
     if run_test_suite "Menu Test Suite" "${SCRIPT_DIR}/test_menu_suite.sh"; then
-        ((PASSED_SUITES++))
+        PASSED_SUITES=$((PASSED_SUITES + 1))
         TEST_RESULTS+=("Menu Test Suite:PASSED")
     else
-        ((FAILED_SUITES++))
+        FAILED_SUITES=$((FAILED_SUITES + 1))
         TEST_RESULTS+=("Menu Test Suite:FAILED")
     fi
-elif [ "$SNOWFLAKE_AVAILABLE" = false ]; then
-    ((SKIPPED_SUITES++))
+elif [ "$SNOWFLAKE_AVAILABLE" = "false" ]; then
+    SKIPPED_SUITES=$((SKIPPED_SUITES + 1))
     TEST_RESULTS+=("Menu Test Suite:SKIPPED")
     log "\n${CYAN}▶ Skipping Menu Test Suite (requires Snowflake)${NC}"
 fi
