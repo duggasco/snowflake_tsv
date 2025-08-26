@@ -92,11 +92,14 @@ usage() {
 
  
 
-# Function to convert month format from MMYYYY to YYYY-MM
+# Function to convert month format to YYYY-MM
 convert_month_format() {
     local month_dir=$1
+    # Check if already in YYYY-MM format
+    if [[ $month_dir =~ ^([0-9]{4})-([0-9]{2})$ ]]; then
+        echo "$month_dir"
     # Extract MM and YYYY from MMYYYY format
-    if [[ $month_dir =~ ^([0-9]{2})([0-9]{4})$ ]]; then
+    elif [[ $month_dir =~ ^([0-9]{2})([0-9]{4})$ ]]; then
         echo "${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
     else
         echo ""
@@ -255,7 +258,7 @@ process_month() {
     local month_formatted=$(convert_month_format "$month_dir")
     
     if [ -z "$month_formatted" ]; then
-        echo -e "${RED}ERROR: Invalid month format: $month_dir (expected MMYYYY)${NC}"
+        echo -e "${RED}ERROR: Invalid month format: $month_dir (expected YYYY-MM or MMYYYY)${NC}"
         return 1
     fi
     
