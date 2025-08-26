@@ -140,7 +140,7 @@ class CheckTableOperation:
         Args:
             table_info: TableInfo object
         """
-        print(f"\n✓ Table found: {table_info.database}.{table_info.schema}.{table_info.table_name}")
+        print(f"\n[VALID] Table found: {table_info.database}.{table_info.schema}.{table_info.table_name}")
         print(f"  Total columns: {table_info.column_count}")
         
         # Display first 20 columns

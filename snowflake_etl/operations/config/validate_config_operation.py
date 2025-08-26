@@ -55,7 +55,7 @@ class ValidateConfigOperation:
             # Load and parse JSON
             with open(config_path, 'r') as f:
                 config = json.load(f)
-            print("✓ Valid JSON format")
+            print("[VALID] Valid JSON format")
             
             # Validate structure
             self._validate_structure(config)
@@ -95,14 +95,14 @@ class ValidateConfigOperation:
         if 'snowflake' not in config:
             self.errors.append("Missing 'snowflake' section")
         else:
-            print("✓ Has 'snowflake' section")
+            print("[VALID] Has 'snowflake' section")
         
         if 'files' not in config:
             self.warnings.append("Missing 'files' section - no files configured")
         elif not config['files']:
             self.warnings.append("'files' section is empty")
         else:
-            print(f"✓ Has {len(config['files'])} file configuration(s)")
+            print(f"[VALID] Has {len(config['files'])} file configuration(s)")
     
     def _validate_snowflake_config(self, sf_config: Dict[str, Any]):
         """
@@ -214,7 +214,7 @@ class ValidateConfigOperation:
             # Skip if using environment variables
             for value in sf_config.values():
                 if isinstance(value, str) and value.startswith('${'):
-                    print("  ⚠ Skipping - configuration uses environment variables")
+                    print("  WARNING: Skipping - configuration uses environment variables")
                     return
             
             # Test connection
@@ -222,7 +222,7 @@ class ValidateConfigOperation:
             with conn_manager.get_cursor() as cursor:
                 cursor.execute("SELECT CURRENT_VERSION()")
                 version = cursor.fetchone()[0]
-                print(f"  ✓ Connected successfully")
+                print(f"  [VALID] Connected successfully")
                 print(f"  Snowflake version: {version}")
                 
                 # Test database and schema
@@ -240,18 +240,18 @@ class ValidateConfigOperation:
         print("="*60)
         
         if self.errors:
-            print(f"\n❌ {len(self.errors)} Error(s):")
+            print(f"\n[ERROR] {len(self.errors)} Error(s):")
             for error in self.errors:
                 print(f"   - {error}")
         
         if self.warnings:
-            print(f"\n⚠ {len(self.warnings)} Warning(s):")
+            print(f"\nWARNING: {len(self.warnings)} Warning(s):")
             for warning in self.warnings:
                 print(f"   - {warning}")
         
         if not self.errors and not self.warnings:
-            print("\n✓ Configuration is valid!")
+            print("\n[VALID] Configuration is valid!")
         elif not self.errors:
-            print("\n✓ Configuration is valid (with warnings)")
+            print("\n[VALID] Configuration is valid (with warnings)")
         else:
-            print("\n❌ Configuration is invalid!")
+            print("\n[ERROR] Configuration is invalid!")

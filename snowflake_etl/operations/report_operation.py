@@ -547,7 +547,7 @@ class ReportOperation(BaseOperation):
             lines.append("CRITICAL ISSUES")
             lines.append("-" * 40)
             for issue in summary['critical_issues']:
-                lines.append(f"• {issue['table']}:")
+                lines.append(f"- {issue['table']}:")
                 for reason in issue['reason']:
                     lines.append(f"  - {reason}")
             lines.append("")
@@ -558,7 +558,7 @@ class ReportOperation(BaseOperation):
             lines.append("-" * 40)
             for issue in summary['tables_with_issues']:
                 if issue['severity'] != 'FAILED':  # Skip critical, already shown
-                    lines.append(f"• {issue['table']} ({issue['severity']}):")
+                    lines.append(f"- {issue['table']} ({issue['severity']}):")
                     for i in issue['issues']:
                         lines.append(f"  - {i}")
             lines.append("")
@@ -576,7 +576,7 @@ class ReportOperation(BaseOperation):
             lines.append("EMPTY TABLES")
             lines.append("-" * 40)
             for table in summary['empty_tables']:
-                lines.append(f"  • {table}")
+                lines.append(f"  - {table}")
             lines.append("")
         
         # Detailed reports

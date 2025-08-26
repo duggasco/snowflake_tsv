@@ -59,7 +59,7 @@ class MigrateConfigOperation:
             print(f"Current version: {current_version}")
             
             if current_version == target_version:
-                print("✓ Configuration is already at target version")
+                print("[VALID] Configuration is already at target version")
                 return True
             
             # Create backup if requested
@@ -69,7 +69,7 @@ class MigrateConfigOperation:
                 )
                 with open(backup_path, 'w') as f:
                     json.dump(config, f, indent=2)
-                print(f"✓ Backup created: {backup_path}")
+                print(f"[VALID] Backup created: {backup_path}")
             
             # Perform migration
             if target_version == "3.0":
@@ -82,7 +82,7 @@ class MigrateConfigOperation:
             with open(config_path, 'w') as f:
                 json.dump(config, f, indent=2)
             
-            print(f"✓ Configuration migrated to version {target_version}")
+            print(f"[VALID] Configuration migrated to version {target_version}")
             return True
             
         except Exception as e:

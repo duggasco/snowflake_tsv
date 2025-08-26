@@ -97,13 +97,16 @@ class ValidateOperation(BaseOperation):
                 
                 if validation_result.valid:
                     results['tables_valid'] += 1
-                    self.logger.info(f"✓ {target['table_name']} is valid")
+                    self.logger.info(f"[VALID] {target['table_name']} is valid")
                 else:
                     results['tables_invalid'] += 1
                     self.logger.warning(
-                        f"✗ {target['table_name']} has issues: "
+                        f"[INVALID] {target['table_name']} has issues: "
                         f"{', '.join(validation_result.failure_reasons)}"
                     )
+                
+                # Display detailed validation results for this table
+                self._display_table_validation_details(validation_result)
                 
                 # Update progress
                 if self.progress_tracker:
@@ -223,6 +226,57 @@ class ValidateOperation(BaseOperation):
         
         return summary
     
+    def _display_table_validation_details(self, validation_result):
+        """Display detailed validation results for a single table."""
+        # Display date range information
+        if validation_result.date_range_start and validation_result.date_range_end:
+            self.logger.info(f"  Date Range: {validation_result.date_range_start} to {validation_result.date_range_end}")
+        
+        # Display row statistics
+        if hasattr(validation_result, 'total_rows') and validation_result.total_rows:
+            self.logger.info(f"  Total Rows: {validation_result.total_rows:,}")
+            
+        if hasattr(validation_result, 'unique_dates') and validation_result.unique_dates:
+            self.logger.info(f"  Unique Dates: {validation_result.unique_dates}")
+            
+        if hasattr(validation_result, 'avg_rows_per_day') and validation_result.avg_rows_per_day:
+            self.logger.info(f"  Average Rows/Day: {validation_result.avg_rows_per_day:,.0f}")
+        
+        # Display anomalies if any
+        if validation_result.anomalous_dates:
+            self.logger.info(f"  Anomalous Dates: {len(validation_result.anomalous_dates)}")
+            # Show first few anomalies
+            for anomaly in validation_result.anomalous_dates[:5]:
+                self.logger.info(
+                    f"    - {anomaly['date']}: {anomaly['row_count']:,} rows "
+                    f"({anomaly['severity']}, {anomaly['pct_of_avg']:.1f}% of average)"
+                )
+            if len(validation_result.anomalous_dates) > 5:
+                self.logger.info(f"    ... and {len(validation_result.anomalous_dates) - 5} more")
+        
+        # Display gaps if any
+        if validation_result.gaps:
+            self.logger.info(f"  Date Gaps: {len(validation_result.gaps)}")
+            for gap in validation_result.gaps[:3]:
+                self.logger.info(f"    - {gap['gap_start']} to {gap['gap_end']} ({gap['days_missing']} days)")
+            if len(validation_result.gaps) > 3:
+                self.logger.info(f"    ... and {len(validation_result.gaps) - 3} more gaps")
+        
+        # Display duplicate info if available
+        if hasattr(validation_result, 'duplicate_info') and validation_result.duplicate_info:
+            dup_info = validation_result.duplicate_info
+            if dup_info.get('duplicate_keys', 0) > 0:
+                self.logger.info(
+                    f"  Duplicates: {dup_info['duplicate_keys']} duplicate keys, "
+                    f"{dup_info['excess_rows']} excess rows ({dup_info['duplicate_percentage']:.2f}%)"
+                )
+                # Show sample duplicate keys
+                if dup_info.get('sample_keys'):
+                    self.logger.info("    Sample duplicate keys:")
+                    for sample in dup_info['sample_keys'][:3]:
+                        key_str = ', '.join([f"{k}={v}" for k, v in sample.items() if k != 'duplicate_count'])
+                        self.logger.info(f"      - {key_str} (appears {sample.get('duplicate_count', 2)} times)")
+    
     def _display_summary(self, results: Dict):
         """Display validation summary to console/logs."""
         summary = results['summary']
@@ -255,7 +309,7 @@ class ValidateOperation(BaseOperation):
         if summary['tables_with_issues']:
             self.logger.info("\nTables with Issues:")
             for issue in summary['tables_with_issues']:
-                self.logger.info(f"  • {issue['table']}:")
+                self.logger.info(f"  - {issue['table']}:")
                 for reason in issue['issues']:
                     self.logger.info(f"    - {reason}")
         

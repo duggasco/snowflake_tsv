@@ -92,7 +92,7 @@ class GenerateConfigOperation:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w') as f:
                 json.dump(config, f, indent=2)
-            print(f"✓ Configuration saved to: {output_file}")
+            print(f"[VALID] Configuration saved to: {output_file}")
         else:
             print(json.dumps(config, indent=2))
         

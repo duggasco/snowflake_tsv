@@ -191,7 +191,7 @@ class DiagnoseErrorOperation:
         print("="*60)
         
         if not errors:
-            print("\n✓ No recent errors detected")
+            print("\n[VALID] No recent errors detected")
             return
         
         # Analyze error patterns
@@ -203,19 +203,19 @@ class DiagnoseErrorOperation:
                         for e in errors)
         
         if has_incident:
-            print("\n⚠ Internal incidents detected:")
+            print("\nWARNING: Internal incidents detected:")
             print("  1. These are usually temporary Snowflake infrastructure issues")
             print("  2. Retry the operation after a few minutes")
             print("  3. If persistent, contact Snowflake support with the incident ID")
         
         if has_timeout:
-            print("\n⚠ Timeout errors detected:")
+            print("\nWARNING: Timeout errors detected:")
             print("  1. Consider using a larger warehouse (MEDIUM or LARGE)")
             print("  2. Break large files into smaller chunks")
             print("  3. Use COPY with smaller batch sizes")
         
         if has_memory:
-            print("\n⚠ Memory errors detected:")
+            print("\nWARNING: Memory errors detected:")
             print("  1. File might be too large for current warehouse")
             print("  2. Upgrade to a larger warehouse size")
             print("  3. Check for data quality issues causing parsing problems")

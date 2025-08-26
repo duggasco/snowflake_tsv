@@ -75,7 +75,7 @@ class ValidateFileOperation:
                     print(f"Number of columns: {col_count}")
                     
                     if expected_columns and col_count != expected_columns:
-                        print(f"⚠ Warning: Expected {expected_columns} columns, found {col_count}")
+                        print(f"WARNING: Warning: Expected {expected_columns} columns, found {col_count}")
                     
                     # Check consistency
                     inconsistent = []
@@ -84,11 +84,11 @@ class ValidateFileOperation:
                             inconsistent.append((i, len(row)))
                     
                     if inconsistent:
-                        print(f"\n⚠ Inconsistent row lengths found:")
+                        print(f"\nWARNING: Inconsistent row lengths found:")
                         for row_num, length in inconsistent[:5]:
                             print(f"  Row {row_num}: {length} columns")
                     else:
-                        print("✓ All sampled rows have consistent column count")
+                        print("[VALID] All sampled rows have consistent column count")
                     
                     # Show sample data
                     print(f"\nFirst {min(3, len(rows))} rows:")
