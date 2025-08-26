@@ -153,16 +153,12 @@ process_direct_files() {
     
     if [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
         cmd="${cmd} ${VALIDATE_IN_SNOWFLAKE}"
-        # Save validation results to a JSON file
-        local validation_file="logs/validation_direct_$(date +%Y%m%d_%H%M%S).json"
-        cmd="${cmd} --validation-output ${validation_file}"
+        # Note: Validation results are included in the load operation output
     fi
     
     if [ -n "${VALIDATE_ONLY}" ]; then
         cmd="${cmd} ${VALIDATE_ONLY}"
-        # Save validation results to a JSON file
-        local validation_file="logs/validation_direct_$(date +%Y%m%d_%H%M%S).json"
-        cmd="${cmd} --validation-output ${validation_file}"
+        # Note: For validate-only, results are shown in output
     fi
     
     if [ -n "${ANALYZE_ONLY}" ]; then
@@ -257,16 +253,12 @@ process_month() {
     
     if [ -n "${VALIDATE_IN_SNOWFLAKE}" ]; then
         cmd="${cmd} ${VALIDATE_IN_SNOWFLAKE}"
-        # Save validation results to a JSON file for aggregation
-        local validation_file="logs/validation_${month_dir}_$(date +%Y%m%d_%H%M%S).json"
-        cmd="${cmd} --validation-output ${validation_file}"
+        # Note: Validation results are included in the load operation output
     fi
     
     if [ -n "${VALIDATE_ONLY}" ]; then
         cmd="${cmd} ${VALIDATE_ONLY}"
-        # Save validation results to a JSON file for aggregation
-        local validation_file="logs/validation_${month_dir}_$(date +%Y%m%d_%H%M%S).json"
-        cmd="${cmd} --validation-output ${validation_file}"
+        # Note: For validate-only, results are shown in output
     fi
     
     if [ -n "${ANALYZE_ONLY}" ]; then
