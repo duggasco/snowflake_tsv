@@ -220,14 +220,14 @@ get_input() {
         result=$($DIALOG_CMD --title "$title" --inputbox "$prompt" 10 60 "$default" 2>&1 >/dev/tty)
         echo "$result"
     else
-        echo ""
-        echo -e "${BOLD}$title${NC}"
+        echo "" >&2  # Send to stderr to avoid capture
+        echo -e "${BOLD}$title${NC}" >&2  # Send to stderr to avoid capture
         if [[ -n "$default" ]]; then
-            read -p "$prompt [$default]: " result
-            echo "${result:-$default}"
+            read -p "$prompt [$default]: " result >&2  # Prompt to stderr
+            echo "${result:-$default}"  # Only the result to stdout
         else
-            read -p "$prompt: " result
-            echo "$result"
+            read -p "$prompt: " result >&2  # Prompt to stderr
+            echo "$result"  # Only the result to stdout
         fi
     fi
 }
