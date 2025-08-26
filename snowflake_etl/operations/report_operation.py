@@ -618,11 +618,9 @@ class ReportOperation(BaseOperation):
                 if report.get('missing_dates'):
                     count = len(report['missing_dates'])
                     lines.append(f"Missing Dates: {count}")
-                    # Show first 10 missing dates
-                    for date in report['missing_dates'][:10]:
+                    # Show ALL missing dates (they're already limited to 100 in validator)
+                    for date in report['missing_dates']:
                         lines.append(f"  - {date}")
-                    if count > 10:
-                        lines.append(f"  ... and {count - 10} more")
                 
                 if report.get('anomalous_dates'):
                     anomalies = report['anomalous_dates']
@@ -631,7 +629,7 @@ class ReportOperation(BaseOperation):
                         lines.append(f"Anomalous Dates: {len(anomalies)}")
                         # Group by severity if available
                         by_severity = {}
-                        for anomaly in anomalies[:20]:  # Show first 20
+                        for anomaly in anomalies:  # Show ALL anomalies (already limited to 100 in validator)
                             if isinstance(anomaly, dict):
                                 severity = anomaly.get('severity', 'UNKNOWN')
                                 if severity not in by_severity:
@@ -645,14 +643,15 @@ class ReportOperation(BaseOperation):
                             for severity in ['SEVERELY_LOW', 'OUTLIER_LOW', 'LOW', 'OUTLIER_HIGH']:
                                 if severity in by_severity:
                                     lines.append(f"  {severity}:")
-                                    for anomaly in by_severity[severity][:5]:
+                                    for anomaly in by_severity[severity]:
+                                        # Use correct field name: percent_of_average instead of pct_of_avg
+                                        pct = anomaly.get('percent_of_average', 0)
+                                        if pct is None:
+                                            pct = 0
                                         lines.append(
                                             f"    - {anomaly.get('date', 'Unknown')}: {anomaly.get('row_count', 0):,} rows "
-                                            f"({anomaly.get('pct_of_avg', 0):.1f}% of average)"
+                                            f"({pct:.1f}% of average)"
                                         )
-                        
-                        if len(anomalies) > 20:
-                            lines.append(f"  ... and {len(anomalies) - 20} more anomalous dates")
                     else:
                         # It's just a count
                         lines.append(f"Anomalous Dates: {anomalies}")
@@ -661,16 +660,18 @@ class ReportOperation(BaseOperation):
                     gaps = report['gaps']
                     if isinstance(gaps, list):
                         lines.append(f"Date Gaps: {len(gaps)}")
-                        for gap in gaps[:5]:  # Show first 5 gaps
+                        for gap in gaps:  # Show ALL gaps (already limited to 100 in validator)
                             if isinstance(gap, dict):
+                                # Use correct field names: start_date/end_date instead of gap_start/gap_end
+                                # and missing_days instead of days_missing
+                                start = gap.get('start_date', 'Unknown')
+                                end = gap.get('end_date', 'Unknown')
+                                missing = gap.get('missing_days', 0)
                                 lines.append(
-                                    f"  - {gap.get('gap_start', 'Unknown')} to {gap.get('gap_end', 'Unknown')} "
-                                    f"({gap.get('days_missing', 0)} days)"
+                                    f"  - {start} to {end} ({missing} days)"
                                 )
                             else:
                                 lines.append(f"  - {gap}")
-                        if len(gaps) > 5:
-                            lines.append(f"  ... and {len(gaps) - 5} more gaps")
                     else:
                         lines.append(f"Date Gaps: {gaps}")
                 

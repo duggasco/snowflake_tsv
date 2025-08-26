@@ -348,7 +348,10 @@ class SnowflakeDataValidator:
                     WHEN dc.row_count > s.q3 + {self.OUTLIER_IQR_MULTIPLIER} * (s.q3 - s.q1) THEN 'OUTLIER_HIGH'
                     ELSE 'NORMAL'
                 END as severity,
-                (dc.row_count / s.avg_count * 100) as pct_of_avg
+                CASE 
+                    WHEN s.avg_count > 0 THEN (dc.row_count / s.avg_count * 100)
+                    ELSE 0
+                END as pct_of_avg
             FROM daily_counts dc
             CROSS JOIN stats s
         )
@@ -377,10 +380,16 @@ class SnowflakeDataValidator:
         
         results = []
         for date_val, row_count, avg_count, severity, pct_of_avg in anomalies:
+            # Handle None values in pct_of_avg
+            if pct_of_avg is None and avg_count and avg_count > 0:
+                pct_of_avg = (row_count / avg_count) * 100
+            elif pct_of_avg is None:
+                pct_of_avg = 0
+                
             results.append({
                 'date': self._format_date(date_val),
                 'row_count': row_count,
-                'expected_count': int(avg_count),
+                'expected_count': int(avg_count) if avg_count else 0,
                 'severity': severity,
                 'percent_of_average': round(pct_of_avg, 1)
             })
@@ -584,10 +593,14 @@ class SnowflakeDataValidator:
             missing_dates = []
             
             for prev_date, curr_date, missing_days in gap_results:
+                # Skip if we have None values - these aren't real gaps
+                if prev_date is None or curr_date is None:
+                    continue
+                    
                 gap_info = {
                     'start_date': self._format_date(prev_date),
                     'end_date': self._format_date(curr_date),
-                    'missing_days': missing_days
+                    'missing_days': missing_days if missing_days else 0
                 }
                 gaps.append(gap_info)
                 
