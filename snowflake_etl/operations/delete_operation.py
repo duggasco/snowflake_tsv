@@ -80,9 +80,9 @@ class DeleteOperation(BaseOperation):
             f"(dry_run={dry_run}, preview={preview})"
         )
         
-        # Update progress phase
+        # Update progress phase - use ANALYSIS since there's no PROCESSING phase
         if self.progress_tracker:
-            self.progress_tracker.update_phase(ProgressPhase.PROCESSING)
+            self.progress_tracker.update_phase(ProgressPhase.ANALYSIS)
         
         for i, target in enumerate(targets, 1):
             self.logger.info(

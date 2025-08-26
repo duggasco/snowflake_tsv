@@ -171,7 +171,7 @@ class LoadOperation(BaseOperation):
             
             # Phase 3: Load to Snowflake
             if self.progress_tracker:
-                self.progress_tracker.update_phase(ProgressPhase.LOADING)
+                self.progress_tracker.update_phase(ProgressPhase.UPLOAD)
             
             rows_loaded = self.loader.load_file(file_config)
             result['rows_loaded'] = rows_loaded
