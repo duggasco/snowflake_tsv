@@ -1,6 +1,6 @@
 # PLAN.md - Snowflake ETL Pipeline Development Plan
-*Last Updated: 2025-08-26 Session 3*
-*Version: 3.0.5*
+*Last Updated: 2025-08-27 Session 4*
+*Version: 3.0.6*
 
 ## Project Status: PRODUCTION READY - Active Development
 
@@ -12,7 +12,22 @@ The Snowflake ETL Pipeline Manager is in production use with comprehensive featu
 - **Performance**: Optimized for 50GB+ files with async operations
 - **Reliability**: All critical bugs fixed, robust error handling
 
-## Recent Accomplishments (Session 3 - 2025-08-26)
+## Recent Accomplishments (Session 4 - 2025-08-27)
+
+### Critical Timeout Fix
+1. ✅ **Fixed COPY validation timeout issue**
+   - Identified that COPY validation was timing out after 5 minutes for large files
+   - Validation was running synchronously without keepalive mechanism
+   - Completely removed redundant validation step
+   - Now relies solely on ON_ERROR='ABORT_STATEMENT' during COPY
+   - Files process successfully without timeouts
+
+2. 🚧 **Started menu enhancement for QC selection**
+   - User requested QC method prompts for all loading operations
+   - Need to add selection between file-based and Snowflake-based QC
+   - Partially started implementation
+
+## Previous Accomplishments (Session 3 - 2025-08-26)
 
 ### Critical Bug Fixes
 1. ✅ **Fixed LoadOperation method error**
@@ -33,10 +48,16 @@ The Snowflake ETL Pipeline Manager is in production use with comprehensive featu
 ## Active Development Areas
 
 ### Immediate Priorities
-1. **Remote System Updates**
-   - Remote systems need to pull latest changes for bug fixes
-   - Monitor test results from production environments
-   - Address any remaining tuple formatting issues
+1. **Complete Menu QC Selection Enhancement**
+   - Add `select_quality_check_method()` helper function
+   - Update all Quick Load functions with QC prompts
+   - Update normal Load Data menu with QC prompts
+   - Test all menu paths
+
+2. **Remote System Updates**
+   - Remote systems need to pull v3.0.6 for timeout fix
+   - Critical fix for COPY validation timeout issue
+   - Monitor large file loads on production
 
 2. **Performance Optimization**
    - Continue monitoring async COPY performance

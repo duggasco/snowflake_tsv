@@ -286,7 +286,8 @@ class SnowflakeLoader:
     
     def _copy_to_table(self, stage_name: str, table_name: str, compressed_file: str) -> int:
         """
-        Copy data from stage to table with validation.
+        Copy data from stage to table.
+        Relies on ON_ERROR='ABORT_STATEMENT' to catch any data errors.
         
         Args:
             stage_name: Snowflake stage path
@@ -299,26 +300,23 @@ class SnowflakeLoader:
         # Build COPY query
         copy_query = self._build_copy_query(table_name, stage_name)
         
-        # Validate first
-        self._validate_data(copy_query, table_name)
-        
         # Determine sync vs async based on file size
         compressed_size_mb = os.path.getsize(compressed_file) / (1024 * 1024)
         use_async = compressed_size_mb > self.ASYNC_THRESHOLD_MB
+        
+        # No validation - rely on ON_ERROR='ABORT_STATEMENT' during COPY
         
         # Estimate rows for progress tracking
         estimated_rows = int(compressed_size_mb * 50000)  # ~50K rows per MB
         
         # Execute COPY
-        final_query = copy_query.replace("VALIDATION_MODE = 'RETURN_ERRORS'", "")
-        
         if use_async:
             self.logger.info(
                 f"Using async COPY for large file ({compressed_size_mb:.1f} MB)"
             )
-            return self._execute_copy_async(final_query, table_name, estimated_rows)
+            return self._execute_copy_async(copy_query, table_name, estimated_rows)
         else:
-            return self._execute_copy_sync(final_query, table_name, estimated_rows)
+            return self._execute_copy_sync(copy_query, table_name, estimated_rows)
     
     def _build_copy_query(self, table_name: str, stage_name: str) -> str:
         """Build COPY INTO query with appropriate settings."""
@@ -339,35 +337,8 @@ class SnowflakeLoader:
         )
         ON_ERROR = 'ABORT_STATEMENT'
         PURGE = TRUE
-        VALIDATION_MODE = 'RETURN_ERRORS'
         SIZE_LIMIT = 5368709120
         """
-    
-    def _validate_data(self, copy_query: str, table_name: str):
-        """
-        Run validation before actual copy.
-        
-        Raises:
-            Exception: If validation finds errors
-        """
-        print(f"Validating data for {table_name}...")
-        self.logger.debug("Running validation")
-        
-        validation_query = copy_query.replace("ON_ERROR = 'ABORT_STATEMENT'", "")
-        
-        with self.connection_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            validation_result = cursor.execute(validation_query).fetchall()
-        
-        if validation_result:
-            error_msg = f"Validation failed for {table_name}. First 10 errors:\n"
-            for i, error in enumerate(validation_result[:10]):
-                error_msg += f"  - {error}\n"
-            if len(validation_result) > 10:
-                error_msg += f"  ... and {len(validation_result) - 10} more errors"
-            
-            self.logger.error(error_msg)
-            raise Exception(f"Data validation failed. Fix errors before loading.")
     
     def _execute_copy_sync(self, query: str, table_name: str, estimated_rows: int) -> int:
         """Execute COPY synchronously for smaller files."""

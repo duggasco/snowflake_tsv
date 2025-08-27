@@ -1,5 +1,31 @@
 # CHANGELOG.md
 
+## [v3.0.6] - 2025-08-27 - Remove COPY Validation to Fix Timeout Issues
+
+### Major Changes
+- **Deprecated COPY validation entirely**: Removed the redundant validation step that was causing 5-minute timeouts
+  - The validation was running `COPY INTO ... VALIDATION_MODE = 'RETURN_ERRORS'` synchronously
+  - Large files (>100MB compressed) would timeout after 5 minutes before keepalive could help
+  - Now relies solely on `ON_ERROR = 'ABORT_STATEMENT'` during the actual COPY operation
+  
+### Technical Details
+- Removed `_validate_data()` method from SnowflakeLoader
+- Removed `VALIDATION_MODE = 'RETURN_ERRORS'` from COPY query
+- Simplified `_copy_to_table()` to execute COPY directly without pre-validation
+- Async COPY with keepalive still functions for files >100MB compressed
+- Errors are still caught immediately by `ABORT_STATEMENT` setting
+
+### Benefits
+- Eliminates 5-minute timeout errors for large files
+- Reduces processing time by avoiding redundant validation pass
+- Simplifies codebase and reduces complexity
+- Maintains data integrity through COPY error handling
+
+### Migration Notes
+- No configuration changes required
+- Existing workflows will automatically benefit from this change
+- Error detection remains unchanged - just happens during COPY instead of before
+
 ## [v3.0.5] - 2025-08-26 Session 3 - Critical Bug Fixes and Menu Enhancements
 
 ### Critical Bug Fixes

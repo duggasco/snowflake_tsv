@@ -1,185 +1,147 @@
-# CONTEXT HANDOVER - Session 3 (2025-08-26)
+# CONTEXT_HANDOVER.md - Session 4 to Session 5
+*Created: 2025-08-27*
+*From Version: 3.0.6*
 
 ## Critical Information for Next Session
 
-### Session Summary
-This session focused on fixing critical bugs discovered during testing and enhancing the menu system with quality check selection prompts. All major issues have been resolved and the system is stable.
+### 1. COPY Validation Timeout Fix (v3.0.6) - COMPLETED ✅
 
-### Critical Fixes Applied
+#### Problem Solved:
+- Large files (>100MB compressed) were timing out after exactly 5 minutes
+- Error: `000604 (57014): SQL execution canceled`
+- Root cause: COPY validation running synchronously without keepalive
+- The validation was running `COPY INTO ... VALIDATION_MODE = 'RETURN_ERRORS'`
 
-#### 1. LoadOperation Method Error (HIGH PRIORITY - FIXED)
-- **Problem**: LoadOperation was calling `check_data_quality()` which doesn't exist
-- **Solution**: Changed to `validate_file()` - the actual method in DataQualityChecker
-- **Files Modified**: `snowflake_etl/operations/load_operation.py`
-- **Added**: `_extract_validation_errors()` helper method to parse nested validation results
-- **Testing**: Created test scripts confirming the fix works
+#### Solution Implemented:
+- **Completely removed COPY validation** from `snowflake_etl/core/snowflake_loader.py`
+- Deleted `_validate_data()` method entirely
+- Removed `VALIDATION_MODE = 'RETURN_ERRORS'` from COPY query
+- Now relies solely on `ON_ERROR = 'ABORT_STATEMENT'` during actual COPY
+- Async COPY with keepalive still works for files >100MB
 
-#### 2. Test Suite Hanging (FIXED)
-- **Problem**: `run_all_tests.sh` was hanging at Phase 4
-- **Root Cause**: `timeout` command with output redirection causing issues
-- **Solution**: 
-  - Removed timeout from `run_test_suite()` function
-  - Fixed arithmetic operations: `((var++))` → `var=$((var + 1))`
-  - Fixed string comparisons: Added quotes around "true"/"false"
-- **Files Modified**: `run_all_tests.sh`
-- **Result**: Test suite now completes successfully
+#### Files Modified:
+- `/root/snowflake/snowflake_etl/core/snowflake_loader.py`
+  - Lines 287-319: Simplified `_copy_to_table()` method
+  - Line 341: Removed VALIDATION_MODE from query
+  - Lines 345-403: Deleted entire `_validate_data()` method
 
-#### 3. Menu System Enhancement (COMPLETED)
-- **Added**: Quality check selection to ALL load operations
-- **New Function**: `select_quality_check_method()` in `snowflake_etl.sh`
-- **Options Given**: 
-  1. File-based quality checks (thorough but slower)
-  2. Snowflake-based validation (fast, requires connection)
-  3. Skip quality checks (fastest but no validation)
-- **Files Modified**: `snowflake_etl.sh`
-- **Functions Updated**: All quick_load_* and menu_load_data functions
+### 2. Menu QC Selection Enhancement - IN PROGRESS 🚧
 
-### Remote System Issues
+#### User Request:
+"For loading operations - have our menus prompt us where we want to run validity/quality checks - either file-based or snowflake based. This should work for both the normal snowflake operations loading and for quick loading"
 
-#### Test Results from Remote (`/u1/sduggan/snowflake_tsv/`)
-- Remote has Snowflake connectivity (v9.24.1)
-- Running full CLI test suite (not basic)
-- 12 of 20 tests passing
-- Failures mainly due to test table not existing
-- **Action Needed**: Remote needs to pull latest changes:
-  ```bash
-  cd /u1/sduggan/snowflake_tsv/
-  git pull origin main
-  ```
-
-### Important Code Patterns
-
-#### Correct Method Calls
-```python
-# WRONG (old):
-is_valid, stats = self.quality_checker.check_data_quality(...)
-
-# CORRECT (new):
-validation_result = self.quality_checker.validate_file(
-    file_path=file_config.file_path,
-    expected_columns=file_config.expected_columns,
-    date_column=file_config.date_column,
-    expected_start=start_date,
-    expected_end=end_date,
-    delimiter='\t'
-)
-is_valid = validation_result.get('validation_passed', False)
-```
-
-#### Menu QC Selection Pattern
+#### What Needs to Be Done:
+1. **Add helper function** to `snowflake_etl.sh`:
 ```bash
-local qc_method=$(select_quality_check_method)
-if [[ "$qc_method" == "cancelled" ]]; then
-    return
-fi
-
-local qc_flags=""
-case "$qc_method" in
-    "file") qc_flags="" ;;  # Default behavior
-    "snowflake") qc_flags="--validate-in-snowflake" ;;
-    "skip") qc_flags="--skip-qc" ;;
-esac
+select_quality_check_method() {
+    local choice=$(show_menu "Select Quality Check Method" \
+        "File-based QC (thorough but slower for large files)" \
+        "Snowflake-based validation (fast, uses SQL aggregates)" \
+        "Skip quality checks (rely on COPY error handling)")
+    
+    case "$choice" in
+        1) echo "" ;;  # File-based (default, no flag needed)
+        2) echo "--validate-in-snowflake" ;;
+        3) echo "--skip-qc" ;;
+        *) echo "" ;;
+    esac
+}
 ```
 
-### Test Infrastructure Status
+2. **Update Quick Load functions** (lines ~1150-1230):
+   - `quick_load_current_month()`
+   - `quick_load_last_month()` 
+   - `quick_load_specific_file()`
+   - Add QC method selection before running command
 
-#### Working Components
-- `test_cli_basic.sh` - Runs without Snowflake (10/10 tests pass)
-- `test_connectivity.py` - Checks Snowflake connection with timeout
-- `run_tests_simple.sh` - Simplified runner without complexity
-- Virtual environment detection and usage
+3. **Update normal Load Data menu** (line ~1271):
+   - `menu_load_data()` all three options
+   - Add QC method selection
 
-#### Test Execution
-- Local: No Snowflake connection → runs basic tests
-- Remote: Has Snowflake connection → runs full tests
-- Both scenarios now handled correctly
+#### Example implementation pattern:
+```bash
+quick_load_current_month() {
+    # ... existing code ...
+    
+    # Add QC selection
+    local qc_flags=$(select_quality_check_method)
+    
+    # Modify command to include flags
+    local cmd="python -m snowflake_etl --config \"$CONFIG_FILE\" load"
+    cmd="$cmd --base-path \"$base_path\" --month \"$month\" $qc_flags"
+    
+    # ... rest of function ...
+}
+```
 
-### Known Issues Still Present
+### 3. Important Context About Validation
 
-1. **Tuple Formatting on Remote**
-   - Symptom: "unsupported format string passed to tuple.__format__"
-   - Cause: Remote may have older code version
-   - Solution: Remote needs to pull latest changes
-   - Verification: `count_rows_fast()` returns `(row_count, file_size_gb)` as tuple
+#### Two Types of Validation in the System:
+1. **COPY Validation** (REMOVED in v3.0.6):
+   - Was checking TSV format errors during load
+   - Timed out on large files
+   - Now removed entirely
 
-2. **Test Table Missing**
-   - Tests use `TEST_CUSTOM_FACTLENDINGBENCHMARK` table
-   - This table doesn't exist in production
-   - Tests fail but this is expected behavior
+2. **Data Quality Validation** (STILL ACTIVE):
+   - File-based: Checks dates/completeness while reading TSV
+   - Snowflake-based: Uses SQL aggregates after loading
+   - This is what the menu QC selection controls
 
-### File Cleanup Needed
+### 4. Current System Architecture
 
-Test files created this session (can be deleted):
-- `test_tuple_error.py`
-- `diagnose_tuple_error.py`
-- `test_quality_checker.py`
-- `test_load_operation_fix.py`
-- `20250826_215105/` directory (test results from remote)
+#### Key Performance Optimizations:
+- Async COPY for files >100MB compressed (with keepalive)
+- Keepalive sends query every 4 minutes to prevent timeout
+- `ON_ERROR = 'ABORT_STATEMENT'` for fast failure
+- PURGE=TRUE for automatic stage cleanup
 
-### Configuration Notes
+#### Critical Constants in SnowflakeLoader:
+- `ASYNC_THRESHOLD_MB = 100`
+- `KEEPALIVE_INTERVAL_SEC = 240` (4 minutes)
+- `MAX_WAIT_TIME_SEC = 7200` (2 hours)
 
-#### Virtual Environment
-- Location: `/root/snowflake/etl_venv/`
-- Has all dependencies including jmespath (was missing)
-- Test scripts now properly activate and use it
+### 5. Testing Notes
 
-#### Dependencies
-All required packages in venv:
-- snowflake-connector-python
-- pandas
-- numpy
-- tqdm
-- psutil
-- jmespath (added this session)
+#### To Test the Fix on Remote System:
+1. Pull latest changes or update `snowflake_etl/core/snowflake_loader.py`
+2. Load a large file (>100MB compressed)
+3. Should NOT see "Validating data for..." message
+4. Should see "Using async COPY for large file"
+5. File should load without 5-minute timeout
 
-### Next Session Priorities
+### 6. Known Issues to Watch
 
-1. **Verify Remote Updates**
-   - Ensure remote has pulled latest changes
-   - Confirm LoadOperation fix is working
-   - Check menu QC selection functioning
+- Memory usage still high for file-based QC on 50GB+ files
+- That's why Snowflake-based validation is preferred for large files
+- The menu enhancement will help users choose appropriately
 
-2. **Performance Monitoring**
-   - Watch for memory issues with 50GB files
-   - Monitor async COPY operations
-   - Check validation performance
+### 7. Next Session Priority
 
-3. **Documentation**
-   - Update README with QC selection info
-   - Document troubleshooting steps
-   - Create user guide for menu system
+**PRIORITY 1**: Complete the menu QC selection enhancement
+- This is partially started but not finished
+- User specifically requested this feature
+- Will improve user experience significantly
 
-### Commands for Quick Testing
+**PRIORITY 2**: Test v3.0.6 on production with large files
+- Ensure timeout issue is fully resolved
+- Monitor async COPY performance
+
+## Commands for Quick Reference
 
 ```bash
-# Test the menu system
-./snowflake_etl.sh
+# Test with a large file
+./run_loader.sh --direct-file /path/to/largefile.tsv --skip-qc
 
-# Run test suite
-./run_all_tests.sh
+# Check if validation was removed
+grep -n "validate_data" snowflake_etl/core/snowflake_loader.py
+# Should return no results
 
-# Test specific functionality
-source etl_venv/bin/activate
-python -m snowflake_etl --config config/factLendingBenchmark_config.json check-system
-
-# Check for tuple error
-python diagnose_tuple_error.py
-
-# Run basic tests only
-./test_cli_basic.sh
+# Monitor async COPY
+tail -f logs/snowflake_etl_debug.log | grep -i "async\|keepalive"
 ```
 
-### Git Status
-- All changes committed and pushed to main branch
-- Version: 3.0.5
-- Latest commit includes menu QC selection and bug fixes
-
-### Success Criteria for Next Session
-1. ✅ No tuple formatting errors on remote
-2. ✅ Test suite completes without hanging
-3. ✅ Menu QC selection working for all load operations
-4. ✅ LoadOperation using correct validate_file() method
-5. ✅ Documentation updated with latest changes
-
----
-*This handover ensures continuity for the next development session*
+## Session Summary
+- Fixed critical timeout issue by removing COPY validation
+- Started but didn't complete menu QC selection enhancement  
+- System is now at v3.0.6 and production ready
+- Remote systems need to pull latest for timeout fix

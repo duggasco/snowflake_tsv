@@ -1,7 +1,29 @@
 # TODO.md - Snowflake ETL Pipeline Manager
-*Last Updated: 2025-08-26 Session 3*
-*Current Version: 3.0.5 (Menu QC Selection and Critical Bug Fixes)*
+*Last Updated: 2025-08-27 Session 4*
+*Current Version: 3.0.6 (COPY Validation Removed - Timeout Fix)*
 *Status: PRODUCTION READY - Active Development*
+
+## 🚧 IN PROGRESS - Menu QC Selection Enhancement (2025-08-27 Session 4)
+**STATUS: Partially Complete - Need to finish menu updates**
+
+### Remaining Tasks
+- [ ] Add `select_quality_check_method()` helper function to snowflake_etl.sh
+- [ ] Update `quick_load_current_month()` to prompt for QC method
+- [ ] Update `quick_load_last_month()` to prompt for QC method
+- [ ] Update `quick_load_specific_file()` to prompt for QC method
+- [ ] Update `menu_load_data()` all options to prompt for QC method
+- [ ] Test all menu paths with new QC selection
+
+## ✅ COPY Validation Removal - COMPLETE (2025-08-27 Session 4)
+**STATUS: 100% Complete - Timeout issue resolved**
+
+### Completed Tasks (v3.0.6)
+- [x] Identified root cause: COPY validation timing out after 5 minutes
+- [x] Removed `_validate_data()` method from SnowflakeLoader
+- [x] Removed `VALIDATION_MODE = 'RETURN_ERRORS'` from COPY query
+- [x] Simplified `_copy_to_table()` to skip validation entirely
+- [x] Updated CHANGELOG.md with v3.0.6 details
+- [x] Tested that async COPY with keepalive still works for large files
 
 ## ✅ Critical Bug Fixes and UI Improvements - COMPLETE (2025-08-26 Session 3)
 **STATUS: 100% Complete - Major bugs fixed and menu system enhanced**
