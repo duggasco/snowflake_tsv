@@ -916,77 +916,77 @@ monitor_job_progress() {
     
     if [[ ! -f "$log_file" ]]; then
         show_message "Error" "Log file not found: $log_file"
-        return
+        return 1
     fi
     
-    # Set up trap to handle Ctrl+C gracefully
-    # Save the current trap (if any) and restore it when done
-    local old_trap=$(trap -p SIGINT)
-    local monitoring_pid=""
+    # Save original environment
+    local original_trap=$(trap -p SIGINT)
+    local original_options="$-"
+    local tail_pid=""
     
-    # Flag to track if cleanup was called by trap
-    local cleanup_called=false
-    
-    # Function to cleanly exit monitoring
-    cleanup_monitoring() {
-        if [[ "$cleanup_called" == true ]]; then
-            return 0
+    # Enable job control if not already enabled
+    # This puts background processes in their own process group
+    if [[ "$original_options" != *m* ]]; then
+        set -m
+        # Verify job control was enabled
+        if [[ "$-" != *m* ]]; then
+            echo -e "${RED}Error: Job control not supported in this shell${NC}"
+            echo "Unable to monitor job properly without job control."
+            return 2
         fi
-        cleanup_called=true
-        
-        if [[ -n "$monitoring_pid" ]]; then
-            kill $monitoring_pid 2>/dev/null
-            wait $monitoring_pid 2>/dev/null
-        fi
-        
-        echo ""
-        echo -e "${GREEN}Stopped monitoring. Returning to menu...${NC}"
-        sleep 1
-        
-        # Don't restore the old trap yet - just clear it temporarily
-        trap - SIGINT
-        
-        return 0
-    }
-    
-    # Set trap for this function
-    trap 'cleanup_monitoring; return 0' SIGINT
+    fi
     
     clear
     echo -e "${BOLD}${BLUE}Monitoring Job: $job_name${NC}"
     echo -e "${YELLOW}Press Ctrl+C to stop monitoring and return to menu${NC}"
     echo "----------------------------------------"
     
-    # Sanitize live output to prevent escape sequence attacks
-    # Run tail in background so we can control it
+    # Start tail in background (in its own process group due to set -m)
     if command -v sed >/dev/null 2>&1 && command -v tr >/dev/null 2>&1; then
         # Strip escape sequences while tailing - use portable syntax
         tail -f "$log_file" 2>/dev/null | sed -u $'s/\033\\[[0-9;]*[a-zA-Z]//g; s/\033\\].*\007//g' | tr -d '\000-\010\013\014\016-\037\177' &
-        monitoring_pid=$!
+        tail_pid=$!
     else
         # Fallback without sanitization (with warning)
         echo -e "${YELLOW}Warning: Cannot sanitize live output - be cautious of escape sequences${NC}"
         tail -f "$log_file" 2>/dev/null &
-        monitoring_pid=$!
+        tail_pid=$!
     fi
     
-    # Wait for the tail process (will be interrupted by Ctrl+C)
-    wait $monitoring_pid 2>/dev/null
+    # Set up trap for SIGINT (Ctrl+C)
+    # This will only be triggered in the foreground shell, not the background tail
+    trap '
+        echo ""
+        echo -e "${GREEN}Stopped monitoring. Returning to menu...${NC}"
+        if [[ -n "$tail_pid" ]]; then
+            kill "$tail_pid" 2>/dev/null
+        fi
+        sleep 1
+        # Restore original environment before returning
+        if [[ "$original_options" != *m* ]]; then
+            set +m
+        fi
+        eval "${original_trap:-trap - SIGINT}"
+        return 0
+    ' SIGINT
     
-    # Only call cleanup if not already called by trap
-    if [[ "$cleanup_called" == false ]]; then
-        cleanup_monitoring
+    # Wait for the tail process
+    # This will be interrupted by Ctrl+C, triggering the trap
+    wait "$tail_pid" 2>/dev/null
+    local exit_code=$?
+    
+    # Restore original environment
+    if [[ "$original_options" != *m* ]]; then
+        set +m
+    fi
+    eval "${original_trap:-trap - SIGINT}"
+    
+    # If we got here normally (not via Ctrl+C), tail exited on its own
+    if [[ $exit_code -ne 130 && $exit_code -ne 0 ]]; then
+        echo -e "${YELLOW}Monitoring ended (log file may have been rotated)${NC}"
+        sleep 1
     fi
     
-    # Restore the original trap now that we're done
-    if [[ -n "$old_trap" ]]; then
-        eval "$old_trap"
-    else
-        # Restore the global interactive trap
-        trap 'echo ""; echo -e "${YELLOW}Use the menu option '"'"'0'"'"' to exit properly${NC}"; return 0' SIGINT
-    fi
-    
-    # Explicitly return success to prevent any exit
     return 0
 }
 
@@ -2442,18 +2442,8 @@ main() {
     
     # Interactive mode
     # Set up global trap for interactive mode to prevent accidental exits
-    handle_interrupt() {
-        echo ""
-        echo -e "${YELLOW}Use the menu option '0' to exit properly${NC}"
-        # Return true to prevent exit
-        return 0
-    }
-    
-    # Only trap in interactive mode
-    trap handle_interrupt SIGINT
-    
-    # Set bash option to not exit on SIGINT when trap is set
-    set -o ignoreeof 2>/dev/null || true
+    # Using a simple inline trap is more reliable
+    trap 'echo ""; echo -e "${YELLOW}Use the menu option '"'"'0'"'"' to exit properly${NC}"' SIGINT
     
     # Clear screen for interactive mode
     if [[ "$USE_DIALOG" == true ]]; then
