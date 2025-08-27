@@ -924,21 +924,33 @@ monitor_job_progress() {
     local old_trap=$(trap -p SIGINT)
     local monitoring_pid=""
     
+    # Flag to track if cleanup was called by trap
+    local cleanup_called=false
+    
     # Function to cleanly exit monitoring
     cleanup_monitoring() {
+        if [[ "$cleanup_called" == true ]]; then
+            return 0
+        fi
+        cleanup_called=true
+        
         if [[ -n "$monitoring_pid" ]]; then
             kill $monitoring_pid 2>/dev/null
+            wait $monitoring_pid 2>/dev/null
         fi
-        # Restore original trap
-        eval "${old_trap:-trap - SIGINT}"
+        
         echo ""
         echo -e "${GREEN}Stopped monitoring. Returning to menu...${NC}"
         sleep 1
+        
+        # Don't restore the old trap yet - just clear it temporarily
+        trap - SIGINT
+        
         return 0
     }
     
     # Set trap for this function
-    trap cleanup_monitoring SIGINT
+    trap 'cleanup_monitoring; return 0' SIGINT
     
     clear
     echo -e "${BOLD}${BLUE}Monitoring Job: $job_name${NC}"
@@ -961,9 +973,21 @@ monitor_job_progress() {
     # Wait for the tail process (will be interrupted by Ctrl+C)
     wait $monitoring_pid 2>/dev/null
     
-    # Cleanup will be called by trap on Ctrl+C
-    # But also clean up if we exit normally (shouldn't happen with tail -f)
-    cleanup_monitoring
+    # Only call cleanup if not already called by trap
+    if [[ "$cleanup_called" == false ]]; then
+        cleanup_monitoring
+    fi
+    
+    # Restore the original trap now that we're done
+    if [[ -n "$old_trap" ]]; then
+        eval "$old_trap"
+    else
+        # Restore the global interactive trap
+        trap 'echo ""; echo -e "${YELLOW}Use the menu option '"'"'0'"'"' to exit properly${NC}"; return 0' SIGINT
+    fi
+    
+    # Explicitly return success to prevent any exit
+    return 0
 }
 
 # Clean completed jobs
@@ -2421,11 +2445,15 @@ main() {
     handle_interrupt() {
         echo ""
         echo -e "${YELLOW}Use the menu option '0' to exit properly${NC}"
-        # Don't exit, just continue
+        # Return true to prevent exit
+        return 0
     }
     
     # Only trap in interactive mode
     trap handle_interrupt SIGINT
+    
+    # Set bash option to not exit on SIGINT when trap is set
+    set -o ignoreeof 2>/dev/null || true
     
     # Clear screen for interactive mode
     if [[ "$USE_DIALOG" == true ]]; then
