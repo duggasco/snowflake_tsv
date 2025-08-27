@@ -306,6 +306,12 @@ class SnowflakeLoader:
         
         # No validation - rely on ON_ERROR='ABORT_STATEMENT' during COPY
         
+        # Log the decision for debugging
+        self.logger.info(
+            f"File size: {compressed_size_mb:.1f} MB, Async threshold: {self.ASYNC_THRESHOLD_MB} MB, "
+            f"Using async: {use_async}"
+        )
+        
         # Estimate rows for progress tracking
         estimated_rows = int(compressed_size_mb * 50000)  # ~50K rows per MB
         
@@ -314,8 +320,12 @@ class SnowflakeLoader:
             self.logger.info(
                 f"Using async COPY for large file ({compressed_size_mb:.1f} MB)"
             )
+            print(f"Starting async COPY for {table_name} (file: {compressed_size_mb:.1f} MB)...")
             return self._execute_copy_async(copy_query, table_name, estimated_rows)
         else:
+            self.logger.info(
+                f"Using sync COPY for small file ({compressed_size_mb:.1f} MB)"
+            )
             return self._execute_copy_sync(copy_query, table_name, estimated_rows)
     
     def _build_copy_query(self, table_name: str, stage_name: str) -> str:
@@ -385,23 +395,42 @@ class SnowflakeLoader:
         )
         print(f"Executing async COPY for {table_name} (may take several minutes)...")
         
-        with self.connection_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Enable async queries
-            cursor.execute("ALTER SESSION SET ABORT_DETACHED_QUERY = FALSE")
-            
-            # Start async query
-            query_id = cursor.execute_async(query).get('queryId')
-            self.logger.info(f"Async COPY started with query ID: {query_id}")
-            
-            # Poll for completion with keepalive
-            rows_loaded = self._poll_async_query(conn, cursor, query_id, table_name)
-            
-            if self.progress_tracker:
-                self.progress_tracker.update_progress(copy_complete=True)
-            
-            return rows_loaded
+        try:
+            with self.connection_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Enable async queries
+                cursor.execute("ALTER SESSION SET ABORT_DETACHED_QUERY = FALSE")
+                
+                # Start async query
+                result = cursor.execute_async(query)
+                
+                # Handle different return types from execute_async
+                if isinstance(result, dict) and 'queryId' in result:
+                    query_id = result['queryId']
+                elif isinstance(result, str):
+                    query_id = result
+                elif hasattr(result, 'sfqid'):
+                    query_id = result.sfqid
+                else:
+                    # Fallback to synchronous if async fails
+                    self.logger.warning(f"Async execution failed, falling back to sync. Result type: {type(result)}")
+                    return self._execute_copy_sync(query, table_name, estimated_rows)
+                
+                self.logger.info(f"Async COPY started with query ID: {query_id}")
+                
+                # Poll for completion with keepalive
+                rows_loaded = self._poll_async_query(conn, cursor, query_id, table_name)
+                
+                if self.progress_tracker:
+                    self.progress_tracker.update_progress(copy_complete=True)
+                
+                return rows_loaded
+                
+        except Exception as e:
+            self.logger.error(f"Async COPY failed: {e}")
+            self.logger.info("Falling back to synchronous COPY...")
+            return self._execute_copy_sync(query, table_name, estimated_rows)
     
     def _poll_async_query(self, conn, cursor, query_id: str, table_name: str) -> int:
         """
