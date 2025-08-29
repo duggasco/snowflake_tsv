@@ -1772,7 +1772,7 @@ check_file_issues() {
     if [[ -f "$file" ]]; then
         if confirm_action "Check file for issues? This may take time for large files."; then
             with_lock start_background_job "check_issues_$(basename "$file")" \
-                sfl --config "$CONFIG_FILE" validate-file "$file"
+                python3 -m snowflake_etl --config "$CONFIG_FILE" validate-file "$file"
         fi
     else
         show_message "Error" "File not found: $file"
@@ -1814,11 +1814,11 @@ check_table_info() {
         if [[ "${response^^}" == "Y" ]]; then
             # Run in foreground with visible progress
             with_lock start_foreground_job "check_table_${table}" \
-                sfl --config "$CONFIG_FILE" check-table "$table"
+                python3 -m snowflake_etl --config "$CONFIG_FILE" check-table "$table"
         else
             # Run in background
             with_lock start_background_job "check_table_${table}" \
-                sfl --config "$CONFIG_FILE" check-table "$table"
+                python3 -m snowflake_etl --config "$CONFIG_FILE" check-table "$table"
         fi
     fi
 }
@@ -1900,7 +1900,7 @@ diagnose_failed_load() {
     fi
     
     if [[ -f "$log_file" ]]; then
-        local output=$(sfl --config "$CONFIG_FILE" diagnose-error 2>&1 | head -100)
+        local output=$(python3 -m snowflake_etl --config "$CONFIG_FILE" diagnose-error 2>&1 | head -100)
         show_message "Diagnosis Results" "$output"
     else
         show_message "Error" "Log file not found: $log_file"
@@ -1981,8 +1981,8 @@ clean_stage_files() {
     if [[ "$table" == "all" ]]; then
         if confirm_action "Clean ALL stage files? This will remove all uploaded TSV files from Snowflake stages."; then
             show_message "Running" "Cleaning all stage files..."
-            local output=$(sfl --config "$CONFIG_FILE" check-stage 2>&1 | grep -E "(Found|Total|Would)" | head -20)
-            show_message "Stage Status" "$output\n\nRun 'sfl --config $CONFIG_FILE check-stage' to clean interactively."
+            local output=$(python3 -m snowflake_etl --config "$CONFIG_FILE" check-stage 2>&1 | grep -E "(Found|Total|Would)" | head -20)
+            show_message "Stage Status" "$output\n\nRun 'python3 -m snowflake_etl --config $CONFIG_FILE check-stage' to clean interactively."
         fi
     else
         if confirm_action "Clean stage files for table $table?"; then
