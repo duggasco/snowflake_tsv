@@ -1745,8 +1745,48 @@ generate_config() {
         return
     fi
     
+    # Extract probable table name from filename
+    local default_table=$(basename "$file_path" .tsv | sed -E 's/_?[0-9]{8}-[0-9]{8}//g' | sed -E 's/_?[0-9]{4}-[0-9]{2}//g' | tr '[:lower:]' '[:upper:]')
+    
+    # Ask for Snowflake table name to query for column headers
+    local table_name=$(get_input "Snowflake Table" "Enter Snowflake table name (or press Enter to skip)" "$default_table")
+    
+    # Build command with appropriate flags
+    local cmd="./generate_config.sh -o \"$output_path\""
+    
+    # Add table flag if provided
+    if [[ -n "$table_name" ]]; then
+        cmd="$cmd -t \"$table_name\""
+        
+        # Use current config for Snowflake credentials if available
+        if [[ -f "$CONFIG_FILE" ]]; then
+            cmd="$cmd -c \"$CONFIG_FILE\""
+            show_message "Info" "Using credentials from $CONFIG_FILE to query table $table_name"
+        else
+            show_message "Warning" "No config file selected. Table query will fail without credentials.\nUse 'Select Config File' first or manually specify columns."
+            
+            # Offer to manually specify columns
+            local manual_cols=$(get_input "Column Headers" "Enter comma-separated column names (or press Enter to use generic names)")
+            if [[ -n "$manual_cols" ]]; then
+                cmd="$cmd -h \"$manual_cols\""
+                show_message "Info" "Using manually specified column headers"
+            fi
+        fi
+    else
+        # No table specified, ask if user wants to provide column headers manually
+        local manual_cols=$(get_input "Column Headers" "Enter comma-separated column names (or press Enter for generic names)")
+        if [[ -n "$manual_cols" ]]; then
+            cmd="$cmd -h \"$manual_cols\""
+            show_message "Info" "Using manually specified column headers"
+        else
+            show_message "Info" "No table or headers specified. Will generate generic column names (column1, column2, etc.)"
+        fi
+    fi
+    
+    cmd="$cmd \"$file_path\""
+    
     if confirm_action "Generate config from $(basename "$file_path")?"; then
-        local output=$(./generate_config.sh -o "$output_path" "$file_path" 2>&1)
+        local output=$(eval $cmd 2>&1)
         show_message "Config Generation" "$output"
         save_preference "LAST_CONFIG" "$output_path"
     fi

@@ -1,5 +1,30 @@
 # CHANGELOG.md
 
+## [v3.0.7] - 2025-08-29 - Fix Config Generation to Include Snowflake Headers
+
+### Bug Fix
+- **Fixed generate_config() in CLI menu not querying Snowflake for column headers**
+  - Menu now prompts for Snowflake table name
+  - Automatically uses selected config file for credentials
+  - Queries information_schema.columns for proper column ordering
+  - Falls back to manual column entry if no config selected
+  - Offers manual column specification option for offline use
+
+### Technical Details
+- Enhanced `generate_config()` function in snowflake_etl.sh
+- Passes `-t TABLE_NAME` and `-c CONFIG_FILE` flags to generate_config.sh
+- Extracts default table name from TSV filename pattern
+- Provides three methods for column specification:
+  1. Query Snowflake table (requires credentials)
+  2. Manual comma-separated column names
+  3. Generic column1, column2, etc. (fallback)
+
+### User Experience Improvements
+- Clear prompts explaining each option
+- Warnings when credentials missing for table query
+- Info messages showing which method is being used
+- Preserves backward compatibility with existing workflows
+
 ## [v3.0.6] - 2025-08-27 - Remove COPY Validation to Fix Timeout Issues
 
 ### Major Changes
