@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.2 - Enterprise-ready with proxy support
+# Version: 3.4.3 - Auto Python 3.11 installation with custom paths
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.2"  # Auto venv setup with proxy support
+VERSION="3.4.3"  # Auto Python 3.11 installation
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -305,11 +305,283 @@ init_directories() {
     fi
 }
 
+# Confirm Python installation
+confirm_install_python() {
+    local version="${1:-3.11}"
+    
+    echo -e "${CYAN}=== Python $version Installation ===${NC}"
+    echo -e "${CYAN}Python $version is recommended for optimal compatibility.${NC}"
+    echo -e "${CYAN}Would you like to install it now?${NC}"
+    echo ""
+    echo -e "${YELLOW}Installation options:${NC}"
+    echo "  1. Install from source (compile locally)"
+    echo "  2. Use system package manager (if available)"
+    echo "  3. Skip installation"
+    echo ""
+    
+    read -p "Choose option [1-3]: " choice
+    
+    case "$choice" in
+        1|2)
+            return 0
+            ;;
+        3)
+            return 1
+            ;;
+        *)
+            echo -e "${YELLOW}Invalid choice, skipping installation${NC}"
+            return 1
+            ;;
+    esac
+}
+
+# Install Python 3.11 from source or package manager
+install_python_311() {
+    local install_base=""
+    local python_prefix=""
+    
+    echo -e "${CYAN}=== Installing Python 3.11 ===${NC}"
+    echo ""
+    
+    # Ask for installation method
+    echo -e "${CYAN}Choose installation method:${NC}"
+    echo "  1. Install from source (recommended for custom path)"
+    echo "  2. Use system package manager (requires sudo)"
+    echo ""
+    
+    read -p "Select method [1-2]: " method
+    
+    if [[ "$method" == "1" ]]; then
+        # Install from source
+        echo -e "${CYAN}Installing Python 3.11 from source...${NC}"
+        echo ""
+        
+        # Ask for installation base path
+        echo -e "${CYAN}Enter installation base path${NC}"
+        echo -e "${CYAN}(press Enter for default: $HOME/.local):${NC}"
+        read -p "Installation path: " install_base
+        
+        if [[ -z "$install_base" ]]; then
+            install_base="$HOME/.local"
+        fi
+        
+        # Expand tilde if used
+        install_base="${install_base/#\~/$HOME}"
+        
+        # Create directory if it doesn't exist
+        mkdir -p "$install_base"
+        
+        python_prefix="$install_base"
+        
+        # Check for required build tools
+        local build_deps=()
+        for tool in gcc make wget tar; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+                build_deps+=("$tool")
+            fi
+        done
+        
+        if [[ ${#build_deps[@]} -gt 0 ]]; then
+            echo -e "${YELLOW}Missing build dependencies: ${build_deps[*]}${NC}"
+            echo -e "${YELLOW}Please install them first:${NC}"
+            echo "  Ubuntu/Debian: sudo apt-get install build-essential wget"
+            echo "  RHEL/CentOS: sudo yum groupinstall 'Development Tools' && sudo yum install wget"
+            echo "  macOS: Install Xcode Command Line Tools"
+            return 1
+        fi
+        
+        # Download and compile Python 3.11
+        local python_version="3.11.9"  # Latest 3.11 as of now
+        local python_url="https://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz"
+        local temp_dir="/tmp/python311_build_$$"
+        
+        echo -e "${YELLOW}Downloading Python ${python_version}...${NC}"
+        mkdir -p "$temp_dir"
+        cd "$temp_dir"
+        
+        if ! wget -q --show-progress "$python_url"; then
+            echo -e "${RED}Failed to download Python source${NC}"
+            cd - >/dev/null
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        
+        echo -e "${YELLOW}Extracting Python source...${NC}"
+        tar -xzf "Python-${python_version}.tgz"
+        cd "Python-${python_version}"
+        
+        echo -e "${YELLOW}Configuring Python build...${NC}"
+        echo -e "${CYAN}This will install to: $python_prefix${NC}"
+        
+        # Configure with optimizations and essential modules
+        if ! ./configure --prefix="$python_prefix" \
+                        --enable-optimizations \
+                        --with-ensurepip=install \
+                        --enable-shared \
+                        LDFLAGS="-Wl,-rpath,$python_prefix/lib" \
+                        >/dev/null 2>&1; then
+            echo -e "${RED}Configuration failed${NC}"
+            echo -e "${YELLOW}Trying without optimizations...${NC}"
+            
+            # Try without optimizations (faster but less optimal)
+            if ! ./configure --prefix="$python_prefix" \
+                            --with-ensurepip=install \
+                            --enable-shared \
+                            LDFLAGS="-Wl,-rpath,$python_prefix/lib" \
+                            >/dev/null 2>&1; then
+                echo -e "${RED}Configuration failed completely${NC}"
+                cd - >/dev/null
+                rm -rf "$temp_dir"
+                return 1
+            fi
+        fi
+        
+        echo -e "${YELLOW}Building Python (this may take 5-10 minutes)...${NC}"
+        
+        # Get number of CPU cores for parallel build
+        local num_cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
+        
+        if ! make -j"$num_cores" >/dev/null 2>&1; then
+            echo -e "${RED}Build failed${NC}"
+            cd - >/dev/null
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        
+        echo -e "${YELLOW}Installing Python to $python_prefix...${NC}"
+        
+        if ! make install >/dev/null 2>&1; then
+            echo -e "${RED}Installation failed${NC}"
+            cd - >/dev/null
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        
+        # Clean up
+        cd - >/dev/null
+        rm -rf "$temp_dir"
+        
+        # Update PATH for current session
+        export PATH="$python_prefix/bin:$PATH"
+        
+        # Save installation path for future reference
+        echo "$python_prefix/bin" > "$PREFS_DIR/.python311_path"
+        
+        echo -e "${GREEN}✓ Python 3.11 installed successfully to $python_prefix${NC}"
+        echo -e "${CYAN}Added to PATH for current session${NC}"
+        echo ""
+        echo -e "${YELLOW}To make permanent, add to your shell profile:${NC}"
+        echo "  export PATH=\"$python_prefix/bin:\$PATH\""
+        echo ""
+        
+        return 0
+        
+    elif [[ "$method" == "2" ]]; then
+        # Use system package manager
+        echo -e "${CYAN}Installing Python 3.11 using system package manager...${NC}"
+        
+        # Detect OS and use appropriate package manager
+        if [[ -f /etc/os-release ]]; then
+            . /etc/os-release
+            local os_id="${ID,,}"  # Convert to lowercase
+            
+            case "$os_id" in
+                ubuntu|debian)
+                    echo -e "${YELLOW}Detected Ubuntu/Debian${NC}"
+                    echo -e "${CYAN}Installing Python 3.11...${NC}"
+                    
+                    # Add deadsnakes PPA for Ubuntu (has Python 3.11)
+                    if [[ "$os_id" == "ubuntu" ]]; then
+                        echo "sudo add-apt-repository ppa:deadsnakes/ppa -y"
+                        echo "sudo apt-get update"
+                        echo "sudo apt-get install python3.11 python3.11-venv python3.11-dev -y"
+                    else
+                        echo "sudo apt-get update"
+                        echo "sudo apt-get install python3.11 python3.11-venv python3.11-dev -y"
+                    fi
+                    
+                    echo ""
+                    echo -e "${YELLOW}Please run the above commands with sudo privileges${NC}"
+                    echo -e "${CYAN}After installation, re-run this script${NC}"
+                    return 1
+                    ;;
+                    
+                rhel|centos|fedora|rocky|almalinux)
+                    echo -e "${YELLOW}Detected RHEL/CentOS/Fedora${NC}"
+                    echo -e "${CYAN}Commands to install Python 3.11:${NC}"
+                    
+                    echo "sudo dnf install python3.11 python3.11-devel -y"
+                    echo ""
+                    echo -e "${YELLOW}Please run the above command with sudo privileges${NC}"
+                    echo -e "${CYAN}After installation, re-run this script${NC}"
+                    return 1
+                    ;;
+                    
+                arch|manjaro)
+                    echo -e "${YELLOW}Detected Arch Linux${NC}"
+                    echo -e "${CYAN}Commands to install Python 3.11:${NC}"
+                    
+                    echo "sudo pacman -S python python-pip"
+                    echo ""
+                    echo -e "${YELLOW}Please run the above command with sudo privileges${NC}"
+                    echo -e "${CYAN}After installation, re-run this script${NC}"
+                    return 1
+                    ;;
+                    
+                *)
+                    echo -e "${YELLOW}Unknown Linux distribution: $os_id${NC}"
+                    echo -e "${CYAN}Please install Python 3.11 manually${NC}"
+                    return 1
+                    ;;
+            esac
+            
+        elif [[ "$(uname)" == "Darwin" ]]; then
+            # macOS
+            echo -e "${YELLOW}Detected macOS${NC}"
+            
+            if command -v brew >/dev/null 2>&1; then
+                echo -e "${CYAN}Installing Python 3.11 using Homebrew...${NC}"
+                brew install python@3.11
+                return $?
+            else
+                echo -e "${YELLOW}Homebrew not found${NC}"
+                echo -e "${CYAN}Install Homebrew first: https://brew.sh${NC}"
+                echo -e "${CYAN}Then run: brew install python@3.11${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}Unable to detect operating system${NC}"
+            echo -e "${CYAN}Please install Python 3.11 manually${NC}"
+            return 1
+        fi
+    else
+        echo -e "${YELLOW}Invalid choice${NC}"
+        return 1
+    fi
+}
+
+# Load custom Python path if it exists
+load_python_path() {
+    local python_path_file="$PREFS_DIR/.python311_path"
+    
+    if [[ -f "$python_path_file" ]]; then
+        local python_bin_path=$(cat "$python_path_file")
+        if [[ -d "$python_bin_path" ]]; then
+            export PATH="$python_bin_path:$PATH"
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # Check dependencies
 check_dependencies() {
     local missing=()
     local first_run_file="$PREFS_DIR/.venv_setup_complete"
     local venv_dir="$SCRIPT_DIR/etl_venv"
+    
+    # Try to load custom Python installation path first
+    load_python_path
     
     # Check for required system commands
     for cmd in grep cut wc; do
@@ -324,9 +596,30 @@ check_dependencies() {
         python_cmd="python3.11"
     elif command -v python3 >/dev/null 2>&1; then
         python_cmd="python3"
-        echo -e "${YELLOW}Note: Python 3.11 not found, using $(python3 --version)${NC}"
+        local current_version=$(python3 --version 2>&1 | awk '{print $2}')
+        echo -e "${YELLOW}Note: Python 3.11 preferred, found Python $current_version${NC}"
+        
+        # Offer to install Python 3.11
+        if confirm_install_python "3.11"; then
+            if install_python_311; then
+                python_cmd="python3.11"
+            fi
+        fi
     else
-        missing+=("python3")
+        echo -e "${RED}Python 3 not found in system${NC}"
+        
+        # Offer to install Python 3.11
+        if confirm_install_python "3.11"; then
+            if install_python_311; then
+                python_cmd="python3.11"
+            else
+                echo -e "${RED}Failed to install Python 3.11${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${RED}Python is required to continue${NC}"
+            exit 1
+        fi
     fi
     
     if [[ ${#missing[@]} -gt 0 ]]; then

@@ -1,5 +1,39 @@
 # CHANGELOG.md
 
+## [v3.4.3] - 2025-09-02 - Automatic Python 3.11 Installation
+
+### New Features
+- **Automatic Python 3.11 installation when not found**
+  - Offers installation if Python 3.11 missing
+  - Two methods: source compilation or package manager
+  - User-configurable installation base path
+  - No sudo required for user directory installations
+  - Automatic PATH management for custom installations
+
+### Installation Options
+- **Source Installation**
+  - Downloads Python 3.11.9 from python.org
+  - Compiles with optimizations (PGO)
+  - Custom installation path selection
+  - Saves path for automatic loading
+- **Package Manager**
+  - OS detection (Ubuntu, RHEL, macOS, Arch)
+  - Provides appropriate installation commands
+  - Guides user through manual installation
+
+### Improvements
+- Added `install_python_311()` for complete installation
+- Added `confirm_install_python()` for user interaction
+- Added `load_python_path()` for custom path management
+- Enhanced `check_dependencies()` with installation offers
+- Test script for Python detection and paths
+
+### Technical Details
+- Custom Python path saved to `.etl_state/.python311_path`
+- Supports parallel builds based on CPU cores
+- Fallback to non-optimized build if needed
+- Comprehensive OS detection for package managers
+
 ## [v3.4.2] - 2025-09-02 - Proxy Support for Restricted Environments
 
 ### New Features
