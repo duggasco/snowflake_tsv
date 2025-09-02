@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.0 - 100% Consolidated (All dependencies eliminated)
+# Version: 3.4.2 - Enterprise-ready with proxy support
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.1"  # Auto venv setup on first run
+VERSION="3.4.2"  # Auto venv setup with proxy support
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -341,6 +341,16 @@ check_dependencies() {
         setup_python_environment "$python_cmd"
     fi
     
+    # Load saved proxy configuration if it exists
+    local proxy_file="$PREFS_DIR/.proxy_config"
+    if [[ -f "$proxy_file" ]]; then
+        local proxy=$(cat "$proxy_file")
+        export http_proxy="$proxy"
+        export https_proxy="$proxy"
+        export HTTP_PROXY="$proxy"
+        export HTTPS_PROXY="$proxy"
+    fi
+    
     # Activate venv if it exists
     if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
         source "$venv_dir/bin/activate"
@@ -353,6 +363,150 @@ check_dependencies() {
         echo -e "${YELLOW}Required Python packages not found. Installing...${NC}"
         setup_python_environment "$python_cmd"
     fi
+}
+
+# Test connectivity to PyPI
+test_pypi_connectivity() {
+    local proxy="${1:-}"
+    local test_url="https://pypi.org/simple/"
+    
+    echo -e "${YELLOW}Testing connectivity to PyPI...${NC}"
+    
+    # Try with curl first (more common in minimal systems)
+    if command -v curl >/dev/null 2>&1; then
+        if [[ -n "$proxy" ]]; then
+            if curl -s --proxy "$proxy" --connect-timeout 10 "$test_url" >/dev/null 2>&1; then
+                return 0
+            fi
+        else
+            if curl -s --connect-timeout 10 "$test_url" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+    fi
+    
+    # Try with wget as fallback
+    if command -v wget >/dev/null 2>&1; then
+        if [[ -n "$proxy" ]]; then
+            export http_proxy="$proxy"
+            export https_proxy="$proxy"
+        fi
+        
+        if wget -q --timeout=10 --spider "$test_url" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    
+    # Try with Python as last resort
+    if python3 -c "
+import urllib.request
+import sys
+import os
+timeout = 10
+proxy = os.environ.get('https_proxy', '$proxy')
+if proxy:
+    proxy_handler = urllib.request.ProxyHandler({'https': proxy})
+    opener = urllib.request.build_opener(proxy_handler)
+    urllib.request.install_opener(opener)
+try:
+    urllib.request.urlopen('$test_url', timeout=timeout)
+    sys.exit(0)
+except:
+    sys.exit(1)
+" 2>/dev/null; then
+        return 0
+    fi
+    
+    return 1
+}
+
+# Configure proxy settings
+configure_proxy() {
+    local proxy_file="$PREFS_DIR/.proxy_config"
+    local proxy=""
+    
+    # Check if proxy is already configured
+    if [[ -f "$proxy_file" ]]; then
+        proxy=$(cat "$proxy_file")
+        echo -e "${CYAN}Using saved proxy configuration: $proxy${NC}"
+        export http_proxy="$proxy"
+        export https_proxy="$proxy"
+        export HTTP_PROXY="$proxy"
+        export HTTPS_PROXY="$proxy"
+        return 0
+    fi
+    
+    # Test direct connection first
+    if test_pypi_connectivity; then
+        echo -e "${GREEN}✓ Direct connection to PyPI successful${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}⚠ Cannot connect to PyPI directly${NC}"
+    echo -e "${CYAN}This might be due to a corporate firewall or proxy requirement.${NC}"
+    echo ""
+    
+    # Check for existing proxy environment variables
+    if [[ -n "$https_proxy" ]] || [[ -n "$HTTPS_PROXY" ]] || [[ -n "$http_proxy" ]] || [[ -n "$HTTP_PROXY" ]]; then
+        proxy="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-$HTTP_PROXY}}}"
+        echo -e "${CYAN}Found existing proxy setting: $proxy${NC}"
+        
+        if test_pypi_connectivity "$proxy"; then
+            echo -e "${GREEN}✓ Connection successful with existing proxy${NC}"
+            echo "$proxy" > "$proxy_file"
+            return 0
+        else
+            echo -e "${YELLOW}Existing proxy setting didn't work${NC}"
+        fi
+    fi
+    
+    # Interactive proxy configuration
+    echo -e "${CYAN}=== Proxy Configuration Required ===${NC}"
+    echo -e "${CYAN}Please enter your proxy server details.${NC}"
+    echo -e "${CYAN}Common formats:${NC}"
+    echo -e "  - http://proxy.company.com:8080"
+    echo -e "  - http://username:password@proxy.company.com:8080"
+    echo -e "  - socks5://proxy.company.com:1080"
+    echo ""
+    
+    while true; do
+        read -p "Enter proxy URL (or 'skip' to proceed without proxy): " proxy
+        
+        if [[ "$proxy" == "skip" ]] || [[ -z "$proxy" ]]; then
+            echo -e "${YELLOW}Proceeding without proxy configuration${NC}"
+            echo -e "${YELLOW}Note: Package installation may fail${NC}"
+            return 1
+        fi
+        
+        # Validate proxy format
+        if [[ ! "$proxy" =~ ^https?:// ]] && [[ ! "$proxy" =~ ^socks5?:// ]]; then
+            proxy="http://$proxy"
+            echo -e "${CYAN}Added http:// prefix: $proxy${NC}"
+        fi
+        
+        # Test the proxy
+        echo -e "${YELLOW}Testing proxy connection...${NC}"
+        if test_pypi_connectivity "$proxy"; then
+            echo -e "${GREEN}✓ Proxy connection successful!${NC}"
+            
+            # Save proxy configuration
+            mkdir -p "$PREFS_DIR"
+            echo "$proxy" > "$proxy_file"
+            
+            # Export for current session
+            export http_proxy="$proxy"
+            export https_proxy="$proxy"
+            export HTTP_PROXY="$proxy"
+            export HTTPS_PROXY="$proxy"
+            
+            echo -e "${GREEN}Proxy configuration saved${NC}"
+            return 0
+        else
+            echo -e "${RED}✗ Could not connect through proxy${NC}"
+            echo -e "${YELLOW}Please check the proxy URL and try again${NC}"
+            echo ""
+        fi
+    done
 }
 
 # Setup Python virtual environment
@@ -370,6 +524,9 @@ setup_python_environment() {
     local python_version=$($python_cmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
     echo -e "${GREEN}Using Python $python_version${NC}"
     
+    # Test connectivity and configure proxy if needed
+    configure_proxy
+    
     # Create virtual environment
     echo -e "${YELLOW}Creating virtual environment in $venv_dir...${NC}"
     if $python_cmd -m venv "$venv_dir"; then
@@ -383,28 +540,43 @@ setup_python_environment() {
     # Activate virtual environment
     source "$venv_dir/bin/activate"
     
+    # Set up pip with proxy if configured
+    local pip_args=""
+    if [[ -n "${https_proxy:-}" ]]; then
+        pip_args="--proxy $https_proxy"
+        echo -e "${CYAN}Using proxy for pip: $https_proxy${NC}"
+    fi
+    
     # Upgrade pip
     echo -e "${YELLOW}Upgrading pip...${NC}"
-    python3 -m pip install --upgrade pip --quiet
+    python3 -m pip install $pip_args --upgrade pip --quiet
     
     # Install requirements
     if [[ -f "$SCRIPT_DIR/requirements.txt" ]]; then
         echo -e "${YELLOW}Installing required packages from requirements.txt...${NC}"
-        if python3 -m pip install -r "$SCRIPT_DIR/requirements.txt" --quiet; then
+        if python3 -m pip install $pip_args -r "$SCRIPT_DIR/requirements.txt" --quiet; then
             echo -e "${GREEN}✓ All packages installed successfully${NC}"
         else
             echo -e "${RED}Failed to install some packages${NC}"
             echo "You may need to install them manually"
+            
+            # If proxy is configured, show proxy-specific help
+            if [[ -n "${https_proxy:-}" ]]; then
+                echo -e "${YELLOW}Proxy is configured. If installation failed, check:${NC}"
+                echo "  - Proxy allows HTTPS connections to pypi.org"
+                echo "  - Proxy credentials are correct (if required)"
+                echo "  - Corporate firewall rules"
+            fi
         fi
     else
         echo -e "${YELLOW}requirements.txt not found, installing essential packages...${NC}"
-        python3 -m pip install snowflake-connector-python pandas numpy tqdm --quiet
+        python3 -m pip install $pip_args snowflake-connector-python pandas numpy tqdm --quiet
     fi
     
     # Install the snowflake_etl package if setup.py exists
     if [[ -f "$SCRIPT_DIR/setup.py" ]]; then
         echo -e "${YELLOW}Installing snowflake_etl package...${NC}"
-        if python3 -m pip install -e "$SCRIPT_DIR" --quiet; then
+        if python3 -m pip install $pip_args -e "$SCRIPT_DIR" --quiet; then
             echo -e "${GREEN}✓ snowflake_etl package installed${NC}"
         else
             echo -e "${YELLOW}Note: snowflake_etl package installation skipped${NC}"
@@ -419,9 +591,31 @@ setup_python_environment() {
     echo -e "${GREEN}=== Setup Complete ===${NC}"
     echo -e "${GREEN}Virtual environment is ready at: $venv_dir${NC}"
     echo -e "${GREEN}The environment will be automatically activated for future runs.${NC}"
+    
+    if [[ -f "$PREFS_DIR/.proxy_config" ]]; then
+        echo -e "${CYAN}Proxy configuration saved for future use${NC}"
+        echo -e "${CYAN}To reset proxy: rm $PREFS_DIR/.proxy_config${NC}"
+    fi
+    
     echo ""
     echo -e "${CYAN}Press Enter to continue...${NC}"
     read -r
+}
+
+# Clear proxy configuration (utility function)
+clear_proxy_config() {
+    local proxy_file="$PREFS_DIR/.proxy_config"
+    
+    if [[ -f "$proxy_file" ]]; then
+        rm -f "$proxy_file"
+        echo -e "${GREEN}Proxy configuration cleared${NC}"
+        echo -e "${CYAN}The next venv setup will re-test connectivity${NC}"
+    else
+        echo -e "${YELLOW}No proxy configuration found${NC}"
+    fi
+    
+    # Clear environment variables
+    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
 }
 
 # Health check - clean up stale jobs

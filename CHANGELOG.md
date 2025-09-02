@@ -1,5 +1,30 @@
 # CHANGELOG.md
 
+## [v3.4.2] - 2025-09-02 - Proxy Support for Restricted Environments
+
+### New Features
+- **Automatic proxy detection and configuration**
+  - Tests connectivity to PyPI before package installation
+  - Detects existing proxy environment variables
+  - Interactive proxy configuration if connection fails
+  - Saves working proxy settings for future use
+  - Supports HTTP, HTTPS, and SOCKS5 proxies
+  - Handles authenticated proxies (user:pass@proxy)
+
+### Improvements
+- Added `test_pypi_connectivity()` for network detection
+- Added `configure_proxy()` for interactive setup
+- Added `clear_proxy_config()` utility function
+- All pip commands now use configured proxy
+- Better error messages for restricted environments
+- Test script for proxy configuration
+
+### Technical Details
+- Proxy settings saved to `.etl_state/.proxy_config`
+- Multiple connectivity test methods (curl, wget, Python)
+- Automatic proxy environment variable export
+- Security warnings for password storage
+
 ## [v3.4.1] - 2025-09-02 - Automatic Virtual Environment Setup
 
 ### New Features
