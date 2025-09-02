@@ -1,9 +1,0 @@
-SYSTEM INFORMATION
-==================
-Hostname: atp-notebook-sduggan-session-djdr-6b946c985c-rhvqj
-OS: Linux 5.15.0-134-generic
-Python: Python 3.9.18
-User: sduggan
-Date: Tue Aug 26 21:51:08 UTC 2025
-Working Dir: /u1/sduggan/snowflake_tsv
-

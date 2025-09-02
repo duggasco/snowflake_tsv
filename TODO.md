@@ -1,18 +1,45 @@
 # TODO.md - Snowflake ETL Pipeline Manager
-*Last Updated: 2025-08-27 Session 4*
-*Current Version: 3.0.6 (COPY Validation Removed - Timeout Fix)*
-*Status: PRODUCTION READY - Active Development*
+*Last Updated: 2025-09-02 (End of Session)*
+*Current Version: 3.3.0 (Unified Script Consolidation - Phase 3 Complete)*
+*Status: PRODUCTION READY - 95% Consolidated*
 
-## 🚧 IN PROGRESS - Menu QC Selection Enhancement (2025-08-27 Session 4)
-**STATUS: Partially Complete - Need to finish menu updates**
+## 🎯 NEXT SESSION PRIORITIES
+1. **Test Phase 3 config generation functions thoroughly**
+2. **Remove deprecated wrapper scripts (Phase 6)**
+3. **Handle remaining dependencies:**
+   - `recover_failed_load.sh` (2 calls - already deprecated)
+   - `tsv_sampler.sh` (1 call - can be replaced or integrated)
+4. **Full integration testing with real data**
 
-### Remaining Tasks
-- [ ] Add `select_quality_check_method()` helper function to snowflake_etl.sh
-- [ ] Update `quick_load_current_month()` to prompt for QC method
-- [ ] Update `quick_load_last_month()` to prompt for QC method
-- [ ] Update `quick_load_specific_file()` to prompt for QC method
-- [ ] Update `menu_load_data()` all options to prompt for QC method
-- [ ] Test all menu paths with new QC selection
+## ✅ COMPLETED - Unified Script Consolidation Phase 3 (2025-09-02)
+**STATUS: 100% Complete - Config generation migrated**
+
+### Completed Tasks (v3.3.0)
+- [x] Ported all config generation functions from generate_config.sh
+- [x] Added detect_file_pattern() function
+- [x] Added extract_table_name() function  
+- [x] Added analyze_tsv_file() function
+- [x] Added query_snowflake_columns() function
+- [x] Added prompt_snowflake_credentials() for interactive mode
+- [x] Added generate_config_from_files() function
+- [x] Added generate_config_direct() wrapper
+- [x] Updated menu function to use new direct generation
+- [x] Eliminated dependency on generate_config.sh
+
+## ✅ COMPLETED - Unified Script Consolidation Phase 1 (2025-09-02)
+**STATUS: 100% Complete - Core functions migrated**
+
+### Completed Tasks (v3.1.0)
+- [x] Added check_prerequisites() function
+- [x] Added convert_month_format() function  
+- [x] Added find_month_directories() function
+- [x] Added execute_python_cli() wrapper
+- [x] Added process_month_direct() for single months
+- [x] Added process_direct_files() for direct files
+- [x] Updated all quick load functions to use direct calls
+- [x] Updated CLI mode operations to use direct calls
+- [x] Reduced run_loader.sh dependencies from 11 to 3 calls
+- [x] Tested all Phase 1 changes successfully
 
 ## ✅ COPY Validation Removal - COMPLETE (2025-08-27 Session 4)
 **STATUS: 100% Complete - Timeout issue resolved**

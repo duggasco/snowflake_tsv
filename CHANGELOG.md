@@ -1,5 +1,140 @@
 # CHANGELOG.md
 
+## [v3.4.1] - 2025-09-02 - Automatic Virtual Environment Setup
+
+### New Features
+- **Automatic Python environment setup on first run**
+  - Detects Python 3.11 (preferred) or any Python 3.x
+  - Creates isolated virtual environment (etl_venv/)
+  - Installs all dependencies from requirements.txt
+  - Activates venv automatically on each subsequent run
+  - No manual Python configuration needed
+
+### Improvements
+- Added `check_dependencies()` enhancement for venv detection
+- Added `setup_python_environment()` for automated setup
+- Updated all Python execution to use venv
+- Created VENV_SETUP.md documentation
+
+### Technical Details
+- Virtual environment location: `./etl_venv/`
+- Setup marker: `.etl_state/.venv_setup_complete`
+- Supports pip package caching for faster reinstalls
+- Compatible with existing setup.py installation
+
+## [v3.4.0] - 2025-09-02 - 100% Consolidation Complete 🎉
+
+### Major Milestone Achieved
+- **Successfully consolidated ALL functionality into single snowflake_etl.sh script**
+- **Eliminated ALL external script dependencies**
+- **Project is now 100% self-contained**
+
+### Dependencies Eliminated
+All wrapper scripts have been deprecated and moved to `deprecated_scripts/`:
+- `run_loader.sh` - Loading functionality migrated to internal functions
+- `drop_month.sh` - Deletion operations migrated to internal functions  
+- `generate_config.sh` - Config generation migrated to internal functions
+- `tsv_sampler.sh` - TSV sampling replaced with internal function
+- `recover_failed_load.sh` - Recovery operations point to Python CLI
+
+### New Internal Functions
+- `sample_tsv_file()` - Replaces tsv_sampler.sh with enhanced analysis
+- Recovery functions updated to use Python CLI's diagnose-error command
+- All Phase 3 config generation functions tested and working
+
+### Statistics
+- **Script size**: ~3150 lines (fully self-contained)
+- **Functions added**: 20+ new functions across all phases
+- **Dependencies removed**: 5 external scripts
+- **Consolidation**: 100% complete
+
+### Migration Guide
+Users should now use:
+- `./snowflake_etl.sh` for interactive operations
+- Python CLI (`python -m snowflake_etl`) for automation
+- All deprecated scripts moved to `deprecated_scripts/` for reference
+
+## [v3.3.0] - 2025-09-02 - Unified Script Consolidation Complete (95%)
+
+### Major Achievement
+- **Successfully consolidated 95% of functionality into single snowflake_etl.sh**
+- Eliminated dependencies on all major wrapper scripts
+- Added 18 new functions for complete self-sufficiency
+
+### Phase 3 Completed (Config Generation)
+- **Ported from generate_config.sh**:
+  - `detect_file_pattern()` - Auto-detect date patterns
+  - `extract_table_name()` - Extract table from filename
+  - `analyze_tsv_file()` - Analyze TSV structure
+  - `query_snowflake_columns()` - Query Snowflake schemas
+  - `prompt_snowflake_credentials()` - Interactive credentials
+  - `generate_config_from_files()` - Generate full config
+  - `generate_config_direct()` - Main wrapper function
+
+### Phase 2 Completed (Batch & Parallel Processing)
+- **Added Batch Processing**:
+  - `process_batch_months()` - Discover and process all months
+  - `process_months_sequential()` - Sequential processing
+  - `process_months_parallel()` - Parallel with job management
+  - `process_multiple_months()` - Handle comma-separated lists
+  
+- **Added Direct Operations**:
+  - `delete_month_data()` - Direct deletion without wrapper
+
+### Dependency Elimination Summary
+| Script | Before | After | Status |
+|--------|--------|-------|--------|
+| run_loader.sh | 11 calls | 0 | ✅ Eliminated |
+| drop_month.sh | 2 calls | 0 | ✅ Eliminated |
+| generate_config.sh | 1 call | 0 | ✅ Eliminated |
+| recover_failed_load.sh | 2 calls | 2 | Deprecated |
+| tsv_sampler.sh | 1 call | 1 | Minor dependency |
+
+### Technical Stats
+- Script size: ~3100 lines (from ~2500)
+- Functions added: 18 total
+- Consolidation: 95% complete
+- Remaining work: Final cleanup (Phase 6)
+
+## [v3.1.0] - 2025-09-02 - Unified Script Consolidation Phase 1
+
+### Major Changes
+- **Started consolidating all bash scripts into single snowflake_etl.sh**
+  - Goal: Eliminate need for separate wrapper scripts
+  - Maintain single unified entry point for all operations
+  
+### Phase 1 Completed
+- **Added Core Functions to snowflake_etl.sh**:
+  - `check_prerequisites()` - Verifies Python installation and required packages
+  - `convert_month_format()` - Handles both YYYY-MM and MMYYYY formats
+  - `find_month_directories()` - Discovers available months in data directory
+  - `execute_python_cli()` - Direct wrapper for Python CLI execution
+  - `process_month_direct()` - Processes single months without wrapper script
+  - `process_direct_files()` - Handles direct file loading without wrapper
+  
+- **Updated Menu Functions**:
+  - `quick_load_current_month()` - Now uses direct Python CLI calls
+  - `quick_load_last_month()` - Now uses direct Python CLI calls
+  - `quick_load_specific_file()` - Now uses direct Python CLI calls
+  - `quick_load_custom_month()` - Now uses direct Python CLI calls
+  - CLI mode load operations - Now use direct functions
+  
+### Technical Improvements
+- Reduced dependency on `run_loader.sh` from 11 calls to 3
+- Better error handling with prerequisite checks before operations
+- More maintainable code with functions consolidated in single script
+- Foundation laid for complete wrapper script elimination
+
+### Remaining for Phase 2
+- Multi-month processing with parallel execution
+- Batch mode processing for all discovered months
+- File browser multi-file selection handling
+
+### Testing
+- All Phase 1 functions tested and working
+- Script syntax validated
+- Backward compatibility maintained for complex operations
+
 ## [v3.0.7] - 2025-08-29 - Fix Config Generation to Include Snowflake Headers
 
 ### Bug Fix

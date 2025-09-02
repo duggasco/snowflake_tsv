@@ -2,6 +2,8 @@
 
 Enterprise-grade ETL pipeline for processing large TSV files into Snowflake with comprehensive data quality validation, parallel processing, and monitoring capabilities.
 
+**🚀 Version 3.4.0**: Automatic virtual environment setup on first run - no manual Python configuration needed!
+
 ## Features
 
 - **High Performance**: Process 50GB+ TSV files with streaming and parallel processing

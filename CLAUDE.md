@@ -11,12 +11,9 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 ## Key Components
 
 ### Main Scripts
+- **snowflake_etl.sh**: Unified interactive menu system for all Snowflake ETL operations (v3.4.0 - fully consolidated)
 - **tsv_loader.py**: The primary ETL script that orchestrates file analysis, quality checks, compression, and Snowflake loading
 - **drop_month.py**: Safe deletion tool for removing monthly data from Snowflake tables with comprehensive safety features
-- **drop_month.sh**: Bash wrapper for drop_month.py with colored output and safety warnings
-- **run_loader.sh**: Bash wrapper script for convenient execution with color-coded output and prerequisite checking
-- **generate_config.sh**: Automatic configuration generator from TSV files and Snowflake schemas
-- **tsv_sampler.sh**: TSV file analyzer that samples data to help understand structure and generate configurations
 - **check_snowflake_table.py**: Diagnostic tool for verifying table existence and debugging Snowflake connections
 - **check_stage_and_performance.py**: Performance diagnostic tool for analyzing slow COPY operations and managing stages
 
@@ -138,21 +135,15 @@ pip install tqdm psutil
 
 ### Config Generation
 
+Config generation is now integrated into the unified script. Access via:
+
 ```bash
-# Generate config from TSV files automatically
-./generate_config.sh data/file_20240101-20240131.tsv
+# Interactive menu
+./snowflake_etl.sh
+# Then select: File Tools > Generate Config
 
-# Query Snowflake table for column names
-./generate_config.sh -t FACTLENDINGBENCHMARK -c config/existing.json data/*.tsv
-
-# Provide column headers manually for headerless TSVs
-./generate_config.sh -h "RECORDDATE,RECORDDATEID,ASSETID,..." data/file.tsv
-
-# Interactive mode for Snowflake credentials
-./generate_config.sh -i -o config/my_config.json data/*.tsv
-
-# Dry run to preview generated config
-./generate_config.sh --dry-run data/file.tsv
+# Or use the Python CLI directly:
+python -m snowflake_etl config-generate --files data/*.tsv --output config.json
 ```
 
 ### Running the Pipeline
@@ -182,24 +173,17 @@ python tsv_loader.py --config config/config.json --base-path ./data --validate-i
 # Only validate existing data in Snowflake (no loading)
 python tsv_loader.py --config config/config.json --base-path ./data --month 2024-01 --validate-only
 
-# Using the bash wrapper (recommended)
-./run_loader.sh --month 2024-01 --base-path ./data
+# Using the unified interactive menu (recommended)
+./snowflake_etl.sh
 
-# Process specific TSV files directly
-./run_loader.sh --direct-file /path/to/file.tsv --skip-qc
-./run_loader.sh --direct-file file1.tsv,file2.tsv --validate-in-snowflake
+# Or use the Python CLI directly for automation:
+python tsv_loader.py --config config.json --month 2024-01 --validate-in-snowflake
 
-# Process with Snowflake validation instead of file QC
-./run_loader.sh --month 2024-01 --validate-in-snowflake
+# Process multiple months in parallel
+python tsv_loader.py --config config.json --month 2024-01,2024-02,2024-03
 
-# Only validate existing Snowflake data
-./run_loader.sh --month 2024-01 --validate-only
-
-# Parallel processing with quiet mode for cleaner output
-./run_loader.sh --month 2024-01,2024-02,2024-03 --parallel 3 --quiet
-
-# Batch processing with Snowflake validation
-./run_loader.sh --batch --validate-in-snowflake --parallel 4
+# Validate existing data only
+python tsv_loader.py --config config.json --month 2024-01 --validate-only
 ```
 
 ### Data Deletion

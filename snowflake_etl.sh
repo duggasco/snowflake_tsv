@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 2.7.0 - Dynamic UI sizing for full content visibility
+# Version: 3.4.0 - 100% Consolidated (All dependencies eliminated)
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.0.0"
+VERSION="3.4.1"  # Auto venv setup on first run
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -24,6 +24,7 @@ STATE_DIR="${SCRIPT_DIR}/.etl_state"
 JOBS_DIR="${STATE_DIR}/jobs"
 LOCKS_DIR="${STATE_DIR}/locks"
 PREFS_FILE="${STATE_DIR}/preferences"
+PREFS_DIR="${STATE_DIR}"  # Directory for preference files
 LOGS_DIR="${SCRIPT_DIR}/logs"
 
 # Color codes (for fallback mode)
@@ -307,24 +308,120 @@ init_directories() {
 # Check dependencies
 check_dependencies() {
     local missing=()
+    local first_run_file="$PREFS_DIR/.venv_setup_complete"
+    local venv_dir="$SCRIPT_DIR/etl_venv"
     
-    # Check for required commands
-    for cmd in python3 grep cut wc; do
+    # Check for required system commands
+    for cmd in grep cut wc; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             missing+=("$cmd")
         fi
     done
     
-    # Check for required Python modules (basic check)
-    if ! python3 -c "import sys" 2>/dev/null; then
-        missing+=("python3-functional")
+    # Check for Python 3.11 specifically, or any Python 3
+    local python_cmd=""
+    if command -v python3.11 >/dev/null 2>&1; then
+        python_cmd="python3.11"
+    elif command -v python3 >/dev/null 2>&1; then
+        python_cmd="python3"
+        echo -e "${YELLOW}Note: Python 3.11 not found, using $(python3 --version)${NC}"
+    else
+        missing+=("python3")
     fi
     
     if [[ ${#missing[@]} -gt 0 ]]; then
-        echo "ERROR: Missing required dependencies: ${missing[*]}"
+        echo -e "${RED}ERROR: Missing required system dependencies: ${missing[*]}${NC}"
         echo "Please install the missing tools and try again."
         exit 1
     fi
+    
+    # Check if this is first run or venv doesn't exist
+    if [[ ! -f "$first_run_file" ]] || [[ ! -d "$venv_dir" ]]; then
+        echo -e "${CYAN}First run detected. Setting up Python environment...${NC}"
+        setup_python_environment "$python_cmd"
+    fi
+    
+    # Activate venv if it exists
+    if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
+        source "$venv_dir/bin/activate"
+        export VIRTUAL_ENV="$venv_dir"
+        export PATH="$venv_dir/bin:$PATH"
+    fi
+    
+    # Verify required Python packages are installed
+    if ! python3 -c "import snowflake.connector" 2>/dev/null; then
+        echo -e "${YELLOW}Required Python packages not found. Installing...${NC}"
+        setup_python_environment "$python_cmd"
+    fi
+}
+
+# Setup Python virtual environment
+setup_python_environment() {
+    local python_cmd="${1:-python3}"
+    local venv_dir="$SCRIPT_DIR/etl_venv"
+    local first_run_file="$PREFS_DIR/.venv_setup_complete"
+    
+    echo -e "${CYAN}=== Python Environment Setup ===${NC}"
+    echo -e "${CYAN}This will create a virtual environment and install required packages.${NC}"
+    echo -e "${CYAN}This only needs to be done once.${NC}"
+    echo ""
+    
+    # Check Python version
+    local python_version=$($python_cmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+    echo -e "${GREEN}Using Python $python_version${NC}"
+    
+    # Create virtual environment
+    echo -e "${YELLOW}Creating virtual environment in $venv_dir...${NC}"
+    if $python_cmd -m venv "$venv_dir"; then
+        echo -e "${GREEN}✓ Virtual environment created${NC}"
+    else
+        echo -e "${RED}Failed to create virtual environment${NC}"
+        echo "Try installing python3-venv: sudo apt-get install python3-venv"
+        exit 1
+    fi
+    
+    # Activate virtual environment
+    source "$venv_dir/bin/activate"
+    
+    # Upgrade pip
+    echo -e "${YELLOW}Upgrading pip...${NC}"
+    python3 -m pip install --upgrade pip --quiet
+    
+    # Install requirements
+    if [[ -f "$SCRIPT_DIR/requirements.txt" ]]; then
+        echo -e "${YELLOW}Installing required packages from requirements.txt...${NC}"
+        if python3 -m pip install -r "$SCRIPT_DIR/requirements.txt" --quiet; then
+            echo -e "${GREEN}✓ All packages installed successfully${NC}"
+        else
+            echo -e "${RED}Failed to install some packages${NC}"
+            echo "You may need to install them manually"
+        fi
+    else
+        echo -e "${YELLOW}requirements.txt not found, installing essential packages...${NC}"
+        python3 -m pip install snowflake-connector-python pandas numpy tqdm --quiet
+    fi
+    
+    # Install the snowflake_etl package if setup.py exists
+    if [[ -f "$SCRIPT_DIR/setup.py" ]]; then
+        echo -e "${YELLOW}Installing snowflake_etl package...${NC}"
+        if python3 -m pip install -e "$SCRIPT_DIR" --quiet; then
+            echo -e "${GREEN}✓ snowflake_etl package installed${NC}"
+        else
+            echo -e "${YELLOW}Note: snowflake_etl package installation skipped${NC}"
+        fi
+    fi
+    
+    # Mark setup as complete
+    mkdir -p "$PREFS_DIR"
+    touch "$first_run_file"
+    
+    echo ""
+    echo -e "${GREEN}=== Setup Complete ===${NC}"
+    echo -e "${GREEN}Virtual environment is ready at: $venv_dir${NC}"
+    echo -e "${GREEN}The environment will be automatically activated for future runs.${NC}"
+    echo ""
+    echo -e "${CYAN}Press Enter to continue...${NC}"
+    read -r
 }
 
 # Health check - clean up stale jobs
@@ -1045,6 +1142,633 @@ clean_completed_jobs() {
 }
 
 # ============================================================================
+# CORE LOADING FUNCTIONS (Migrated from run_loader.sh)
+# ============================================================================
+
+# Function to check prerequisites
+check_prerequisites() {
+    local quiet_mode="${1:-}"
+    local venv_dir="$SCRIPT_DIR/etl_venv"
+    
+    # Ensure venv is activated if it exists
+    if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
+        source "$venv_dir/bin/activate"
+    fi
+    
+    # Check if Python is installed
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}ERROR: Python 3 is not installed${NC}"
+        return 1
+    fi
+    
+    # Check Python version
+    local python_version=$(python3 --version 2>&1 | awk '{print $2}')
+    if [[ -z "$quiet_mode" ]]; then
+        echo -e "${CYAN}Prerequisites Check:${NC}"
+        echo -e "  Python version: ${python_version}"
+        if [[ -n "$VIRTUAL_ENV" ]]; then
+            echo -e "  Virtual env: ${GREEN}Active${NC} ($venv_dir)"
+        fi
+    fi
+    
+    # Check if required Python packages are installed
+    local missing_packages=""
+    
+    for package in snowflake-connector-python pandas numpy; do
+        if ! python3 -c "import ${package//-/_}" 2>/dev/null; then
+            missing_packages="${missing_packages} ${package}"
+        fi
+    done
+    
+    if [[ -n "$missing_packages" ]]; then
+        if [[ -z "$quiet_mode" ]]; then
+            echo -e "${YELLOW}Warning: Missing Python packages:${missing_packages}${NC}"
+            echo -e "${YELLOW}Install with: pip install${missing_packages}${NC}"
+        fi
+        # Don't fail on missing packages, just warn
+    fi
+    
+    # Check if logs directory exists
+    if [[ ! -d "$LOGS_DIR" ]]; then
+        if [[ -z "$quiet_mode" ]]; then
+            echo -e "${BLUE}Creating logs directory...${NC}"
+        fi
+        mkdir -p "$LOGS_DIR"
+    fi
+    
+    if [[ -z "$quiet_mode" ]]; then
+        echo -e "${GREEN}Prerequisites check complete${NC}\n"
+    fi
+    
+    return 0
+}
+
+# Function to convert month format to YYYY-MM
+convert_month_format() {
+    local month_dir=$1
+    # Check if already in YYYY-MM format
+    if [[ $month_dir =~ ^([0-9]{4})-([0-9]{2})$ ]]; then
+        echo "$month_dir"
+    # Extract MM and YYYY from MMYYYY format
+    elif [[ $month_dir =~ ^([0-9]{2})([0-9]{4})$ ]]; then
+        echo "${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
+    else
+        echo ""
+    fi
+}
+
+# Function to find all month directories
+find_month_directories() {
+    local base_path=$1
+    local months=()
+    
+    # Look for directories matching MMYYYY pattern
+    for dir in $(find "${base_path}" -maxdepth 1 -type d -name "[0-9][0-9][0-9][0-9][0-9][0-9]" 2>/dev/null | sort); do
+        local dirname=$(basename "$dir")
+        months+=("$dirname")
+    done
+    
+    echo "${months[@]}"
+}
+
+# Direct Python CLI execution wrapper
+execute_python_cli() {
+    local operation="$1"
+    shift
+    local args=("$@")
+    
+    # Check prerequisites before running
+    if ! check_prerequisites "quiet"; then
+        echo -e "${RED}Prerequisites check failed${NC}"
+        return 1
+    fi
+    
+    # Build the command
+    local cmd="python3 -m snowflake_etl"
+    
+    # Add config if available
+    if [[ -n "$CONFIG_FILE" ]] && [[ -f "$CONFIG_FILE" ]]; then
+        cmd="$cmd --config \"$CONFIG_FILE\""
+    fi
+    
+    # Add operation and arguments
+    cmd="$cmd $operation ${args[@]}"
+    
+    # Execute
+    echo -e "${CYAN}Executing: $cmd${NC}"
+    eval "$cmd"
+    return $?
+}
+
+# Process a single month
+process_month_direct() {
+    local month="$1"
+    local base_path="$2"
+    local extra_args="${3:-}"
+    
+    echo -e "${BLUE}Processing month: $month${NC}"
+    
+    # Convert month format if needed
+    local formatted_month=$(convert_month_format "$month")
+    if [[ -z "$formatted_month" ]]; then
+        echo -e "${RED}Invalid month format: $month${NC}"
+        return 1
+    fi
+    
+    # Build and execute command
+    local args="--month \"$formatted_month\" --base-path \"$base_path\""
+    
+    # Add extra arguments (like --skip-qc, --validate-in-snowflake)
+    if [[ -n "$extra_args" ]]; then
+        args="$args $extra_args"
+    fi
+    
+    execute_python_cli "load" "$args"
+    return $?
+}
+
+# Process direct files
+process_direct_files() {
+    local files="$1"
+    local extra_args="${2:-}"
+    
+    echo -e "${BLUE}Processing direct files: $files${NC}"
+    
+    # Build and execute command
+    local args="--files \"$files\""
+    
+    # Add extra arguments
+    if [[ -n "$extra_args" ]]; then
+        args="$args $extra_args"
+    fi
+    
+    execute_python_cli "load" "$args"
+    return $?
+}
+
+# ============================================================================
+# BATCH AND PARALLEL PROCESSING FUNCTIONS (Phase 2)
+# ============================================================================
+
+# Process all months in batch mode
+process_batch_months() {
+    local base_path="${1:-$BASE_PATH}"
+    local extra_args="${2:-}"
+    local parallel_jobs="${3:-1}"
+    
+    echo -e "${CYAN}Discovering months in: $base_path${NC}"
+    
+    # Find all month directories
+    local months_array=($(find_month_directories "$base_path"))
+    
+    if [[ ${#months_array[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}No month directories found in $base_path${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}Found ${#months_array[@]} months to process${NC}"
+    
+    # Process months (parallel or sequential)
+    if [[ $parallel_jobs -gt 1 ]]; then
+        process_months_parallel "${months_array[@]}" "$base_path" "$extra_args" "$parallel_jobs"
+    else
+        process_months_sequential "${months_array[@]}" "$base_path" "$extra_args"
+    fi
+    
+    return $?
+}
+
+# Process multiple months sequentially
+process_months_sequential() {
+    # Parse arguments - last two are base_path and extra_args
+    local args=("$@")
+    local num_args=${#args[@]}
+    local extra_args="${args[$((num_args-1))]}"
+    local base_path="${args[$((num_args-2))]}"
+    
+    # Extract months array (all but last two arguments)
+    local months=("${args[@]:0:$((num_args-2))}")
+    
+    local total=${#months[@]}
+    local successful=0
+    local failed=0
+    
+    for i in "${!months[@]}"; do
+        local month="${months[$i]}"
+        local current=$((i + 1))
+        
+        echo -e "\n${MAGENTA}[$current/$total] Processing month: $month${NC}"
+        
+        if process_month_direct "$month" "$base_path" "$extra_args"; then
+            ((successful++))
+            echo -e "${GREEN}[OK] Month $month completed successfully${NC}"
+        else
+            ((failed++))
+            echo -e "${RED}[FAILED] Month $month failed${NC}"
+        fi
+    done
+    
+    # Summary
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}BATCH PROCESSING SUMMARY${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "Total Months:    $total"
+    echo -e "Successful:      $successful"
+    echo -e "Failed:          $failed"
+    echo -e "${GREEN}========================================${NC}"
+    
+    [[ $failed -eq 0 ]] && return 0 || return 1
+}
+
+# Process multiple months in parallel
+process_months_parallel() {
+    # Parse arguments - last three are base_path, extra_args, and parallel_jobs
+    local args=("$@")
+    local num_args=${#args[@]}
+    local parallel_jobs="${args[$((num_args-1))]}"
+    local extra_args="${args[$((num_args-2))]}"
+    local base_path="${args[$((num_args-3))]}"
+    
+    # Extract months array (all but last three arguments)
+    local months=("${args[@]:0:$((num_args-3))}")
+    
+    local total=${#months[@]}
+    local successful=0
+    local failed=0
+    declare -A job_pids  # Track PIDs and their months
+    
+    echo -e "${CYAN}Processing $total months with $parallel_jobs parallel jobs${NC}"
+    
+    # Function to wait for a job slot
+    wait_for_job_slot() {
+        while [[ $(jobs -r | wc -l) -ge $parallel_jobs ]]; do
+            sleep 0.5
+        done
+    }
+    
+    # Function to check completed jobs
+    check_completed_jobs() {
+        local temp_pids=()
+        for pid in "${!job_pids[@]}"; do
+            if ! kill -0 $pid 2>/dev/null; then
+                wait $pid
+                local exit_code=$?
+                local month="${job_pids[$pid]}"
+                
+                if [[ $exit_code -eq 0 ]]; then
+                    ((successful++))
+                    echo -e "${GREEN}[OK] Month $month completed successfully${NC}"
+                else
+                    ((failed++))
+                    echo -e "${RED}[FAILED] Month $month failed${NC}"
+                fi
+                
+                unset job_pids[$pid]
+            fi
+        done
+    }
+    
+    # Launch parallel jobs
+    for i in "${!months[@]}"; do
+        local month="${months[$i]}"
+        local current=$((i + 1))
+        
+        wait_for_job_slot
+        check_completed_jobs
+        
+        echo -e "${BLUE}[$current/$total] Starting month: $month${NC}"
+        
+        # Run in background
+        {
+            process_month_direct "$month" "$base_path" "$extra_args"
+        } &
+        
+        job_pids[$!]="$month"
+    done
+    
+    # Wait for all remaining jobs
+    echo -e "\n${BLUE}Waiting for all parallel jobs to complete...${NC}"
+    while [[ ${#job_pids[@]} -gt 0 ]]; do
+        check_completed_jobs
+        sleep 0.5
+    done
+    
+    # Summary
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}PARALLEL BATCH PROCESSING SUMMARY${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "Total Months:    $total"
+    echo -e "Successful:      $successful"
+    echo -e "Failed:          $failed"
+    echo -e "${GREEN}========================================${NC}"
+    
+    [[ $failed -eq 0 ]] && return 0 || return 1
+}
+
+# Process multiple comma-separated months
+process_multiple_months() {
+    local months_str="$1"
+    local base_path="${2:-$BASE_PATH}"
+    local extra_args="${3:-}"
+    
+    # Split comma-separated months into array
+    IFS=',' read -ra months_array <<< "$months_str"
+    
+    echo -e "${CYAN}Processing ${#months_array[@]} specified months${NC}"
+    
+    # Process sequentially (can be made parallel if needed)
+    process_months_sequential "${months_array[@]}" "$base_path" "$extra_args"
+    
+    return $?
+}
+
+# ============================================================================
+# DELETE OPERATIONS (Migrated from drop_month.sh)
+# ============================================================================
+
+# Delete data for a specific month from a table
+delete_month_data() {
+    local table="$1"
+    local month="$2"
+    local extra_args="${3:-}"
+    
+    echo -e "${YELLOW}Deleting data from $table for month $month${NC}"
+    
+    # Build and execute command
+    local args="--table \"$table\" --month \"$month\""
+    
+    # Add extra arguments (like --yes for no confirmation)
+    if [[ -n "$extra_args" ]]; then
+        args="$args $extra_args"
+    fi
+    
+    execute_python_cli "delete" "$args"
+    return $?
+}
+
+# ============================================================================
+# CONFIG GENERATION FUNCTIONS (Phase 3 - Migrated from generate_config.sh)
+# ============================================================================
+
+# Detect file pattern (date_range vs month)
+detect_file_pattern() {
+    local filename="$1"
+    local base_name="$(basename "$filename")"
+    
+    # Remove .tsv extension
+    base_name="${base_name%.tsv}"
+    
+    # Check for date range pattern (YYYYMMDD-YYYYMMDD)
+    if [[ "$base_name" =~ ([0-9]{8})-([0-9]{8}) ]]; then
+        # Replace the date range with placeholder
+        local pattern="${base_name/${BASH_REMATCH[0]}/{date_range}}.tsv"
+        echo "$pattern"
+        return 0
+    fi
+    
+    # Check for month pattern (YYYY-MM)
+    if [[ "$base_name" =~ [0-9]{4}-[0-9]{2} ]]; then
+        # Replace the month with placeholder
+        local pattern="${base_name/${BASH_REMATCH[0]}/{month}}.tsv"
+        echo "$pattern"
+        return 0
+    fi
+    
+    # No pattern detected, return original filename
+    echo "$(basename "$filename")"
+}
+
+# Extract table name from filename
+extract_table_name() {
+    local filename="$1"
+    local base_name="$(basename "$filename" .tsv)"
+    
+    # Remove date range patterns (YYYYMMDD-YYYYMMDD)
+    base_name=$(echo "$base_name" | sed -E 's/_?[0-9]{8}-[0-9]{8}//g')
+    
+    # Remove month patterns (YYYY-MM)
+    base_name=$(echo "$base_name" | sed -E 's/_?[0-9]{4}-[0-9]{2}//g')
+    
+    # Convert to uppercase and replace non-alphanumeric with underscore
+    echo "$base_name" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g'
+}
+
+# Analyze TSV file structure
+analyze_tsv_file() {
+    local file="$1"
+    local column_count=0
+    
+    if [[ ! -f "$file" ]]; then
+        echo -e "${RED}Error: File not found: $file${NC}" >&2
+        return 1
+    fi
+    
+    # Get column count from first line
+    column_count=$(head -1 "$file" | awk -F'\t' '{print NF}')
+    
+    echo "$column_count"
+    return 0
+}
+
+# Query Snowflake for table columns
+query_snowflake_columns() {
+    local table_name="$1"
+    local config_file="${2:-$CONFIG_FILE}"
+    
+    if [[ ! -f "$config_file" ]]; then
+        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
+        return 1
+    fi
+    
+    echo -e "${CYAN}Querying Snowflake for table: $table_name${NC}" >&2
+    
+    # Use Python CLI to get table info
+    local result=$(python3 -m snowflake_etl --config "$config_file" check-table "$table_name" 2>&1)
+    
+    if [[ "$result" == *"exists with"* ]]; then
+        # Extract column names from output
+        echo "$result" | grep -oP '(?<=columns: ).*' | tr ',' '\n' | tr -d ' '
+        return 0
+    else
+        echo -e "${YELLOW}Warning: Could not query table $table_name${NC}" >&2
+        return 1
+    fi
+}
+
+# Interactive mode for credentials
+prompt_snowflake_credentials() {
+    local output_file="${1:-}"
+    
+    echo -e "${CYAN}Enter Snowflake credentials:${NC}"
+    
+    read -p "Account: " sf_account
+    read -p "User: " sf_user
+    read -s -p "Password: " sf_password
+    echo
+    read -p "Warehouse: " sf_warehouse
+    read -p "Database: " sf_database
+    read -p "Schema: " sf_schema
+    read -p "Role: " sf_role
+    
+    # Create credentials JSON
+    local creds_json=$(cat <<EOF
+{
+    "snowflake": {
+        "account": "$sf_account",
+        "user": "$sf_user",
+        "password": "$sf_password",
+        "warehouse": "$sf_warehouse",
+        "database": "$sf_database",
+        "schema": "$sf_schema",
+        "role": "$sf_role"
+    }
+}
+EOF
+)
+    
+    if [[ -n "$output_file" ]]; then
+        echo "$creds_json" > "$output_file"
+        echo -e "${GREEN}Credentials saved to: $output_file${NC}"
+    else
+        echo "$creds_json"
+    fi
+}
+
+# Generate config from TSV files
+generate_config_from_files() {
+    local files="$1"
+    local output_file="${2:-}"
+    local table_name="${3:-}"
+    local column_headers="${4:-}"
+    local date_column="${5:-RECORDDATEID}"
+    
+    echo -e "${CYAN}Generating configuration for TSV files${NC}"
+    
+    # Start building config
+    local config_json='{"files": ['
+    local first=true
+    
+    # Process each file
+    for file in $files; do
+        if [[ ! -f "$file" ]]; then
+            echo -e "${YELLOW}Warning: File not found: $file${NC}"
+            continue
+        fi
+        
+        # Get file pattern
+        local pattern=$(detect_file_pattern "$file")
+        
+        # Get table name if not provided
+        if [[ -z "$table_name" ]]; then
+            table_name=$(extract_table_name "$file")
+        fi
+        
+        # Get column count
+        local col_count=$(analyze_tsv_file "$file")
+        
+        # Get or generate column headers
+        local columns=""
+        if [[ -n "$column_headers" ]]; then
+            columns="$column_headers"
+        elif [[ -n "$table_name" ]] && [[ -f "$CONFIG_FILE" ]]; then
+            # Try to query Snowflake
+            columns=$(query_snowflake_columns "$table_name" "$CONFIG_FILE" | tr '\n' ',' | sed 's/,$//')
+        fi
+        
+        # Generate generic columns if needed
+        if [[ -z "$columns" ]]; then
+            columns=""
+            for i in $(seq 1 $col_count); do
+                [[ -n "$columns" ]] && columns="$columns,"
+                columns="${columns}COLUMN$i"
+            done
+        fi
+        
+        # Add to config
+        [[ "$first" == false ]] && config_json="$config_json,"
+        config_json="$config_json
+        {
+            \"file_pattern\": \"$pattern\",
+            \"table_name\": \"$table_name\",
+            \"date_column\": \"$date_column\",
+            \"expected_columns\": [$(echo "$columns" | sed 's/,/","/g' | sed 's/^/"/;s/$/"/')]
+        }"
+        first=false
+    done
+    
+    config_json="$config_json
+    ]}"
+    
+    # Output or save config
+    if [[ -n "$output_file" ]]; then
+        # Check if we need to merge with Snowflake credentials
+        if [[ -f "$CONFIG_FILE" ]]; then
+            # Extract Snowflake section from existing config
+            local sf_section=$(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(json.dumps(c.get('snowflake',{})))" 2>/dev/null)
+            if [[ -n "$sf_section" ]] && [[ "$sf_section" != "{}" ]]; then
+                # Merge with Snowflake section
+                config_json=$(echo "$config_json" | python3 -c "import json,sys; c=json.load(sys.stdin); c['snowflake']=json.loads('$sf_section'); print(json.dumps(c, indent=2))")
+            fi
+        fi
+        
+        echo "$config_json" | python3 -m json.tool > "$output_file"
+        echo -e "${GREEN}Configuration saved to: $output_file${NC}"
+    else
+        echo "$config_json" | python3 -m json.tool
+    fi
+}
+
+# Main config generation wrapper
+generate_config_direct() {
+    local files="${1:-}"
+    local output_file="${2:-}"
+    local options="${3:-}"
+    
+    # Parse options
+    local table_name=""
+    local column_headers=""
+    local interactive=false
+    
+    if [[ "$options" == *"--interactive"* ]]; then
+        interactive=true
+    fi
+    
+    if [[ "$options" =~ --table[[:space:]]+([^[:space:]]+) ]]; then
+        table_name="${BASH_REMATCH[1]}"
+    fi
+    
+    if [[ "$options" =~ --headers[[:space:]]+([^[:space:]]+) ]]; then
+        column_headers="${BASH_REMATCH[1]}"
+    fi
+    
+    # Handle interactive credentials if needed
+    if [[ "$interactive" == true ]]; then
+        if [[ -z "$output_file" ]]; then
+            output_file="config/generated_config.json"
+        fi
+        prompt_snowflake_credentials "$output_file.tmp"
+        CONFIG_FILE="$output_file.tmp"
+    fi
+    
+    # Generate config from files
+    if [[ -n "$files" ]]; then
+        generate_config_from_files "$files" "$output_file" "$table_name" "$column_headers"
+    elif [[ "$interactive" == true ]]; then
+        # Just save credentials
+        [[ -f "$output_file.tmp" ]] && mv "$output_file.tmp" "$output_file"
+        echo -e "${GREEN}Credentials configuration created${NC}"
+    else
+        echo -e "${RED}Error: No files specified and not in interactive mode${NC}"
+        return 1
+    fi
+    
+    # Cleanup temp file
+    [[ -f "$output_file.tmp" ]] && rm -f "$output_file.tmp"
+    
+    return 0
+}
+
+# ============================================================================
 # MODULE FUNCTIONS (using arrays instead of eval for commands)
 # ============================================================================
 
@@ -1194,8 +1918,9 @@ quick_load_current_month() {
     esac
     
     if confirm_action "Load data for $current_month?\nQC Method: $qc_method\nUsing config: $(basename "$CONFIG_FILE")"; then
+        # Use direct Python CLI call instead of run_loader.sh
         with_lock start_background_job "load_${current_month}" \
-            ./run_loader.sh --month "$current_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
+            process_month_direct "$current_month" "$BASE_PATH" "$qc_flags"
     fi
 }
 
@@ -1223,8 +1948,9 @@ quick_load_last_month() {
     esac
     
     if confirm_action "Load data for $last_month?\nQC Method: $qc_method\nUsing config: $(basename "$CONFIG_FILE")"; then
+        # Use direct Python CLI call instead of run_loader.sh
         with_lock start_background_job "load_${last_month}" \
-            ./run_loader.sh --month "$last_month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
+            process_month_direct "$last_month" "$BASE_PATH" "$qc_flags"
     fi
 }
 
@@ -1257,8 +1983,9 @@ quick_load_specific_file() {
     esac
     
     if confirm_action "Load file: $(basename "$file_path")?\nQC Method: $qc_method"; then
+        # Use direct Python CLI call instead of run_loader.sh
         with_lock start_background_job "load_file_$(basename "$file_path")" \
-            ./run_loader.sh --direct-file "$file_path" --config "$CONFIG_FILE" $qc_flags
+            process_direct_files "$file_path" "$qc_flags"
     fi
 }
 
@@ -1286,8 +2013,9 @@ quick_load_custom_month() {
     esac
     
     if confirm_action "Load $month?\nQC Method: $qc_method\nUsing config: $(basename "$CONFIG_FILE")"; then
+        # Use direct Python CLI call instead of run_loader.sh
         with_lock start_background_job "load_${month}" \
-            ./run_loader.sh --month "$month" --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
+            process_month_direct "$month" "$BASE_PATH" "$qc_flags"
     fi
 }
 
@@ -1331,8 +2059,9 @@ menu_load_data() {
                 esac
                 
                 if confirm_action "Load month(s): $month from $base_path?\nQC Method: $qc_method"; then
+                    # Use direct function for multi-month processing
                     with_lock start_background_job "load_${month}" \
-                        ./run_loader.sh --months "$month" --config "$CONFIG_FILE" --base-path "$base_path" $qc_flags
+                        process_multiple_months "$month" "$base_path" "$qc_flags"
                 fi
             fi
             ;;
@@ -1353,8 +2082,9 @@ menu_load_data() {
             esac
             
             if confirm_action "Load ALL months from $BASE_PATH?\nQC Method: $qc_method"; then
+                # Use direct batch processing function
                 with_lock start_background_job "load_batch_all" \
-                    ./run_loader.sh --batch --config "$CONFIG_FILE" --base-path "$BASE_PATH" $qc_flags
+                    process_batch_months "$BASE_PATH" "$qc_flags" "1"
             fi
             ;;
         0|"")
@@ -1477,8 +2207,9 @@ browse_and_load_files() {
             
             # Start the job
             if confirm_action "Process ${num_files} file(s) with config $(basename "$CONFIG_FILE")?"; then
+                # Use direct file processing function
                 with_lock start_background_job "load_selected_files" \
-                    ./run_loader.sh --direct-file "$files_list" --config "$CONFIG_FILE" $extra_args
+                    process_direct_files "$files_list" "$extra_args"
             fi
         else
             echo -e "${YELLOW}No files selected${NC}"
@@ -1561,8 +2292,9 @@ menu_delete_data() {
     fi
     
     if confirm_action "FINAL WARNING: Delete $month from $table?"; then
+        # Use direct delete function
         with_lock start_background_job "delete_${table}_${month}" \
-            ./drop_month.sh --config "$CONFIG_FILE" --table "$table" --month "$month" --yes
+            delete_month_data "$table" "$month" "--yes"
     fi
 }
 
@@ -1731,7 +2463,47 @@ sample_tsv_file() {
         return
     fi
     
-    local output=$(./tsv_sampler.sh "$file_path" 10 2>&1)
+    # Internal TSV sampling (replaces tsv_sampler.sh dependency)
+    local sample_rows=10
+    local output=""
+    
+    # Get file info
+    local filename=$(basename "$file_path")
+    local filesize=$(ls -lh "$file_path" | awk '{print $5}')
+    local total_rows=$(wc -l < "$file_path")
+    local total_cols=$(head -1 "$file_path" | awk -F'\t' '{print NF}')
+    
+    output+="TSV File Analysis\n"
+    output+="================\n"
+    output+="File: $filename\n"
+    output+="Size: $filesize\n"
+    output+="Rows: $total_rows\n"
+    output+="Columns: $total_cols\n\n"
+    
+    # Detect pattern using our function
+    local pattern=$(detect_file_pattern "$filename")
+    output+="Pattern: $pattern\n"
+    
+    # Extract table name using our function
+    local table_name=$(extract_table_name "$filename")
+    output+="Table: $table_name\n\n"
+    
+    # Show sample rows
+    output+="First $sample_rows rows:\n"
+    output+="-------------------\n"
+    output+=$(head -n $sample_rows "$file_path" | sed 's/\t/ | /g')
+    
+    # Check for potential date columns
+    output+="\n\nPotential Date Columns:\n"
+    local row2=$(sed -n '2p' "$file_path")
+    local col_num=1
+    for value in $(echo "$row2" | tr '\t' '\n'); do
+        if [[ "$value" =~ ^[0-9]{8}$ ]] || [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            output+="  Column $col_num: Possible date format detected ($value)\n"
+        fi
+        col_num=$((col_num + 1))
+    done
+    
     show_message "TSV Sample Results" "$output"
 }
 
@@ -1746,49 +2518,54 @@ generate_config() {
     fi
     
     # Extract probable table name from filename
-    local default_table=$(basename "$file_path" .tsv | sed -E 's/_?[0-9]{8}-[0-9]{8}//g' | sed -E 's/_?[0-9]{4}-[0-9]{2}//g' | tr '[:lower:]' '[:upper:]')
+    local default_table=$(extract_table_name "$file_path")
     
     # Ask for Snowflake table name to query for column headers
     local table_name=$(get_input "Snowflake Table" "Enter Snowflake table name (or press Enter to skip)" "$default_table")
     
-    # Build command with appropriate flags
-    local cmd="./generate_config.sh -o \"$output_path\""
+    # Build options for config generation
+    local options=""
+    local manual_cols=""
     
     # Add table flag if provided
     if [[ -n "$table_name" ]]; then
-        cmd="$cmd -t \"$table_name\""
+        options="--table $table_name"
         
         # Use current config for Snowflake credentials if available
         if [[ -f "$CONFIG_FILE" ]]; then
-            cmd="$cmd -c \"$CONFIG_FILE\""
             show_message "Info" "Using credentials from $CONFIG_FILE to query table $table_name"
         else
             show_message "Warning" "No config file selected. Table query will fail without credentials.\nUse 'Select Config File' first or manually specify columns."
             
             # Offer to manually specify columns
-            local manual_cols=$(get_input "Column Headers" "Enter comma-separated column names (or press Enter to use generic names)")
+            manual_cols=$(get_input "Column Headers" "Enter comma-separated column names (or press Enter to use generic names)")
             if [[ -n "$manual_cols" ]]; then
-                cmd="$cmd -h \"$manual_cols\""
+                options="$options --headers $manual_cols"
                 show_message "Info" "Using manually specified column headers"
             fi
         fi
     else
         # No table specified, ask if user wants to provide column headers manually
-        local manual_cols=$(get_input "Column Headers" "Enter comma-separated column names (or press Enter for generic names)")
+        manual_cols=$(get_input "Column Headers" "Enter comma-separated column names (or press Enter for generic names)")
         if [[ -n "$manual_cols" ]]; then
-            cmd="$cmd -h \"$manual_cols\""
+            options="--headers $manual_cols"
             show_message "Info" "Using manually specified column headers"
         else
-            show_message "Info" "No table or headers specified. Will generate generic column names (column1, column2, etc.)"
+            show_message "Info" "No table or headers specified. Will generate generic column names (COLUMN1, COLUMN2, etc.)"
         fi
     fi
     
-    cmd="$cmd \"$file_path\""
-    
+    # Use the new direct config generation function
     if confirm_action "Generate config from $(basename "$file_path")?"; then
-        local output=$(eval $cmd 2>&1)
-        show_message "Config Generation" "$output"
-        save_preference "LAST_CONFIG" "$output_path"
+        # Call our new function
+        generate_config_direct "$file_path" "$output_path" "$options"
+        
+        if [[ -f "$output_path" ]]; then
+            show_message "Success" "Configuration generated successfully at:\n$output_path"
+            save_preference "LAST_CONFIG" "$output_path"
+        else
+            show_message "Error" "Failed to generate configuration"
+        fi
     fi
 }
 
@@ -1949,29 +2726,8 @@ diagnose_failed_load() {
 
 # Recovery and fix functions
 fix_varchar_errors() {
-    # Ensure config is selected
-    if ! select_config_file; then
-        return 1
-    fi
-    
-    local table=$(select_table "Fix VARCHAR Errors")
-    
-    if [[ -z "$table" ]]; then
-        show_message "Error" "Table selection cancelled"
-        return
-    fi
-    
-    local month=$(get_input "Fix VARCHAR Errors" "Enter month (YYYY-MM) with VARCHAR errors for table: $table")
-    
-    if [[ -z "$month" ]] || [[ -z "$table" ]]; then
-        show_message "Error" "Month and table are required"
-        return
-    fi
-    
-    if confirm_action "Attempt to fix VARCHAR date errors for $table in $month?"; then
-        with_lock start_background_job "fix_varchar_${table}_${month}" \
-            ./recover_failed_load.sh --config "$CONFIG_FILE" --table "$table" --month "$month" --action cleanup
-    fi
+    # Functionality moved to Python CLI
+    show_message "Use Python CLI" "VARCHAR error recovery is now available via:\n\npython -m snowflake_etl diagnose-error --file <error_log>\n\nThis provides better error handling and recovery options.\n\nNote: recover_failed_load.sh is deprecated as of v3.0.0"
 }
 
 recover_from_logs() {
@@ -1985,12 +2741,9 @@ recover_from_logs() {
     # Check if it's a job ID
     if [[ -f "$JOBS_DIR/${log_pattern}.job" ]]; then
         local log_file=$(parse_job_file "$JOBS_DIR/${log_pattern}.job" "LOG_FILE")
-        local table=$(parse_job_file "$JOBS_DIR/${log_pattern}.job" "JOB_NAME" | grep -oE 'load_[A-Z]+' | sed 's/load_//')
         
         if [[ -f "$log_file" ]]; then
-            show_message "Running" "Attempting recovery from $log_file..."
-            with_lock start_background_job "recover_${log_pattern}" \
-                ./recover_failed_load.sh --config "$CONFIG_FILE" --action diagnose
+            show_message "Recovery Options" "Log file found: $log_file\n\nTo diagnose errors, run:\npython -m snowflake_etl diagnose-error --file \"$log_file\"\n\nThis will analyze the log and suggest recovery steps."
         else
             show_message "Error" "Log file not found: $log_file"
         fi
@@ -1998,7 +2751,7 @@ recover_from_logs() {
         # Try to find matching log files
         local logs=$(find "$LOGS_DIR" -name "*${log_pattern}*" -type f | head -5)
         if [[ -n "$logs" ]]; then
-            show_message "Found Logs" "$logs\n\nUse diagnose_failed_load with specific file."
+            show_message "Found Logs" "$logs\n\nRun diagnose-error with a specific file:\npython -m snowflake_etl diagnose-error --file <log_path>"
         else
             show_message "Error" "No matching logs found for pattern: $log_pattern"
         fi
@@ -2293,11 +3046,13 @@ parse_cli_args() {
                 shift
                 if [[ "${1:-}" == "--month" ]] && [[ -n "${2:-}" ]]; then
                     shift
-                    ./run_loader.sh --month "$1" --config "$CONFIG_FILE" --base-path "$BASE_PATH"
+                    # Use direct Python CLI call
+                    process_month_direct "$1" "$BASE_PATH" ""
                     exit $?
                 elif [[ "${1:-}" == "--file" ]] && [[ -n "${2:-}" ]]; then
                     shift
-                    ./run_loader.sh --direct-file "$1" --config "$CONFIG_FILE"
+                    # Use direct Python CLI call
+                    process_direct_files "$1" ""
                     exit $?
                 else
                     echo "Usage: $SCRIPT_NAME load --month YYYY-MM"
@@ -2319,8 +3074,10 @@ parse_cli_args() {
             delete)
                 shift
                 if [[ "${1:-}" == "--table" ]] && [[ -n "${2:-}" ]] && [[ "${3:-}" == "--month" ]] && [[ -n "${4:-}" ]]; then
-                    shift 3
-                    ./drop_month.sh --config "$CONFIG_FILE" --table "$1" --month "$2" --yes
+                    local table="$2"
+                    local month="$4"
+                    # Use direct delete function
+                    delete_month_data "$table" "$month" "--yes"
                     exit $?
                 else
                     echo "Usage: $SCRIPT_NAME delete --table TABLE --month YYYY-MM"
@@ -2494,7 +3251,7 @@ main() {
     if [[ "$USE_DIALOG" == false ]]; then
         echo ""
         echo -e "${BOLD}${CYAN}Welcome to Snowflake ETL Pipeline Manager${NC}"
-        echo -e "${YELLOW}Version $VERSION - Security Hardened${NC}"
+        echo -e "${YELLOW}Version $VERSION - Fully Consolidated${NC}"
         echo ""
     fi
     
