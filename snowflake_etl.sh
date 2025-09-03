@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.6 - Added proxy support for Python downloads
+# Version: 3.4.7 - Fixed Python download with proper proxy handling
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.6"  # Added proxy support for Python downloads
+VERSION="3.4.7"  # Fixed Python download with proper proxy handling
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -437,29 +437,80 @@ install_python_311() {
         mkdir -p "$temp_dir"
         cd "$temp_dir"
         
-        # Build wget command with proxy if set
-        local wget_cmd="wget -q --show-progress"
+        # Try downloading with wget first
+        local download_success=0
+        
         if [[ -n "${https_proxy:-}" ]]; then
             echo -e "${CYAN}Using proxy for download: ${https_proxy}${NC}"
-            wget_cmd="$wget_cmd -e use_proxy=yes -e https_proxy=$https_proxy -e http_proxy=${http_proxy:-$https_proxy}"
+            # Use wget with proxy settings
+            if wget --no-check-certificate \
+                    -e use_proxy=yes \
+                    -e https_proxy="${https_proxy}" \
+                    -e http_proxy="${http_proxy:-$https_proxy}" \
+                    --tries=3 \
+                    --timeout=30 \
+                    --show-progress \
+                    -O "Python-${python_version}.tgz" \
+                    "$python_url" 2>&1; then
+                download_success=1
+            else
+                echo -e "${YELLOW}wget failed, trying curl...${NC}"
+            fi
+        else
+            # Try without proxy
+            if wget --no-check-certificate \
+                    --tries=3 \
+                    --timeout=30 \
+                    --show-progress \
+                    -O "Python-${python_version}.tgz" \
+                    "$python_url" 2>&1; then
+                download_success=1
+            else
+                echo -e "${YELLOW}wget failed, trying curl...${NC}"
+            fi
         fi
         
-        if ! eval "$wget_cmd '$python_url'"; then
-            echo -e "${RED}Failed to download Python source${NC}"
-            echo -e "${YELLOW}Trying alternative download method with curl...${NC}"
+        # If wget failed, try curl
+        if [[ $download_success -eq 0 ]]; then
+            echo -e "${YELLOW}Trying alternative download with curl...${NC}"
             
-            # Try with curl as fallback
-            local curl_cmd="curl -L --progress-bar"
             if [[ -n "${https_proxy:-}" ]]; then
-                curl_cmd="$curl_cmd -x $https_proxy"
+                # Curl with proxy
+                if curl -L \
+                        --insecure \
+                        --proxy "${https_proxy}" \
+                        --retry 3 \
+                        --connect-timeout 30 \
+                        --progress-bar \
+                        -o "Python-${python_version}.tgz" \
+                        "$python_url" 2>&1; then
+                    download_success=1
+                else
+                    echo -e "${RED}curl with proxy also failed${NC}"
+                fi
+            else
+                # Curl without proxy
+                if curl -L \
+                        --insecure \
+                        --retry 3 \
+                        --connect-timeout 30 \
+                        --progress-bar \
+                        -o "Python-${python_version}.tgz" \
+                        "$python_url" 2>&1; then
+                    download_success=1
+                else
+                    echo -e "${RED}curl also failed${NC}"
+                fi
             fi
-            
-            if ! eval "$curl_cmd -o 'Python-${python_version}.tgz' '$python_url'"; then
-                echo -e "${RED}Failed to download Python source with both wget and curl${NC}"
-                cd - >/dev/null
-                rm -rf "$temp_dir"
-                return 1
-            fi
+        fi
+        
+        if [[ $download_success -eq 0 ]]; then
+            echo -e "${RED}Failed to download Python source with both wget and curl${NC}"
+            echo -e "${YELLOW}Please check your network connection and proxy settings${NC}"
+            echo -e "${YELLOW}Proxy being used: ${https_proxy:-none}${NC}"
+            cd - >/dev/null
+            rm -rf "$temp_dir"
+            return 1
         fi
         
         echo -e "${YELLOW}Extracting Python source...${NC}"

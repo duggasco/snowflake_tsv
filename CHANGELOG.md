@@ -1,5 +1,24 @@
 # CHANGELOG.md
 
+## [v3.4.7] - 2025-09-03 - Fixed Python Download with Proper Proxy Handling
+
+### Bug Fix
+- **Fixed Python source download failures with proxy**
+  - Removed problematic `eval` commands that broke with special characters in proxy URLs
+  - Now uses direct command execution instead of eval
+  - Added `--no-check-certificate` / `--insecure` flags for corporate proxies
+  - Increased timeout and retry settings for reliability
+  - Added proper error messages showing which proxy is being used
+  - Both wget and curl now properly handle proxy authentication
+  - Shows detailed output (2>&1) to help diagnose connection issues
+
+### Technical Details
+- wget uses: `-e use_proxy=yes -e https_proxy="${https_proxy}"` with proper quoting
+- curl uses: `--proxy "${https_proxy}"` with proper quoting
+- Added explicit `-O` flag for wget to specify output filename
+- Added `--tries=3` and `--retry 3` for better reliability
+- Timeout increased to 30 seconds for slower connections
+
 ## [v3.4.6] - 2025-09-03 - Added Proxy Support for Python Downloads
 
 ### Enhancement
