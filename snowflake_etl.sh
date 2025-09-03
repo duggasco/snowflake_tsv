@@ -2570,7 +2570,8 @@ menu_file_tools() {
             "Analyze File Structure" \
             "Check for Issues" \
             "View File Stats" \
-            "Compare Files")
+            "Compare Files" \
+            "Compress TSV File (No Upload)")
         
         case "$choice" in
             1) sample_tsv_file ;;
@@ -2579,6 +2580,7 @@ menu_file_tools() {
             4) check_file_issues ;;
             5) view_file_stats ;;
             6) compare_files ;;
+            7) compress_tsv_file ;;
             0|"") pop_menu; break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
@@ -3235,6 +3237,132 @@ sample_tsv_file() {
     done
     
     show_message "TSV Sample Results" "$output"
+}
+
+# Compress TSV file for cross-environment transfer
+compress_tsv_file() {
+    echo -e "${BLUE}Compress TSV File (No Snowflake Upload)${NC}"
+    echo -e "${YELLOW}This will compress TSV files for manual transfer across environments${NC}"
+    echo ""
+    
+    # Get file path
+    local file_path=$(get_input "TSV File" "Enter TSV file path to compress")
+    
+    if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
+        show_message "Error" "Invalid file path: $file_path"
+        return
+    fi
+    
+    # Get compression level
+    local compression_level=$(get_input "Compression Level" "Enter gzip compression level (1=fastest, 9=best, 6=default)" "6")
+    
+    if ! [[ "$compression_level" =~ ^[1-9]$ ]]; then
+        show_message "Error" "Invalid compression level. Must be 1-9."
+        return
+    fi
+    
+    # Get output directory
+    local output_dir=$(get_input "Output Directory" "Enter output directory for compressed file" "$(dirname "$file_path")")
+    
+    if [[ ! -d "$output_dir" ]]; then
+        mkdir -p "$output_dir" 2>/dev/null
+        if [[ $? -ne 0 ]]; then
+            show_message "Error" "Cannot create output directory: $output_dir"
+            return
+        fi
+    fi
+    
+    # Generate output filename
+    local basename=$(basename "$file_path")
+    local compressed_file="$output_dir/${basename}.gz"
+    
+    # Check if output file already exists
+    if [[ -f "$compressed_file" ]]; then
+        if ! confirm_action "File $compressed_file already exists. Overwrite?"; then
+            return
+        fi
+    fi
+    
+    # Get file size for progress display
+    local file_size=$(stat -c%s "$file_path" 2>/dev/null || stat -f%z "$file_path" 2>/dev/null)
+    local file_size_mb=$((file_size / 1048576))
+    
+    echo -e "${BLUE}File Information:${NC}"
+    echo -e "  Source: $file_path"
+    echo -e "  Size: ${file_size_mb} MB"
+    echo -e "  Output: $compressed_file"
+    echo -e "  Compression Level: $compression_level"
+    echo ""
+    
+    if confirm_action "Compress this file?"; then
+        echo -e "${YELLOW}Compressing file...${NC}"
+        
+        # Use pv for progress if available, otherwise use plain gzip
+        if command -v pv >/dev/null 2>&1; then
+            pv -cN "Compressing" "$file_path" | gzip -$compression_level > "$compressed_file"
+            local result=$?
+        else
+            # Use Python for compression with progress
+            python3 -c "
+import sys
+import gzip
+import os
+from pathlib import Path
+
+def compress_file(input_path, output_path, level=$compression_level):
+    file_size = os.path.getsize(input_path)
+    bytes_read = 0
+    chunk_size = 10 * 1024 * 1024  # 10MB chunks
+    
+    with open(input_path, 'rb') as f_in:
+        with gzip.open(output_path, 'wb', compresslevel=level) as f_out:
+            while True:
+                chunk = f_in.read(chunk_size)
+                if not chunk:
+                    break
+                f_out.write(chunk)
+                bytes_read += len(chunk)
+                progress = (bytes_read / file_size) * 100
+                print(f'\\rProgress: {progress:.1f}%', end='', file=sys.stderr)
+    print('\\rProgress: 100.0%', file=sys.stderr)
+    print('', file=sys.stderr)
+
+try:
+    compress_file('$file_path', '$compressed_file')
+    print('Compression completed successfully')
+    sys.exit(0)
+except Exception as e:
+    print(f'Error: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+            local result=$?
+        fi
+        
+        if [[ $result -eq 0 ]]; then
+            # Get compressed file size
+            local compressed_size=$(stat -c%s "$compressed_file" 2>/dev/null || stat -f%z "$compressed_file" 2>/dev/null)
+            local compressed_size_mb=$((compressed_size / 1048576))
+            local compression_ratio=$(echo "scale=1; 100 - ($compressed_size * 100 / $file_size)" | bc)
+            
+            echo ""
+            echo -e "${GREEN}Compression completed successfully!${NC}"
+            echo -e "  Original size: ${file_size_mb} MB"
+            echo -e "  Compressed size: ${compressed_size_mb} MB"
+            echo -e "  Compression ratio: ${compression_ratio}%"
+            echo -e "  Output file: $compressed_file"
+            echo ""
+            echo -e "${YELLOW}This file can now be transferred to another environment and loaded using:${NC}"
+            echo -e "  1. Copy the compressed file to the target environment"
+            echo -e "  2. Place it in the appropriate data directory"
+            echo -e "  3. Use the 'Load Data' menu to process it (it will be automatically decompressed)"
+            
+            show_message "Success" "File compressed successfully to:\n$compressed_file\n\nSize reduction: ${compression_ratio}%"
+        else
+            show_message "Error" "Compression failed. Check the file path and permissions."
+            # Clean up partial file if it exists
+            [[ -f "$compressed_file" ]] && rm -f "$compressed_file"
+        fi
+    fi
 }
 
 # Generate config

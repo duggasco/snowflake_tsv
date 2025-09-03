@@ -1,5 +1,29 @@
 # CHANGELOG.md
 
+## [v3.4.14] - 2025-09-03 - Cross-Environment File Compression Support
+
+### New Features
+- **Standalone TSV Compression**: Added ability to compress TSV files without Snowflake upload
+  - New menu option in File Tools: "Compress TSV File (No Upload)"
+  - Standalone Python utility `compress_tsv.py` for CLI usage
+  - Configurable compression levels (1-9) for speed vs size trade-offs
+  - Progress tracking with speed and ETA display
+  - Batch compression support for multiple files
+  - Designed for transferring files across restricted environments
+
+### Use Cases
+- Transfer large TSV files between environments with restrictive access policies
+- Pre-compress files for manual deployment to production environments
+- Create compressed backups of TSV files before processing
+- Share data files with external teams without Snowflake access
+
+### Technical Details
+- Uses gzip compression with chunked streaming (10MB chunks)
+- Preserves original files (non-destructive compression)
+- Shows compression statistics (ratio, speed, time)
+- Compatible with Snowflake's automatic decompression on load
+- Python utility supports wildcards and batch operations
+
 ## [v3.4.13] - 2025-09-03 - Enhanced Proxy Support for HTTP/HTTPS Snowflake Traffic
 
 ### Enhancement

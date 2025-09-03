@@ -11,6 +11,7 @@ Enterprise-grade ETL pipeline for processing large TSV files into Snowflake with
 - **Reliability**: Automatic retry, error recovery, and transaction management
 - **Monitoring**: Real-time progress tracking, detailed logging, and job management
 - **Flexibility**: Multiple validation modes, configurable processing options
+- **Cross-Environment Support**: Compress files for manual transfer across restricted environments
 - **Architecture**: Clean dependency injection design for testability and maintainability
 
 ## Table of Contents
@@ -175,6 +176,28 @@ snowflake-etl --config config.json load \
 #   --validate-in-snowflake Validate in Snowflake after loading
 #   --validate-only         Only validate existing data (no loading)
 #   --max-workers N         Number of parallel workers (default: auto)
+```
+
+#### Compress Operation (Standalone)
+
+Compress TSV files for cross-environment transfer without Snowflake upload:
+
+```bash
+# Compress single file
+python compress_tsv.py data/file.tsv --level 9
+
+# Compress multiple files to directory
+python compress_tsv.py data/*.tsv --output-dir compressed/ --level 7
+
+# Compress with specific output path
+python compress_tsv.py data/file.tsv -o /tmp/file.tsv.gz
+
+# Options:
+#   -o, --output PATH       Output file path (single file only)
+#   -d, --output-dir DIR    Output directory for compressed files
+#   -l, --level N           Compression level 1-9 (default: 6)
+#   --no-progress           Disable progress display
+#   -f, --force             Overwrite without prompting
 ```
 
 #### Validate Operation

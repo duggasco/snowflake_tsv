@@ -1,8 +1,14 @@
 # TODO.md - Task List
 *Last Updated: 2025-09-03*
-*Version: 3.4.13*
+*Version: 3.4.14*
 
 ## ✅ Recently Completed (2025-09-03)
+
+### Cross-Environment Support
+- [x] Added standalone file compression functionality (v3.4.14)
+- [x] Created compress_tsv.py utility for CLI compression
+- [x] Added "Compress TSV File (No Upload)" to File Tools menu
+- [x] Implemented progress tracking and batch compression support
 
 ### Script Stability Fixes
 - [x] Fixed silent failure when run non-interactively (v3.4.4-3.4.7)
