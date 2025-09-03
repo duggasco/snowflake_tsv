@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.5 - Fixed unbound variable error in proxy check
+# Version: 3.4.6 - Added proxy support for Python downloads
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.5"  # Fixed unbound variable error in proxy check
+VERSION="3.4.6"  # Added proxy support for Python downloads
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -340,6 +340,44 @@ install_python_311() {
     local install_base=""
     local python_prefix=""
     
+    # Check if we need to configure proxy first
+    local proxy_file="$PREFS_DIR/.proxy_config"
+    if [[ -f "$proxy_file" ]]; then
+        local proxy=$(cat "$proxy_file")
+        echo -e "${CYAN}Using saved proxy for download: $proxy${NC}"
+        export http_proxy="$proxy"
+        export https_proxy="$proxy"
+        export HTTP_PROXY="$proxy"
+        export HTTPS_PROXY="$proxy"
+    elif [[ -n "${https_proxy:-}" ]] || [[ -n "${HTTPS_PROXY:-}" ]] || [[ -n "${http_proxy:-}" ]] || [[ -n "${HTTP_PROXY:-}" ]]; then
+        # Use existing proxy environment variables
+        local proxy="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-$HTTP_PROXY}}}"
+        echo -e "${CYAN}Using existing proxy for download: $proxy${NC}"
+    else
+        # Test if we can connect to python.org
+        echo -e "${YELLOW}Testing connection to python.org...${NC}"
+        if ! curl -s --connect-timeout 5 https://www.python.org >/dev/null 2>&1; then
+            echo -e "${YELLOW}Cannot connect to python.org directly.${NC}"
+            echo -e "${YELLOW}You may need to configure a proxy first.${NC}"
+            
+            # Try to configure proxy if in interactive mode
+            if [[ -t 0 ]] && [[ -t 1 ]]; then
+                configure_proxy
+                # Reload proxy settings if saved
+                if [[ -f "$proxy_file" ]]; then
+                    local proxy=$(cat "$proxy_file")
+                    export http_proxy="$proxy"
+                    export https_proxy="$proxy"
+                    export HTTP_PROXY="$proxy"
+                    export HTTPS_PROXY="$proxy"
+                fi
+            else
+                echo -e "${RED}Cannot download Python without proxy in non-interactive mode${NC}"
+                return 1
+            fi
+        fi
+    fi
+    
     echo -e "${CYAN}=== Installing Python 3.11 ===${NC}"
     echo ""
     
@@ -399,11 +437,29 @@ install_python_311() {
         mkdir -p "$temp_dir"
         cd "$temp_dir"
         
-        if ! wget -q --show-progress "$python_url"; then
+        # Build wget command with proxy if set
+        local wget_cmd="wget -q --show-progress"
+        if [[ -n "${https_proxy:-}" ]]; then
+            echo -e "${CYAN}Using proxy for download: ${https_proxy}${NC}"
+            wget_cmd="$wget_cmd -e use_proxy=yes -e https_proxy=$https_proxy -e http_proxy=${http_proxy:-$https_proxy}"
+        fi
+        
+        if ! eval "$wget_cmd '$python_url'"; then
             echo -e "${RED}Failed to download Python source${NC}"
-            cd - >/dev/null
-            rm -rf "$temp_dir"
-            return 1
+            echo -e "${YELLOW}Trying alternative download method with curl...${NC}"
+            
+            # Try with curl as fallback
+            local curl_cmd="curl -L --progress-bar"
+            if [[ -n "${https_proxy:-}" ]]; then
+                curl_cmd="$curl_cmd -x $https_proxy"
+            fi
+            
+            if ! eval "$curl_cmd -o 'Python-${python_version}.tgz' '$python_url'"; then
+                echo -e "${RED}Failed to download Python source with both wget and curl${NC}"
+                cd - >/dev/null
+                rm -rf "$temp_dir"
+                return 1
+            fi
         fi
         
         echo -e "${YELLOW}Extracting Python source...${NC}"

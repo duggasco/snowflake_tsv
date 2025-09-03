@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## [v3.4.6] - 2025-09-03 - Added Proxy Support for Python Downloads
+
+### Enhancement
+- **Python installation now uses proxy settings**
+  - Detects and uses saved proxy configuration from PyPI setup
+  - Respects existing proxy environment variables (http_proxy, https_proxy)
+  - Tests connection to python.org before attempting download
+  - Offers proxy configuration if needed in interactive mode
+  - wget and curl commands now properly use proxy settings
+  - Fallback from wget to curl if download fails
+  - Sets both http_proxy and https_proxy for compatibility
+
+### Technical Details
+- Proxy configuration is loaded at start of `install_python_311()`
+- Both wget and curl are configured with appropriate proxy flags
+- Same proxy used for Python download as for PyPI packages
+- Ensures consistency across all network operations
+
 ## [v3.4.5] - 2025-09-03 - Fixed Unbound Variable Error
 
 ### Bug Fix
