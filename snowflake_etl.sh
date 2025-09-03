@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.3 - Auto Python 3.11 installation with custom paths
+# Version: 3.4.4 - Fixed silent failure issues
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.3"  # Auto Python 3.11 installation
+VERSION="3.4.4"  # Fixed silent failure issues
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -568,10 +568,10 @@ load_python_path() {
         local python_bin_path=$(cat "$python_path_file")
         if [[ -d "$python_bin_path" ]]; then
             export PATH="$python_bin_path:$PATH"
-            return 0
         fi
     fi
-    return 1
+    # Always return success - missing file is not an error
+    return 0
 }
 
 # Check dependencies
@@ -597,27 +597,36 @@ check_dependencies() {
     elif command -v python3 >/dev/null 2>&1; then
         python_cmd="python3"
         local current_version=$(python3 --version 2>&1 | awk '{print $2}')
-        echo -e "${YELLOW}Note: Python 3.11 preferred, found Python $current_version${NC}"
         
-        # Offer to install Python 3.11
-        if confirm_install_python "3.11"; then
-            if install_python_311; then
-                python_cmd="python3.11"
+        # Only offer to install if running interactively
+        if [[ -t 0 ]] && [[ -t 1 ]]; then
+            echo -e "${YELLOW}Note: Python 3.11 preferred, found Python $current_version${NC}"
+            # Offer to install Python 3.11
+            if confirm_install_python "3.11"; then
+                if install_python_311; then
+                    python_cmd="python3.11"
+                fi
             fi
         fi
     else
         echo -e "${RED}Python 3 not found in system${NC}"
         
-        # Offer to install Python 3.11
-        if confirm_install_python "3.11"; then
-            if install_python_311; then
-                python_cmd="python3.11"
+        # Only offer to install if running interactively
+        if [[ -t 0 ]] && [[ -t 1 ]]; then
+            # Offer to install Python 3.11
+            if confirm_install_python "3.11"; then
+                if install_python_311; then
+                    python_cmd="python3.11"
+                else
+                    echo -e "${RED}Failed to install Python 3.11${NC}"
+                    exit 1
+                fi
             else
-                echo -e "${RED}Failed to install Python 3.11${NC}"
+                echo -e "${RED}Python is required to continue${NC}"
                 exit 1
             fi
         else
-            echo -e "${RED}Python is required to continue${NC}"
+            echo -e "${RED}Python is required to continue. Please install Python 3 and try again.${NC}"
             exit 1
         fi
     fi
@@ -3719,9 +3728,6 @@ main() {
                 parse_cli_args "$@"
                 ;;
         esac
-        # If we get here, no valid CLI command was found
-        show_help
-        exit 1
     fi
     
     # Interactive mode

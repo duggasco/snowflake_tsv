@@ -1,5 +1,25 @@
 # CHANGELOG.md
 
+## [v3.4.4] - 2025-09-03 - Fixed Silent Failure Issues
+
+### Bug Fixes
+- **Fixed silent script failure when run non-interactively**
+  - `load_python_path()` was returning 1 when no custom path exists, causing exit with `set -e`
+  - Changed to always return 0 as missing path file is not an error condition
+- **Fixed interactive prompt failures in non-TTY environments**  
+  - Added TTY checks before calling `confirm_install_python()`
+  - Script now skips Python installation prompts when not interactive
+  - Provides clear error message when Python is missing in non-interactive mode
+- **Removed unconditional exit bug in main function**
+  - Lines 3722-3724 were executing `show_help` and `exit 1` after ANY CLI arguments
+  - This prevented valid commands from executing properly
+
+### Technical Details
+- Script now properly handles both interactive and non-interactive execution modes
+- TTY detection prevents `read` command failures in automated environments
+- Function return values properly handled to work with `set -e` 
+- CLI argument parsing logic corrected to only show help for invalid commands
+
 ## [v3.4.3] - 2025-09-02 - Automatic Python 3.11 Installation
 
 ### New Features
