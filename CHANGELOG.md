@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## [v3.4.10] - 2025-09-03 - Relaxed Snowflake Connector Version Requirements
+
+### Compatibility Update
+- **Lowered minimum snowflake-connector-python version to 2.7.5**
+  - Previously required >=3.0.0, now accepts >=2.7.5
+  - Version 2.7.5 fully supports all features we use:
+    - `execute_async()` for asynchronous COPY operations
+    - `get_results_from_sfqid()` for keepalive and result retrieval
+    - Connection pooling and cursor management
+  - Helps with restricted environments where only older versions are available
+  - Tested and confirmed working with version 2.7.5
+
+### Technical Details
+- Async features were added in snowflake-connector-python 2.2.0
+- Version 2.7.5 is stable and widely available in corporate repositories
+- No functionality loss with older version
+- All ETL features remain fully operational
+
 ## [v3.4.9] - 2025-09-03 - Support Pre-Downloaded Python Packages
 
 ### Enhancement

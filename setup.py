@@ -26,7 +26,7 @@ def get_long_description():
 
 # Define dependency groups
 INSTALL_REQUIRES = [
-    "snowflake-connector-python>=3.0.0",
+    "snowflake-connector-python>=2.7.5",  # 2.7.5+ supports async features
     "pandas>=1.5.0",
     "numpy>=1.20.0",
     "jsonschema>=4.0.0",
