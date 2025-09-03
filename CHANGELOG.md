@@ -1,5 +1,28 @@
 # CHANGELOG.md
 
+## [v3.4.9] - 2025-09-03 - Support Pre-Downloaded Python Packages
+
+### Enhancement
+- **Added support for using pre-downloaded Python packages**
+  - Prompts user to provide path to local Python .tar.gz or .tgz file
+  - User can press Enter to skip and download normally
+  - Accepts absolute paths or paths with tilde (~) expansion
+  - Copies the local package to temp directory for installation
+  - Falls back to download if local file not found or copy fails
+  - Useful for air-gapped systems or when downloads are problematic
+
+### User Experience
+- Clear prompts asking if user has a pre-downloaded package
+- Validates file existence before attempting to use it
+- Success message confirms when local package is being used
+- Automatically proceeds with compilation after extraction
+
+### Technical Details
+- Supports any Python 3.11.x .tar.gz or .tgz package
+- Package must match expected version (currently 3.11.9)
+- File is copied to temp build directory to avoid modifying original
+- Same build and installation process after extraction
+
 ## [v3.4.8] - 2025-09-03 - Added HTTP Fallback for Proxy Tunneling Failures
 
 ### Enhancement
