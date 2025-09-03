@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## [v3.4.5] - 2025-09-03 - Fixed Unbound Variable Error
+
+### Bug Fix
+- **Fixed unbound variable error in proxy detection**
+  - Line 752 was checking `$https_proxy` without proper variable expansion protection
+  - With `set -u`, this caused "unbound variable" error when proxy variables weren't set
+  - Fixed by using `${var:-}` syntax for all proxy variable checks
+  - Ensures script doesn't fail when proxy environment variables are undefined
+
 ## [v3.4.4] - 2025-09-03 - Fixed Silent Failure Issues
 
 ### Bug Fixes

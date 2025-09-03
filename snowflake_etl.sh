@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.4 - Fixed silent failure issues
+# Version: 3.4.5 - Fixed unbound variable error in proxy check
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.4"  # Fixed silent failure issues
+VERSION="3.4.5"  # Fixed unbound variable error in proxy check
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -749,7 +749,7 @@ configure_proxy() {
     echo ""
     
     # Check for existing proxy environment variables
-    if [[ -n "$https_proxy" ]] || [[ -n "$HTTPS_PROXY" ]] || [[ -n "$http_proxy" ]] || [[ -n "$HTTP_PROXY" ]]; then
+    if [[ -n "${https_proxy:-}" ]] || [[ -n "${HTTPS_PROXY:-}" ]] || [[ -n "${http_proxy:-}" ]] || [[ -n "${HTTP_PROXY:-}" ]]; then
         proxy="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-$HTTP_PROXY}}}"
         echo -e "${CYAN}Found existing proxy setting: $proxy${NC}"
         
