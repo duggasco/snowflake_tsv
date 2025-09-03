@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## [v3.4.11] - 2025-09-03 - Added Proxy Support for Snowflake Connections
+
+### Enhancement
+- **Snowflake connector now uses proxy settings automatically**
+  - Detects saved proxy configuration from `.proxy_config` file
+  - Falls back to environment variables (https_proxy, http_proxy)
+  - Parses proxy URL to extract host, port, username, and password
+  - Configures Snowflake connections to route through corporate proxy
+  - Same proxy used for PyPI, Python downloads, and now Snowflake
+
+### Technical Details
+- Added proxy fields to `ConnectionConfig` dataclass:
+  - `proxy_host`, `proxy_port`, `proxy_user`, `proxy_password`, `use_proxy`
+- ApplicationContext automatically detects and configures proxy
+- Supports proxy URLs in format: `http://[user:pass@]host:port`
+- Snowflake connector v2.7.5+ supports these proxy parameters
+- Logging shows when proxy is being used for connections
+
 ## [v3.4.10] - 2025-09-03 - Relaxed Snowflake Connector Version Requirements
 
 ### Compatibility Update

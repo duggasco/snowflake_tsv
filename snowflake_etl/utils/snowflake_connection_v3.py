@@ -36,6 +36,12 @@ class ConnectionConfig:
     query_timeout: int = 3600  # 1 hour default
     client_session_keep_alive: bool = True
     client_session_keep_alive_heartbeat_frequency: int = 900  # 15 minutes
+    # Proxy support
+    proxy_host: Optional[str] = None
+    proxy_port: Optional[int] = None
+    proxy_user: Optional[str] = None
+    proxy_password: Optional[str] = None
+    use_proxy: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for snowflake.connector"""
@@ -55,6 +61,16 @@ class ConnectionConfig:
         
         if self.role:
             config['role'] = self.role
+        
+        # Add proxy configuration if enabled
+        if self.use_proxy and self.proxy_host:
+            config['proxy_host'] = self.proxy_host
+            if self.proxy_port:
+                config['proxy_port'] = self.proxy_port
+            if self.proxy_user:
+                config['proxy_user'] = self.proxy_user
+            if self.proxy_password:
+                config['proxy_password'] = self.proxy_password
             
         return config
 
