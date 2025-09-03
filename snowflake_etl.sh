@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.7 - Fixed Python download with proper proxy handling
+# Version: 3.4.8 - Added HTTP fallback for proxy tunneling failures
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.7"  # Fixed Python download with proper proxy handling
+VERSION="3.4.8"  # Added HTTP fallback for proxy tunneling failures
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -430,7 +430,8 @@ install_python_311() {
         
         # Download and compile Python 3.11
         local python_version="3.11.9"  # Latest 3.11 as of now
-        local python_url="https://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz"
+        local python_url_https="https://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz"
+        local python_url_http="http://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz"
         local temp_dir="/tmp/python311_build_$$"
         
         echo -e "${YELLOW}Downloading Python ${python_version}...${NC}"
@@ -439,22 +440,42 @@ install_python_311() {
         
         # Try downloading with wget first
         local download_success=0
+        local python_url="$python_url_https"
         
         if [[ -n "${https_proxy:-}" ]]; then
             echo -e "${CYAN}Using proxy for download: ${https_proxy}${NC}"
-            # Use wget with proxy settings
+            echo -e "${YELLOW}Attempting HTTPS download through proxy...${NC}"
+            
+            # Try HTTPS first with wget
             if wget --no-check-certificate \
                     -e use_proxy=yes \
                     -e https_proxy="${https_proxy}" \
                     -e http_proxy="${http_proxy:-$https_proxy}" \
-                    --tries=3 \
+                    --tries=2 \
                     --timeout=30 \
                     --show-progress \
                     -O "Python-${python_version}.tgz" \
-                    "$python_url" 2>&1; then
+                    "$python_url_https" 2>&1; then
                 download_success=1
+                echo -e "${GREEN}✓ Downloaded via HTTPS through proxy${NC}"
             else
-                echo -e "${YELLOW}wget failed, trying curl...${NC}"
+                echo -e "${YELLOW}HTTPS failed, trying HTTP (proxy may block HTTPS tunneling)...${NC}"
+                
+                # Try HTTP as fallback for proxies that block HTTPS
+                if wget --no-check-certificate \
+                        -e use_proxy=yes \
+                        -e https_proxy="${https_proxy}" \
+                        -e http_proxy="${http_proxy:-$https_proxy}" \
+                        --tries=2 \
+                        --timeout=30 \
+                        --show-progress \
+                        -O "Python-${python_version}.tgz" \
+                        "$python_url_http" 2>&1; then
+                    download_success=1
+                    echo -e "${GREEN}✓ Downloaded via HTTP through proxy${NC}"
+                else
+                    echo -e "${YELLOW}wget failed with both HTTPS and HTTP${NC}"
+                fi
             fi
         else
             # Try without proxy
@@ -475,18 +496,55 @@ install_python_311() {
             echo -e "${YELLOW}Trying alternative download with curl...${NC}"
             
             if [[ -n "${https_proxy:-}" ]]; then
-                # Curl with proxy
+                # Try HTTPS with curl through proxy
+                echo -e "${YELLOW}Attempting curl with HTTPS...${NC}"
                 if curl -L \
                         --insecure \
                         --proxy "${https_proxy}" \
-                        --retry 3 \
+                        --proxy-insecure \
+                        --retry 2 \
                         --connect-timeout 30 \
                         --progress-bar \
                         -o "Python-${python_version}.tgz" \
-                        "$python_url" 2>&1; then
+                        "$python_url_https" 2>&1; then
                     download_success=1
+                    echo -e "${GREEN}✓ Downloaded via curl HTTPS through proxy${NC}"
                 else
-                    echo -e "${RED}curl with proxy also failed${NC}"
+                    echo -e "${YELLOW}HTTPS failed, trying HTTP with curl...${NC}"
+                    
+                    # Try HTTP as fallback
+                    if curl -L \
+                            --insecure \
+                            --proxy "${https_proxy}" \
+                            --proxy-insecure \
+                            --retry 2 \
+                            --connect-timeout 30 \
+                            --progress-bar \
+                            -o "Python-${python_version}.tgz" \
+                            "$python_url_http" 2>&1; then
+                        download_success=1
+                        echo -e "${GREEN}✓ Downloaded via curl HTTP through proxy${NC}"
+                    else
+                        echo -e "${RED}curl failed with both HTTPS and HTTP through proxy${NC}"
+                        
+                        # Last resort: try proxy tunnel mode
+                        echo -e "${YELLOW}Trying curl with proxy tunnel mode...${NC}"
+                        if curl -L \
+                                --insecure \
+                                --proxy "${https_proxy}" \
+                                --proxy-insecure \
+                                --proxytunnel \
+                                --retry 2 \
+                                --connect-timeout 30 \
+                                --progress-bar \
+                                -o "Python-${python_version}.tgz" \
+                                "$python_url_http" 2>&1; then
+                            download_success=1
+                            echo -e "${GREEN}✓ Downloaded via curl with proxy tunnel${NC}"
+                        else
+                            echo -e "${RED}All curl proxy methods failed${NC}"
+                        fi
+                    fi
                 fi
             else
                 # Curl without proxy
@@ -508,6 +566,15 @@ install_python_311() {
             echo -e "${RED}Failed to download Python source with both wget and curl${NC}"
             echo -e "${YELLOW}Please check your network connection and proxy settings${NC}"
             echo -e "${YELLOW}Proxy being used: ${https_proxy:-none}${NC}"
+            echo ""
+            echo -e "${CYAN}Troubleshooting tips:${NC}"
+            echo -e "${CYAN}1. If you see 'proxy tunneling failed: Forbidden'${NC}"
+            echo -e "${CYAN}   Your proxy may block HTTPS tunneling. HTTP fallback was attempted.${NC}"
+            echo -e "${CYAN}2. Try setting both http_proxy and https_proxy to the same value${NC}"
+            echo -e "${CYAN}3. Some proxies require authentication: http://user:pass@proxy:port${NC}"
+            echo -e "${CYAN}4. You can manually download Python from:${NC}"
+            echo -e "${CYAN}   ${python_url_http}${NC}"
+            echo -e "${CYAN}   and place it in $temp_dir/Python-${python_version}.tgz${NC}"
             cd - >/dev/null
             rm -rf "$temp_dir"
             return 1

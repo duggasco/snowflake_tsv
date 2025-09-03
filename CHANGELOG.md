@@ -1,5 +1,30 @@
 # CHANGELOG.md
 
+## [v3.4.8] - 2025-09-03 - Added HTTP Fallback for Proxy Tunneling Failures
+
+### Enhancement
+- **Added HTTP fallback for proxies that block HTTPS tunneling**
+  - Now tries both HTTPS and HTTP URLs when downloading Python
+  - Specifically handles "proxy tunneling failed: Forbidden" errors
+  - wget tries HTTPS first, then falls back to HTTP if proxy blocks tunneling
+  - curl tries HTTPS, HTTP, and finally HTTP with --proxytunnel mode
+  - Added `--proxy-insecure` flag for curl to handle proxy SSL issues
+  - Better error messages with troubleshooting tips
+
+### Troubleshooting Support
+- Added detailed error messages explaining proxy tunneling failures
+- Provides manual download instructions as last resort
+- Shows which proxy is being used in error messages
+- Suggests authentication format for proxies requiring credentials
+
+### Technical Details
+- Python URLs: tries both https:// and http://www.python.org/ftp/python/
+- Multiple download strategies to work around restrictive proxies:
+  1. HTTPS through proxy (standard)
+  2. HTTP through proxy (for HTTPS-blocking proxies)
+  3. HTTP with --proxytunnel (for specific proxy configurations)
+- Each method gets 2 retry attempts to reduce false failures
+
 ## [v3.4.7] - 2025-09-03 - Fixed Python Download with Proper Proxy Handling
 
 ### Bug Fix
