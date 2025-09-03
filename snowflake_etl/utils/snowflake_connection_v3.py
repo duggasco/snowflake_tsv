@@ -46,6 +46,8 @@ class ConnectionConfig:
     insecure_mode: bool = False  # Disable SSL verification (use with caution)
     ocsp_fail_open: bool = True  # Continue if OCSP responder is unavailable
     validate_default_parameters: bool = False  # Skip parameter validation
+    protocol: str = 'https'  # Can be 'http' for insecure connections
+    disable_request_pooling: bool = False  # Disable connection pooling (helps with some proxies)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for snowflake.connector"""
@@ -79,12 +81,19 @@ class ConnectionConfig:
         # Add SSL/TLS options for proxy environments
         if self.insecure_mode:
             config['insecure_mode'] = True
+            # Also use HTTP protocol for fully insecure mode
+            config['protocol'] = 'http'
+        else:
+            config['protocol'] = self.protocol
             
         if self.ocsp_fail_open:
             config['ocsp_fail_open'] = True
             
         if not self.validate_default_parameters:
             config['validate_default_parameters'] = False
+        
+        if self.disable_request_pooling:
+            config['disable_request_pooling'] = True
             
         return config
 

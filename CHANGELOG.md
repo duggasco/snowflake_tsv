@@ -1,5 +1,33 @@
 # CHANGELOG.md
 
+## [v3.4.13] - 2025-09-03 - Enhanced Proxy Support for HTTP/HTTPS Snowflake Traffic
+
+### Enhancement
+- **Improved proxy handling for all Snowflake HTTP/HTTPS requests**
+  - Now sets proxy environment variables globally when proxy is detected
+  - Uses HTTP protocol when insecure mode is enabled
+  - Disables request pooling to avoid proxy connection issues
+  - Clears NO_PROXY variables that might bypass proxy
+  - Ensures both HTTP and HTTPS traffic goes through proxy
+
+### Bug Fixes
+- Fixed issue where some Snowflake requests bypassed proxy
+- HTTP protocol now properly used in insecure mode
+- Connection pooling disabled to prevent proxy conflicts
+
+### Technical Details
+- When insecure mode is enabled:
+  - Sets `protocol='http'` for plain HTTP connections
+  - Sets `disable_request_pooling=True` to avoid connection reuse issues
+- Environment variables set for all requests:
+  - `http_proxy`, `https_proxy`, `HTTP_PROXY`, `HTTPS_PROXY`
+- Removes `NO_PROXY` and `no_proxy` to prevent bypass
+
+### Debug Tool
+- Added `test_snowflake_proxy.py` script for troubleshooting
+- Tests various connection modes and configurations
+- Shows current proxy settings and connection attempts
+
 ## [v3.4.12] - 2025-09-03 - Added SSL/TLS Handling for Proxy Environments
 
 ### Enhancement
