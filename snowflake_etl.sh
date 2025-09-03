@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.9 - Support pre-downloaded Python packages
+# Version: 3.4.12 - Added SSL/TLS handling for proxy environments
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.9"  # Support pre-downloaded Python packages
+VERSION="3.4.12"  # Added SSL/TLS handling for proxy environments
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -1005,6 +1005,37 @@ configure_proxy() {
             export HTTPS_PROXY="$proxy"
             
             echo -e "${GREEN}Proxy configuration saved${NC}"
+            
+            # Check if SSL issues are likely with this proxy
+            echo ""
+            echo -e "${CYAN}=== SSL Configuration ===${NC}"
+            echo -e "${YELLOW}Corporate proxies often intercept SSL connections.${NC}"
+            echo -e "${YELLOW}If you encounter SSL handshake errors with Snowflake:${NC}"
+            echo ""
+            echo "  1. Normal mode (recommended) - Try first"
+            echo "  2. Insecure mode - Disable SSL verification (use with caution)"
+            echo ""
+            read -p "Select SSL mode [1-2] (default: 1): " ssl_choice
+            
+            if [[ "$ssl_choice" == "2" ]]; then
+                echo -e "${YELLOW}⚠ WARNING: Disabling SSL verification${NC}"
+                echo -e "${YELLOW}This should only be used in trusted environments${NC}"
+                read -p "Are you sure? [y/N]: " confirm
+                
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    touch "$PREFS_DIR/.insecure_mode"
+                    export SNOWFLAKE_INSECURE_MODE=1
+                    echo -e "${YELLOW}Insecure mode enabled for Snowflake connections${NC}"
+                else
+                    echo -e "${GREEN}Keeping SSL verification enabled (recommended)${NC}"
+                fi
+            else
+                # Remove insecure mode flag if it exists
+                rm -f "$PREFS_DIR/.insecure_mode"
+                unset SNOWFLAKE_INSECURE_MODE
+                echo -e "${GREEN}SSL verification enabled (recommended)${NC}"
+            fi
+            
             return 0
         else
             echo -e "${RED}✗ Could not connect through proxy${NC}"

@@ -42,6 +42,10 @@ class ConnectionConfig:
     proxy_user: Optional[str] = None
     proxy_password: Optional[str] = None
     use_proxy: bool = False
+    # SSL/TLS options for proxy environments
+    insecure_mode: bool = False  # Disable SSL verification (use with caution)
+    ocsp_fail_open: bool = True  # Continue if OCSP responder is unavailable
+    validate_default_parameters: bool = False  # Skip parameter validation
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for snowflake.connector"""
@@ -71,6 +75,16 @@ class ConnectionConfig:
                 config['proxy_user'] = self.proxy_user
             if self.proxy_password:
                 config['proxy_password'] = self.proxy_password
+        
+        # Add SSL/TLS options for proxy environments
+        if self.insecure_mode:
+            config['insecure_mode'] = True
+            
+        if self.ocsp_fail_open:
+            config['ocsp_fail_open'] = True
+            
+        if not self.validate_default_parameters:
+            config['validate_default_parameters'] = False
             
         return config
 

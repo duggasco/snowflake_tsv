@@ -1,5 +1,34 @@
 # CHANGELOG.md
 
+## [v3.4.12] - 2025-09-03 - Added SSL/TLS Handling for Proxy Environments
+
+### Enhancement
+- **Fixed SSL handshake errors with Snowflake through proxies**
+  - Added `insecure_mode` option to disable SSL verification when needed
+  - Added `ocsp_fail_open` to continue when OCSP responder is unavailable
+  - Added `validate_default_parameters=False` to skip parameter validation
+  - Interactive SSL configuration during proxy setup
+  - Option to enable insecure mode for problematic corporate proxies
+
+### User Experience
+- Proxy configuration now asks about SSL verification mode
+- Clear warnings about insecure mode risks
+- Settings saved in `.insecure_mode` file for persistence
+- Can also set `SNOWFLAKE_INSECURE_MODE=1` environment variable
+
+### Technical Details
+- SSL options automatically applied when proxy is detected:
+  - `ocsp_fail_open=True` - Handles OCSP responder timeouts
+  - `validate_default_parameters=False` - Skips strict validation
+  - `insecure_mode=True` - Only when explicitly enabled by user
+- Works with corporate proxies that perform SSL interception
+- Maintains security by default, insecure mode requires confirmation
+
+### Security Note
+- Insecure mode should only be used in trusted corporate environments
+- Disables SSL certificate verification for Snowflake connections
+- Recommended to try normal mode first
+
 ## [v3.4.11] - 2025-09-03 - Added Proxy Support for Snowflake Connections
 
 ### Enhancement

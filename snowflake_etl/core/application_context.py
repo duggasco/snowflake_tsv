@@ -147,6 +147,19 @@ class ApplicationContext:
                         sf_config['proxy_password'] = parsed.password
                     
                     self.logger.debug(f"Proxy host: {parsed.hostname}, port: {parsed.port}")
+                    
+                    # Enable SSL workarounds for proxy environments
+                    # These help with corporate proxies that intercept SSL
+                    sf_config['ocsp_fail_open'] = True  # Continue if OCSP responder fails
+                    sf_config['validate_default_parameters'] = False  # Skip parameter validation
+                    
+                    # Check for insecure mode flag (use with caution)
+                    insecure_mode_file = proxy_file.parent / '.insecure_mode'
+                    if insecure_mode_file.exists() or os.environ.get('SNOWFLAKE_INSECURE_MODE'):
+                        self.logger.warning("SSL verification disabled for Snowflake connection (insecure mode)")
+                        sf_config['insecure_mode'] = True
+                    
+                    self.logger.info("Applied SSL workarounds for proxy environment")
             
             conn_config = ConnectionConfig(**sf_config)
             # Use larger pool size to handle parallel operations (default was 5)
