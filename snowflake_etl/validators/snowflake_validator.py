@@ -298,13 +298,15 @@ class SnowflakeDataValidator:
         if start_date and end_date:
             expected_dates = self._calculate_expected_dates(start_date, end_date)
         else:
-            expected_dates = self._calculate_expected_dates(min_date, max_date)
+            # When no filter, use the actual table's full date range
+            expected_dates = self._calculate_expected_dates(actual_min_date, actual_max_date)
         
         # Find missing dates and gaps
+        # Use actual table range when no filter is specified
         missing_dates, gaps = self._find_missing_dates_and_gaps(
             cursor, table_name, date_column, 
-            start_date or min_date, 
-            end_date or max_date
+            start_date or actual_min_date, 
+            end_date or actual_max_date
         )
         
         # When no date range is specified, we're validating all data
@@ -657,13 +659,19 @@ class SnowflakeDataValidator:
         Returns:
             Tuple of (missing_dates, gaps)
         """
+        # Build WHERE clause only if we have valid dates
+        where_clause = ""
+        if start_date and end_date:
+            start_yyyymmdd = start_date.replace("-", "")
+            end_yyyymmdd = end_date.replace("-", "")
+            where_clause = f"WHERE {date_column} BETWEEN '{start_yyyymmdd}' AND '{end_yyyymmdd}'"
+        
         # Query to find gaps using window functions
         gap_query = f"""
         WITH date_sequence AS (
             SELECT DISTINCT {date_column} as date_value
             FROM {table_name}
-            WHERE {date_column} BETWEEN '{start_date.replace("-", "")}' 
-                AND '{end_date.replace("-", "")}'
+            {where_clause}
             ORDER BY date_value
         ),
         gaps AS (
