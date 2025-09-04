@@ -241,11 +241,13 @@ class SnowflakeDataValidator:
             Dictionary with completeness statistics
         """
         # First, get the overall date range in the entire table (no WHERE clause)
+        # Use TRY_TO_DATE to handle various date formats including 'MMM DD YYYY'
         overall_query = f"""
         SELECT 
-            MIN({date_column}) as min_date,
-            MAX({date_column}) as max_date
+            MIN(TRY_TO_DATE({date_column})) as min_date,
+            MAX(TRY_TO_DATE({date_column})) as max_date
         FROM {table_name}
+        WHERE TRY_TO_DATE({date_column}) IS NOT NULL
         """
         
         self.logger.debug(f"Executing overall range query: {overall_query}")
@@ -264,14 +266,15 @@ class SnowflakeDataValidator:
         )
         
         # Get date range summary for the filtered data
+        # Convert date strings to actual dates for proper comparison
         range_query = f"""
         SELECT 
-            MIN({date_column}) as min_date,
-            MAX({date_column}) as max_date,
-            COUNT(DISTINCT {date_column}) as unique_dates,
+            MIN(TRY_TO_DATE({date_column})) as min_date,
+            MAX(TRY_TO_DATE({date_column})) as max_date,
+            COUNT(DISTINCT TRY_TO_DATE({date_column})) as unique_dates,
             COUNT(*) as total_rows
         FROM {table_name}
-        {where_clause}
+        {where_clause if where_clause else f"WHERE TRY_TO_DATE({date_column}) IS NOT NULL"}
         """
         
         self.logger.debug(f"Executing filtered range query: {range_query}")
@@ -343,14 +346,15 @@ class SnowflakeDataValidator:
         )
         
         # Query with statistical analysis
+        # Use TRY_TO_DATE to properly handle date strings
         anomaly_query = f"""
         WITH daily_counts AS (
             SELECT 
-                {date_column} as date_value,
+                TRY_TO_DATE({date_column}) as date_value,
                 COUNT(*) as row_count
             FROM {table_name}
-            {where_clause}
-            GROUP BY {date_column}
+            {where_clause if where_clause else f"WHERE TRY_TO_DATE({date_column}) IS NOT NULL"}
+            GROUP BY TRY_TO_DATE({date_column})
         ),
         stats AS (
             SELECT 
@@ -437,7 +441,15 @@ class SnowflakeDataValidator:
         Returns:
             Dictionary with duplicate statistics and samples
         """
-        key_cols_str = ", ".join(key_columns)
+        # Build column string, converting date columns if needed
+        key_cols_converted = []
+        for col in key_columns:
+            if col == date_column:
+                key_cols_converted.append(f"TRY_TO_DATE({col})")
+            else:
+                key_cols_converted.append(col)
+        key_cols_str = ", ".join(key_cols_converted)
+        
         where_clause = self._build_date_where_clause(
             date_column, start_date, end_date
         )
@@ -541,11 +553,11 @@ class SnowflakeDataValidator:
         if not start_date or not end_date:
             return ""
         
-        # Convert to YYYYMMDD format for comparison
-        start_yyyymmdd = start_date.replace('-', '')
-        end_yyyymmdd = end_date.replace('-', '')
-        
-        return f"WHERE {date_column} BETWEEN '{start_yyyymmdd}' AND '{end_yyyymmdd}'"
+        # Use TRY_TO_DATE to convert string dates and compare as actual dates
+        # This handles various formats including 'MMM DD YYYY'
+        return f"""WHERE TRY_TO_DATE({date_column}) BETWEEN 
+                   TRY_TO_DATE('{start_date}', 'YYYY-MM-DD') AND 
+                   TRY_TO_DATE('{end_date}', 'YYYY-MM-DD')"""
     
     def _parse_flexible_date(self, date_value) -> Optional[datetime]:
         """
@@ -662,14 +674,17 @@ class SnowflakeDataValidator:
         # Build WHERE clause only if we have valid dates
         where_clause = ""
         if start_date and end_date:
-            start_yyyymmdd = start_date.replace("-", "")
-            end_yyyymmdd = end_date.replace("-", "")
-            where_clause = f"WHERE {date_column} BETWEEN '{start_yyyymmdd}' AND '{end_yyyymmdd}'"
+            where_clause = f"""WHERE TRY_TO_DATE({date_column}) BETWEEN 
+                              TRY_TO_DATE('{start_date}', 'YYYY-MM-DD') AND 
+                              TRY_TO_DATE('{end_date}', 'YYYY-MM-DD')"""
+        else:
+            where_clause = f"WHERE TRY_TO_DATE({date_column}) IS NOT NULL"
         
         # Query to find gaps using window functions
+        # Convert all date strings to proper dates for comparison
         gap_query = f"""
         WITH date_sequence AS (
-            SELECT DISTINCT {date_column} as date_value
+            SELECT DISTINCT TRY_TO_DATE({date_column}) as date_value
             FROM {table_name}
             {where_clause}
             ORDER BY date_value
@@ -679,8 +694,8 @@ class SnowflakeDataValidator:
                 date_value as current_date,
                 LAG(date_value) OVER (ORDER BY date_value) as prev_date,
                 DATEDIFF('day', 
-                    TO_DATE(LAG(date_value) OVER (ORDER BY date_value), 'YYYYMMDD'),
-                    TO_DATE(date_value, 'YYYYMMDD')
+                    LAG(date_value) OVER (ORDER BY date_value),
+                    date_value
                 ) as gap_days
             FROM date_sequence
         )
