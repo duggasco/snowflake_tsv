@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.15"  # Added skip venv/install flags for existing environments
+VERSION="3.4.16"  # Fixed skip flags to be processed before dependency checks
 
 # Skip flags (can be set via environment or command line)
 SKIP_VENV="${SKIP_VENV:-false}"
@@ -4107,6 +4107,19 @@ main_menu() {
 # ============================================================================
 
 main() {
+    # Parse skip flags FIRST before any dependency checks
+    # This needs to happen before check_dependencies is called
+    for arg in "$@"; do
+        case "$arg" in
+            --no-venv)
+                export SKIP_VENV="true"
+                ;;
+            --skip-install)
+                export SKIP_INSTALL="true"
+                ;;
+        esac
+    done
+    
     # Initialize
     init_directories
     check_dependencies

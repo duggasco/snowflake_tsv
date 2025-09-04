@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## [v3.4.16] - 2025-09-03 - Fix Skip Flags Processing Order
+
+### Bug Fix
+- **Fixed --no-venv and --skip-install flags not working**: 
+  - Flags were being parsed after `check_dependencies` was called
+  - Moved flag parsing to the very beginning of main() function
+  - Flags are now processed before any Python environment checks
+  - Ensures flags work correctly in remote environments
+
 ## [v3.4.15] - 2025-09-03 - Skip Virtual Environment and Installation Flags
 
 ### New Features
