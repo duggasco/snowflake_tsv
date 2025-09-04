@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.18"  # Fixed wget/curl proxy handling for Python downloads
+VERSION="3.4.19"  # Fixed venv recreation bug - now properly reuses existing venv
 
 # Skip flags (can be set via environment or command line)
 SKIP_VENV="${SKIP_VENV:-false}"
@@ -869,16 +869,26 @@ check_dependencies() {
             if [[ "$SKIP_INSTALL" != "true" ]]; then
                 echo -e "${CYAN}First run detected. Setting up Python environment...${NC}"
                 setup_python_environment "$python_cmd"
+                # After setup, the venv is already activated by setup_python_environment
             else
                 echo -e "${YELLOW}Skipping package installation (--skip-install flag set)${NC}"
             fi
         fi
         
-        # Activate venv if it exists
+        # Activate venv if it exists (and wasn't just created/activated by setup)
         if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
             source "$venv_dir/bin/activate"
             export VIRTUAL_ENV="$venv_dir"
             export PATH="$venv_dir/bin:$PATH"
+        fi
+        
+        # Verify required Python packages are installed AFTER venv is activated
+        # This check should happen inside the venv context
+        if [[ "$SKIP_INSTALL" != "true" ]]; then
+            if ! python3 -c "import snowflake.connector" 2>/dev/null; then
+                echo -e "${YELLOW}Required Python packages not found in virtual environment. Installing...${NC}"
+                setup_python_environment "$python_cmd"
+            fi
         fi
     fi
     
@@ -892,14 +902,8 @@ check_dependencies() {
         export HTTPS_PROXY="$proxy"
     fi
     
-    # Verify required Python packages are installed (unless skipping)
-    if [[ "$SKIP_INSTALL" != "true" ]] && [[ "$SKIP_VENV" != "true" ]]; then
-        if ! python3 -c "import snowflake.connector" 2>/dev/null; then
-            echo -e "${YELLOW}Required Python packages not found. Installing...${NC}"
-            setup_python_environment "$python_cmd"
-        fi
-    elif [[ "$SKIP_VENV" == "true" ]] || [[ "$SKIP_INSTALL" == "true" ]]; then
-        # When skipping venv/install, just check if packages exist without installing
+    # When skipping venv entirely, warn about packages but don't install
+    if [[ "$SKIP_VENV" == "true" ]] || [[ "$SKIP_INSTALL" == "true" ]]; then
         if ! python3 -c "import snowflake.connector" 2>/dev/null; then
             echo -e "${YELLOW}Warning: Required Python packages may not be installed.${NC}"
             echo -e "${YELLOW}Proceeding anyway due to skip flags...${NC}"

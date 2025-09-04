@@ -1,5 +1,24 @@
 # CHANGELOG.md
 
+## [v3.4.19] - 2025-09-04 - Fix Virtual Environment Recreation Bug
+
+### Bug Fix
+- **Fixed venv being recreated every time**:
+  - Package check was happening before venv activation in some cases
+  - Moved package verification inside the venv context block
+  - Now properly checks for packages AFTER activating the venv
+  - Eliminates unnecessary reinstallation when venv already exists
+  
+### Performance Impact
+- Significantly faster startup time (no pip install on every run)
+- Properly reuses existing virtual environment
+- Only recreates venv when `.venv_setup_complete` file or `etl_venv` directory is missing
+
+### Technical Details
+- The bug was caused by checking `import snowflake.connector` outside the venv activation block
+- Package check now happens after venv is activated, ensuring it checks the right Python environment
+- Skip flags (`--no-venv`, `--skip-install`) are properly handled separately
+
 ## [v3.4.18] - 2025-09-04 - Fix wget/curl Proxy Handling
 
 ### Bug Fixes
