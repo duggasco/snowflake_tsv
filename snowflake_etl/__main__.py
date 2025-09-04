@@ -72,7 +72,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog='snowflake_etl',
-        description='Snowflake ETL Pipeline - Unified CLI',
+        description='Snowflake ETL Pipeline - Process CSV/TSV files into Snowflake',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
@@ -109,11 +109,11 @@ def create_parser() -> argparse.ArgumentParser:
     )
     
     # Load operation
-    load_parser = subparsers.add_parser('load', help='Load TSV files to Snowflake')
-    load_parser.add_argument('--base-path', type=str, help='Base path for TSV files')
+    load_parser = subparsers.add_parser('load', help='Load CSV/TSV files to Snowflake')
+    load_parser.add_argument('--base-path', type=str, help='Base path for CSV/TSV files')
     load_parser.add_argument('--month', type=str, help='Month to process (YYYY-MM)')
-    load_parser.add_argument('--files', type=str, help='Comma-separated list of TSV files to process directly')
-    load_parser.add_argument('--file-pattern', type=str, help='Pattern to match files')
+    load_parser.add_argument('--files', type=str, help='Comma-separated list of CSV/TSV files to process directly')
+    load_parser.add_argument('--file-pattern', type=str, help='Pattern to match files (supports .csv, .tsv, .gz)'))
     load_parser.add_argument('--skip-qc', action='store_true', help='Skip quality checks')
     load_parser.add_argument('--validate-in-snowflake', action='store_true', 
                             help='Validate in Snowflake instead of file QC')
@@ -224,10 +224,10 @@ def create_parser() -> argparse.ArgumentParser:
                                   choices=['text', 'json', 'csv'],
                                   help='Output format (default: text)')
     
-    # TSV sampler utility
+    # File sampler utility
     sample_parser = subparsers.add_parser('sample-file',
-                                         help='Sample and analyze TSV file')
-    sample_parser.add_argument('file', type=str, help='TSV file to sample')
+                                         help='Sample and analyze CSV/TSV file')
+    sample_parser.add_argument('file', type=str, help='CSV/TSV file to sample')
     sample_parser.add_argument('--rows', type=int, default=100,
                              help='Number of rows to sample (default: 100)')
     
@@ -357,7 +357,10 @@ def main(args=None):
                                     date_column=file_config.get('date_column'),
                                     expected_columns=file_config.get('expected_columns', []),
                                     duplicate_key_columns=file_config.get('duplicate_key_columns'),
-                                    expected_date_range=expected_date_range
+                                    expected_date_range=expected_date_range,
+                                    delimiter=file_config.get('delimiter', '\t'),
+                                    file_format=file_config.get('file_format', 'AUTO'),
+                                    quote_char=file_config.get('quote_char', '"')
                                 )
                                 files.append(config)
                                 logger.info(f"Added direct file: {file_path} (matched pattern: {pattern})")
@@ -394,10 +397,14 @@ def main(args=None):
                     else:
                         continue
                     
-                    # Find matching files (also check for .gz compressed versions)
-                    patterns_to_check = [file_pattern]
-                    if not file_pattern.endswith('.gz'):
-                        patterns_to_check.append(file_pattern + '.gz')
+                    # Find matching files (check for multiple extensions and compressed versions)
+                    patterns_to_check = []
+                    base_pattern = file_pattern.rsplit('.', 1)[0] if '.' in file_pattern else file_pattern
+                    
+                    # Check both .tsv and .csv extensions (and their compressed versions)
+                    for ext in ['.tsv', '.csv', '.txt']:
+                        patterns_to_check.append(base_pattern + ext)
+                        patterns_to_check.append(base_pattern + ext + '.gz')
                     
                     for pattern_to_check in patterns_to_check:
                         for file_path in base.glob(pattern_to_check):
@@ -415,7 +422,10 @@ def main(args=None):
                                     expected_date_range=(
                                         datetime(year_int, mon_int, 1),
                                         datetime(year_int, mon_int, last_day)
-                                    )
+                                    ),
+                                    delimiter=file_config.get('delimiter', '\t'),
+                                    file_format=file_config.get('file_format', 'AUTO'),
+                                    quote_char=file_config.get('quote_char', '"')
                                 )
                                 files.append(config)
             

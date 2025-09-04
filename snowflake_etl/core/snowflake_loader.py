@@ -18,8 +18,11 @@ from ..utils.snowflake_connection_v3 import SnowflakeConnectionManager
 
 class SnowflakeLoader:
     """
-    Manages Snowflake loading operations with streaming compression and async support.
-    Uses dependency injection for connection and progress tracking.
+    Manages Snowflake loading operations for CSV/TSV files with streaming compression.
+    
+    Supports multiple file formats (CSV, TSV, custom delimiters) with automatic
+    detection and dynamic COPY command generation. Uses dependency injection for
+    connection and progress tracking.
     """
     
     # Configuration constants
@@ -97,7 +100,11 @@ class SnowflakeLoader:
             FileNotFoundError: If input file doesn't exist
             Exception: For Snowflake or processing errors
         """
-        self.logger.info(f"Loading {config.file_path} to {config.table_name}")
+        # Get file format for display
+        file_format = config.file_format if hasattr(config, 'file_format') else 'TSV'
+        delimiter_name = 'comma' if config.delimiter == ',' else 'tab' if config.delimiter == '\t' else f"'{config.delimiter}'"
+        
+        self.logger.info(f"Loading {config.file_path} [{file_format}, {delimiter_name}-delimited] to {config.table_name}")
         
         # Validate file exists
         if not os.path.exists(config.file_path):
@@ -141,7 +148,10 @@ class SnowflakeLoader:
             rows_loaded = self._copy_to_table(
                 stage_name, 
                 config.table_name,
-                compressed_file
+                compressed_file,
+                delimiter=config.delimiter,
+                file_format=config.file_format,
+                quote_char=config.quote_char
             )
             
             # Cleanup stage
@@ -303,7 +313,9 @@ class SnowflakeLoader:
         except Exception as e:
             self.logger.debug(f"No old stages to clean or cleanup failed: {e}")
     
-    def _copy_to_table(self, stage_name: str, table_name: str, compressed_file: str) -> int:
+    def _copy_to_table(self, stage_name: str, table_name: str, compressed_file: str,
+                      delimiter: str = '\t', file_format: str = 'TSV', 
+                      quote_char: str = '"') -> int:
         """
         Copy data from stage to table.
         Relies on ON_ERROR='ABORT_STATEMENT' to catch any data errors.
@@ -312,12 +324,18 @@ class SnowflakeLoader:
             stage_name: Snowflake stage path
             table_name: Target table name
             compressed_file: Path to compressed file for size check
+            delimiter: Field delimiter character
+            file_format: File format (CSV or TSV)
+            quote_char: Quote character for fields
             
         Returns:
             Number of rows loaded
         """
         # Build COPY query
-        copy_query = self._build_copy_query(table_name, stage_name)
+        copy_query = self._build_copy_query(
+            table_name, stage_name, delimiter=delimiter,
+            file_format=file_format, quote_char=quote_char
+        )
         
         # Determine sync vs async based on file size
         compressed_size_mb = os.path.getsize(compressed_file) / (1024 * 1024)
@@ -347,16 +365,44 @@ class SnowflakeLoader:
             )
             return self._execute_copy_sync(copy_query, table_name, estimated_rows)
     
-    def _build_copy_query(self, table_name: str, stage_name: str) -> str:
-        """Build COPY INTO query with appropriate settings."""
+    def _build_copy_query(self, table_name: str, stage_name: str, 
+                         delimiter: str = '\t', file_format: str = 'TSV',
+                         quote_char: str = '"') -> str:
+        """
+        Build COPY INTO query with appropriate settings.
+        
+        Args:
+            table_name: Target table name
+            stage_name: Stage containing the file
+            delimiter: Field delimiter character
+            file_format: File format (CSV or TSV)
+            quote_char: Character used for quoting fields
+            
+        Returns:
+            COPY query string
+        """
+        # Escape delimiter for SQL
+        if delimiter == '\t':
+            delimiter_sql = '\\t'
+        elif delimiter == '\'':
+            delimiter_sql = "\\'"
+        else:
+            delimiter_sql = delimiter
+        
+        # Build quote char clause
+        if quote_char:
+            quote_clause = f"FIELD_OPTIONALLY_ENCLOSED_BY = '{quote_char}'"
+        else:
+            quote_clause = "FIELD_OPTIONALLY_ENCLOSED_BY = NONE"
+        
         return f"""
         COPY INTO {table_name}
         FROM {stage_name}
         FILE_FORMAT = (
             TYPE = 'CSV'
-            FIELD_DELIMITER = '\\t'
+            FIELD_DELIMITER = '{delimiter_sql}'
             SKIP_HEADER = 0
-            FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+            {quote_clause}
             ESCAPE_UNENCLOSED_FIELD = NONE
             ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE
             REPLACE_INVALID_CHARACTERS = TRUE

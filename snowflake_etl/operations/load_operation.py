@@ -108,7 +108,8 @@ class LoadOperation(BaseOperation):
                     results['validation_results'].append(result['validation_result'])
                     
             except Exception as e:
-                self.logger.error(f"Failed to process {file_config.file_path}: {e}")
+                file_format = file_config.file_format if hasattr(file_config, 'file_format') else 'TSV'
+                self.logger.error(f"Failed to process {file_config.file_path} [{file_format}]: {e}")
                 results['files_failed'] += 1
                 results['errors'].append(str(e))
                 results['file_results'].append({
@@ -141,7 +142,10 @@ class LoadOperation(BaseOperation):
             'validation_result': None
         }
         
-        self.logger.info(f"Processing {file_config.file_path}")
+        # Get file format for display
+        file_format = file_config.file_format if hasattr(file_config, 'file_format') else 'TSV'
+        
+        self.logger.info(f"Processing {file_config.file_path} [{file_format}]")
         
         try:
             # Phase 1: File Analysis
@@ -153,7 +157,7 @@ class LoadOperation(BaseOperation):
             file_size_mb = file_size_gb * 1024  # Convert GB to MB
             
             self.logger.info(
-                f"File contains ~{row_count:,} rows ({file_size_mb:.1f} MB)"
+                f"File contains ~{row_count:,} rows ({file_size_mb:.1f} MB) - Format: {file_format}"
             )
             
             # Phase 2: Quality Checks (optional)
@@ -166,7 +170,7 @@ class LoadOperation(BaseOperation):
                 
                 if not qc_result['valid']:
                     result['success'] = False
-                    result['error'] = f"Quality check failed: {qc_result.get('error')}"
+                    result['error'] = f"Quality check failed for {file_format} file: {qc_result.get('error')}"
                     return result
             
             # Phase 3: Load to Snowflake
@@ -263,7 +267,7 @@ class LoadOperation(BaseOperation):
                 date_column=file_config.date_column,
                 expected_start=start_date,
                 expected_end=end_date,
-                delimiter='\t'
+                delimiter=file_config.delimiter  # Use delimiter from config
             )
             
             # Extract validation status
@@ -276,7 +280,8 @@ class LoadOperation(BaseOperation):
             }
             
         except Exception as e:
-            self.logger.error(f"Quality check failed: {e}")
+            file_format = file_config.file_format if hasattr(file_config, 'file_format') else 'TSV'
+            self.logger.error(f"Quality check failed for {file_format} file: {e}")
             return {
                 'valid': False,
                 'error': str(e)
@@ -425,7 +430,8 @@ class LoadOperation(BaseOperation):
                 results['estimated_time_minutes'] += estimated_time / 60
                 
             except Exception as e:
-                self.logger.error(f"Failed to analyze {file_config.file_path}: {e}")
+                file_format = file_config.file_format if hasattr(file_config, 'file_format') else 'TSV'
+                self.logger.error(f"Failed to analyze {file_config.file_path} [{file_format}]: {e}")
                 results['file_details'].append({
                     'file': file_config.file_path,
                     'error': str(e)

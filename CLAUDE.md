@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a high-performance Snowflake ETL pipeline for processing large TSV files (up to 50GB) with built-in data quality checks, progress tracking, and parallel processing capabilities. The system emphasizes streaming processing for memory efficiency and uses Snowflake's native bulk loading features.
+This is a high-performance Snowflake ETL pipeline for processing large CSV and TSV files (up to 50GB) with built-in data quality checks, progress tracking, and parallel processing capabilities. The system supports multiple file formats with automatic detection, custom delimiters, and streaming processing for memory efficiency using Snowflake's native bulk loading features.
 
-**Current Version**: 3.0.2 (2025-08-26) - Report display fixes and complete data visibility
+**Current Version**: 3.5.0 (2025-09-04) - Full CSV support with automatic format detection and complete data visibility
 
 ## Key Components
 
@@ -20,7 +20,19 @@ This is a high-performance Snowflake ETL pipeline for processing large TSV files
 ### Core Classes and Their Responsibilities
 
 #### FileConfig (dataclass)
-- Defines configuration for each TSV file including path, table name, expected columns, date column, and expected date range
+- Defines configuration for each data file (CSV/TSV) including:
+  - File path, table name, expected columns, date column, and expected date range
+  - **file_format**: 'CSV', 'TSV', or 'AUTO' for automatic detection
+  - **delimiter**: Field separator character (auto-detected or specified)
+  - **quote_char**: Quote character for CSV fields (default: '"')
+
+#### FormatDetector
+- **Automatic format detection** based on file extension and content analysis
+- Supports CSV, TSV, pipe, semicolon, and custom delimiters
+- Confidence scoring for detection accuracy
+- Header detection to identify column names
+- Handles compressed files (.gz)
+- Fallback mechanisms for unknown formats
 
 #### FileAnalyzer
 - Fast row counting using sampling for large files
@@ -232,14 +244,48 @@ The pipeline expects a JSON config file with:
   },
   "files": [
     {
-      "file_pattern": "filename_{date_range}.tsv",  // or "filename_{month}.tsv"
-      "table_name": "TARGET_TABLE",
-      "date_column": "recordDate",
-      "duplicate_key_columns": ["recordDate", "assetId", "fundId"],  // For duplicate detection
-      "expected_columns": ["col1", "col2", ...]
+      "file_pattern": "sales_{month}.csv",           // CSV file example
+      "table_name": "SALES_DATA",
+      "file_format": "CSV",                          // Optional: AUTO, CSV, TSV (default: AUTO)
+      "delimiter": ",",                               // Optional: auto-detected if not specified
+      "quote_char": "\"",                             // Optional: quote character for fields
+      "date_column": "sale_date",
+      "duplicate_key_columns": ["sale_date", "product_id"],
+      "expected_columns": ["sale_date", "product_id", "amount"]
+    },
+    {
+      "file_pattern": "inventory_{date_range}.tsv",   // TSV file example
+      "table_name": "INVENTORY_DATA",
+      "file_format": "TSV",                          
+      "delimiter": "\t",                              // Tab delimiter for TSV
+      "date_column": "inventory_date",
+      "expected_columns": ["inventory_date", "warehouse_id", "quantity"]
     }
   ]
 }
+```
+
+## File Format Support
+
+The pipeline supports multiple file formats with automatic detection:
+
+### Supported Formats
+- **CSV Files** (`.csv`, `.csv.gz`): Comma-separated values with optional quoted fields
+- **TSV Files** (`.tsv`, `.tsv.gz`): Tab-separated values
+- **Custom Delimited** (`.txt`): Pipe (`|`), semicolon (`;`), or any single character delimiter
+- **Compressed Files**: Native support for gzip compression (`.gz`)
+
+### Format Detection
+1. **Extension-based**: `.csv` → CSV with comma, `.tsv` → TSV with tab
+2. **Content analysis**: Statistical delimiter detection for unknown extensions
+3. **Explicit configuration**: Override with `file_format` and `delimiter` fields
+
+### Delimiter Configuration
+```json
+"delimiter": ","     // Comma for CSV
+"delimiter": "\t"    // Tab for TSV  
+"delimiter": "|"     // Pipe delimiter
+"delimiter": ";"     // Semicolon delimiter
 ```
 
 ## File Pattern Matching
@@ -247,6 +293,7 @@ The pipeline expects a JSON config file with:
 The pipeline supports two date pattern types:
 1. **Date range pattern**: `{date_range}` matches YYYYMMDD-YYYYMMDD format
 2. **Month pattern**: `{month}` matches YYYY-MM format
+3. **Supported extensions**: `.csv`, `.tsv`, `.txt`, and `.gz` compressed versions
 
 ## Parallel Processing Architecture
 

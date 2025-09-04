@@ -85,16 +85,18 @@ class TqdmProgressTracker(ProgressTracker):
                 file=sys.stderr
             )
     
-    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0):
+    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0, file_format: str = None):
         """Start processing a new file"""
         if self.fallback:
-            return self.fallback.start_file(filename, file_size, row_count)
+            return self.fallback.start_file(filename, file_size, row_count, file_format)
         
         self.stats.current_file = filename
+        self.stats.current_file_format = file_format
         
-        # Update file bar description
+        # Update file bar description with format
         if 'files' in self.bars:
-            self.bars['files'].set_postfix_str(f"Current: {filename}")
+            format_str = f" [{file_format}]" if file_format else ""
+            self.bars['files'].set_postfix_str(f"Current: {filename}{format_str}")
         
         # Create phase-specific bar for this file
         if 'phase' in self.bars:

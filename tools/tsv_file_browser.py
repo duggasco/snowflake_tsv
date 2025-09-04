@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Interactive TSV File Browser with Config Validation
-Efficient implementation for browsing and selecting TSV files with automatic config matching
+Interactive Data File Browser with Config Validation
+Efficient implementation for browsing and selecting TSV/CSV files with automatic config matching
 """
 
 import os
@@ -180,8 +180,8 @@ class ConfigMatcher:
         return self.configs.get(config_path, {})
 
 
-class TSVFileBrowser:
-    """Main file browser with efficient scanning and navigation"""
+class DataFileBrowser:
+    """Main file browser with efficient scanning and navigation for TSV/CSV files"""
     
     def __init__(self, start_dir: str = ".", config_dir: str = "config"):
         self.current_dir = Path(start_dir).resolve()
@@ -232,11 +232,15 @@ class TSVFileBrowser:
                         if not self.show_hidden and entry.name.startswith('.'):
                             continue
                         
-                        # For TSV browser, only show directories and TSV files
+                        # For data browser, show directories and supported data files
                         is_dir = entry.is_dir(follow_symlinks=False)
-                        is_tsv = entry.name.lower().endswith('.tsv')
+                        name_lower = entry.name.lower()
+                        is_data_file = (name_lower.endswith('.tsv') or 
+                                      name_lower.endswith('.csv') or
+                                      name_lower.endswith('.tsv.gz') or
+                                      name_lower.endswith('.csv.gz'))
                         
-                        if is_dir or is_tsv:
+                        if is_dir or is_data_file:
                             stat = entry.stat(follow_symlinks=False)
                             items.append(FileItem(
                                 path=Path(entry.path),
@@ -330,8 +334,21 @@ class TSVFileBrowser:
             logger.debug("Cleared entire directory cache")
     
     def preview_file(self, filepath: Path) -> List[str]:
-        """Generate preview of TSV file"""
+        """Generate preview of data file with format detection"""
         lines = []
+        
+        # Import format detector
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        try:
+            from snowflake_etl.utils.format_detector import FormatDetector
+            # Detect format
+            format_info = FormatDetector.detect_format(str(filepath))
+            lines.append(f"Format: {format_info['format']} | Delimiter: {repr(format_info['delimiter'])} | Confidence: {format_info['confidence']:.2%}")
+            lines.append("=" * 60)
+        except:
+            pass
         
         try:
             # Get file stats first
@@ -391,7 +408,7 @@ class TSVFileBrowser:
 class CursesUI:
     """Curses-based UI for the file browser"""
     
-    def __init__(self, browser: TSVFileBrowser):
+    def __init__(self, browser: DataFileBrowser):
         self.browser = browser
         self.stdscr = None
         self.height = 0
@@ -733,7 +750,12 @@ class CursesUI:
             
             elif key == ord('a'):  # Select all
                 for item in filtered_items:
-                    if not item.is_dir and item.name != ".." and item.name.endswith('.tsv'):
+                    name_lower = item.name.lower()
+                    is_data_file = (name_lower.endswith('.tsv') or 
+                                  name_lower.endswith('.csv') or
+                                  name_lower.endswith('.tsv.gz') or
+                                  name_lower.endswith('.csv.gz'))
+                    if not item.is_dir and item.name != ".." and is_data_file:
                         if item.path not in self.browser.selected_files:
                             self.browser.selected_files.append(item.path)
             
@@ -791,7 +813,7 @@ def main():
     """Main entry point for the file browser"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Interactive TSV File Browser')
+    parser = argparse.ArgumentParser(description='Interactive Data File Browser for TSV/CSV files')
     parser.add_argument('--start-dir', default='.', 
                        help='Starting directory (default: current)')
     parser.add_argument('--config-dir', default='config',
@@ -802,7 +824,7 @@ def main():
     args = parser.parse_args()
     
     # Create browser
-    browser = TSVFileBrowser(
+    browser = DataFileBrowser(
         start_dir=args.start_dir,
         config_dir=args.config_dir
     )

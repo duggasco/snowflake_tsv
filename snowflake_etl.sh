@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.21"  # Fixed .tsv.gz file pattern matching in Python ETL module
+VERSION="3.5.0"  # Full CSV support with automatic format detection
 
 # Skip flags (can be set via environment or command line)
 SKIP_VENV="${SKIP_VENV:-false}"
@@ -2513,7 +2513,7 @@ EOF
     fi
 }
 
-# Generate config from TSV files
+# Generate config from data files (TSV/CSV)
 generate_config_from_files() {
     local files="$1"
     local output_file="${2:-}"
@@ -2521,7 +2521,7 @@ generate_config_from_files() {
     local column_headers="${4:-}"
     local date_column="${5:-RECORDDATEID}"
     
-    echo -e "${CYAN}Generating configuration for TSV files${NC}"
+    echo -e "${CYAN}Generating configuration for TSV/CSV files${NC}"
     
     # Start building config
     local config_json='{"files": ['
@@ -2714,13 +2714,13 @@ menu_file_tools() {
     push_menu "File Tools"
     while true; do
         local choice=$(show_menu "$MENU_PATH" \
-            "Sample TSV File" \
+            "Sample Data File (TSV/CSV)" \
             "Generate Config" \
             "Analyze File Structure" \
             "Check for Issues" \
             "View File Stats" \
             "Compare Files" \
-            "Compress TSV File (No Upload)")
+            "Compress Data File (No Upload)")
         
         case "$choice" in
             1) sample_tsv_file ;;
@@ -2837,7 +2837,7 @@ quick_load_last_month() {
 
 # Quick load specific file
 quick_load_specific_file() {
-    local file_path=$(get_input "Load Specific File" "Enter TSV or TSV.GZ file path")
+    local file_path=$(get_input "Load Specific File" "Enter data file path (TSV/CSV/GZ)")
     
     if [[ -z "$file_path" ]]; then
         show_message "Error" "No file path provided"
@@ -2850,8 +2850,8 @@ quick_load_specific_file() {
     fi
     
     # Check if it's a supported file type
-    if [[ ! "$file_path" =~ \.(tsv|tsv\.gz)$ ]]; then
-        show_message "Warning" "File should be .tsv or .tsv.gz format. Proceeding anyway..."
+    if [[ ! "$file_path" =~ \.(tsv|csv|txt|tsv\.gz|csv\.gz)$ ]]; then
+        show_message "Warning" "File should be .tsv, .csv, .txt or .gz format. Proceeding anyway..."
     fi
     
     # If it's a .gz file, note it for the user
@@ -2914,7 +2914,7 @@ quick_load_custom_month() {
 menu_load_data() {
     # First, ask user to choose method
     local choice=$(show_menu "Load Data Method" \
-        "Browse for TSV files interactively" \
+        "Browse for TSV/CSV files interactively" \
         "Specify base path and month" \
         "Load all months from base path")
     
@@ -2925,7 +2925,7 @@ menu_load_data() {
             ;;
         2)
             # Traditional month-based loading - prompt for both base path and month
-            local base_path=$(get_input "Load Data" "Enter base path for TSV files" "$BASE_PATH")
+            local base_path=$(get_input "Load Data" "Enter base path for TSV/CSV files" "$BASE_PATH")
             
             if [[ ! -d "$base_path" ]]; then
                 show_message "Error" "Base path does not exist: $base_path"
@@ -3345,9 +3345,9 @@ compare_files() {
     fi
 }
 
-# Sample TSV file
+# Sample data file (TSV/CSV)
 sample_tsv_file() {
-    local file_path=$(get_input "Sample TSV File" "Enter TSV file path")
+    local file_path=$(get_input "Sample Data File" "Enter TSV/CSV file path")
     
     if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
         show_message "Error" "Invalid file path"
@@ -3364,8 +3364,8 @@ sample_tsv_file() {
     local total_rows=$(wc -l < "$file_path")
     local total_cols=$(head -1 "$file_path" | awk -F'\t' '{print NF}')
     
-    output+="TSV File Analysis\n"
-    output+="================\n"
+    output+="Data File Analysis\n"
+    output+="==================\n"
     output+="File: $filename\n"
     output+="Size: $filesize\n"
     output+="Rows: $total_rows\n"
@@ -3395,17 +3395,17 @@ sample_tsv_file() {
         col_num=$((col_num + 1))
     done
     
-    show_message "TSV Sample Results" "$output"
+    show_message "Data File Sample Results" "$output"
 }
 
-# Compress TSV file for cross-environment transfer
+# Compress data file for cross-environment transfer
 compress_tsv_file() {
-    echo -e "${BLUE}Compress TSV File (No Snowflake Upload)${NC}"
-    echo -e "${YELLOW}This will compress TSV files for manual transfer across environments${NC}"
+    echo -e "${BLUE}Compress Data File (No Snowflake Upload)${NC}"
+    echo -e "${YELLOW}This will compress TSV/CSV files for manual transfer across environments${NC}"
     echo ""
     
     # Get file path
-    local file_path=$(get_input "TSV File" "Enter TSV file path to compress")
+    local file_path=$(get_input "Data File" "Enter TSV/CSV file path to compress")
     
     if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
         show_message "Error" "Invalid file path: $file_path"
@@ -3789,7 +3789,7 @@ clean_stage_files() {
     fi
     
     if [[ "$table" == "all" ]]; then
-        if confirm_action "Clean ALL stage files? This will remove all uploaded TSV files from Snowflake stages."; then
+        if confirm_action "Clean ALL stage files? This will remove all uploaded TSV/CSV files from Snowflake stages."; then
             show_message "Running" "Cleaning all stage files..."
             local output=$(python3 -m snowflake_etl --config "$CONFIG_FILE" check-stage 2>&1 | grep -E "(Found|Total|Would)" | head -20)
             show_message "Stage Status" "$output\n\nRun 'python3 -m snowflake_etl --config $CONFIG_FILE check-stage' to clean interactively."
@@ -3931,7 +3931,7 @@ toggle_colors() {
 
 # Set base path
 set_base_path() {
-    local new_path=$(get_input "Set Base Path" "Enter base path for TSV files" "$BASE_PATH")
+    local new_path=$(get_input "Set Base Path" "Enter base path for TSV/CSV files" "$BASE_PATH")
     
     if [[ -d "$new_path" ]]; then
         BASE_PATH="$new_path"

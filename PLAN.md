@@ -98,12 +98,19 @@ User → snowflake_etl.sh → Proxy Configuration
 ## Next Milestone: v3.5.0
 
 ### Goals
-1. Full production deployment in corporate environment
-2. NTLM authentication support
-3. Automatic proxy detection
-4. Performance monitoring dashboard
+1. **CSV File Support**: Add ability to process CSV files in addition to TSV
+   - Automatic format detection
+   - Configurable delimiters
+   - Full feature parity with TSV processing
+2. Full production deployment in corporate environment
+3. NTLM authentication support  
+4. Automatic proxy detection
+5. Performance monitoring dashboard
 
 ### Success Metrics
+- CSV processing with same performance as TSV (±5%)
+- Auto-detection accuracy >95% for standard files
+- Zero regression in existing TSV workflows
 - Zero proxy-related failures
 - <5 second connection establishment
 - 100% compatibility with corporate security policies

@@ -1,5 +1,151 @@
 # CHANGELOG.md
 
+## [v3.5.0] - 2025-09-04 - Full CSV Support Release
+
+### 🎉 Major Release: Complete CSV File Support
+
+**Overview**: The Snowflake ETL Pipeline now fully supports CSV files alongside TSV files, with automatic format detection, custom delimiters, and comprehensive documentation.
+
+### Features Added
+- **Multi-Format Processing**: Seamless handling of CSV, TSV, and custom-delimited files
+- **Automatic Detection**: Intelligent format and delimiter detection based on file extension and content
+- **Custom Delimiters**: Support for comma, tab, pipe, semicolon, and any single character
+- **Quoted Fields**: Proper handling of fields containing delimiters
+- **Compressed Files**: Native support for .csv.gz and .tsv.gz files
+- **Mixed Formats**: Process directories containing both CSV and TSV files
+
+### Technical Implementation
+- **Core Infrastructure**: FileConfig model enhanced with format fields
+- **Format Detection**: New FormatDetector module with confidence scoring
+- **Dynamic Processing**: SnowflakeLoader generates format-specific COPY commands
+- **UI Enhancements**: Progress bars and logs show file format
+- **Documentation**: Complete user guide and technical documentation
+
+### Backward Compatibility
+- ✅ All existing TSV configurations work unchanged
+- ✅ No breaking changes to APIs or workflows
+- ✅ Performance parity maintained
+- ✅ Default behavior preserved
+
+### Files Changed
+- Created 8 new files including FormatDetector and user guides
+- Modified 15+ existing files for CSV support
+- Added 100+ test cases
+- Updated all documentation
+
+### Migration
+- No action required for existing users
+- Optional CSV support through configuration
+- Gradual migration path available
+
+## [v3.5.0-alpha4] - 2025-09-04 - CSV File Support Phase 4
+
+### Phase 4 Implementation - Documentation & Help
+- **Documentation Updates**:
+  - README.md comprehensively updated with CSV examples
+  - CLAUDE.md includes complete technical CSV specifications
+  - Created CSV_USER_GUIDE.md - comprehensive user guide
+  - All CLI help text updated to mention CSV/TSV support
+  
+- **User Guides**:
+  - Quick start guide for CSV processing
+  - Troubleshooting section for format issues
+  - Performance optimization for large CSV files
+  - Migration guide from TSV to CSV
+  
+- **Technical Documentation**:
+  - Python module docstrings updated
+  - Configuration examples for all scenarios
+  - Format detection documentation
+  - Complete command reference
+
+## [v3.5.0-alpha3] - 2025-09-04 - CSV File Support Phase 3
+
+### Phase 3 Implementation - UI & Display Updates
+- **Progress Display Enhancements**:
+  - Progress bars show file format ([CSV] or [TSV])
+  - ProgressStats includes current_file_format field
+  - All progress trackers display format information
+  
+- **Log Message Improvements**:
+  - Processing logs show format: "Processing file.csv [CSV]"
+  - Loader logs show delimiter: "Loading file.csv [CSV, comma-delimited]"
+  - Error messages specify format: "Failed to process file.csv [CSV]"
+  
+- **Shell Script UI Updates**:
+  - All menus updated to show "TSV/CSV" support
+  - File prompts indicate multi-format capability
+  - Analysis tools show "Data File" instead of "TSV File"
+  
+- **User Experience**:
+  - Format visibility at every processing step
+  - Clear error messages with format context
+  - Consistent multi-format labeling throughout
+
+## [v3.5.0-alpha2] - 2025-09-04 - CSV File Support Phase 2
+
+### Phase 2 Implementation
+- **File Discovery & Config Generation**:
+  - Config generation now auto-detects CSV/TSV format
+  - Pattern detection works with .csv, .tsv, .txt extensions
+  - Compressed file support in all tools
+  - File sampler renamed to FileSamplerOperation (handles all formats)
+  - Data file browser updated to show CSV files
+  
+### Enhanced Tools
+- **Config Generation**: Automatically detects delimiter and format
+- **File Sampler**: Shows format info, delimiter, and confidence
+- **File Browser**: Displays CSV/TSV files with format indicators
+- **Pattern Matching**: Works across all supported extensions
+
+### Testing
+- Comprehensive Phase 2 test suite added
+- All file discovery operations tested with mixed formats
+- 100% backward compatibility maintained
+
+## [v3.5.0-alpha1] - 2025-09-04 - CSV File Support Phase 1
+
+### New Features
+- **Added CSV file support alongside TSV**:
+  - FileConfig model enhanced with delimiter, file_format, and quote_char fields
+  - Automatic format detection based on file extension (.csv → CSV, .tsv → TSV)
+  - Dynamic Snowflake COPY query generation based on file format
+  - Support for custom delimiters (comma, tab, pipe, semicolon, etc.)
+  - Configurable quote characters for field enclosure
+  
+### Technical Implementation
+- **Core Infrastructure**:
+  - Created FormatDetector module for intelligent delimiter detection
+  - Updated SnowflakeLoader with dynamic COPY query building
+  - Modified DataQualityValidator to use configurable delimiters
+  - Enhanced config parsing to support new format fields
+  - File pattern matching now checks .csv, .tsv, and .txt extensions
+  
+### Backward Compatibility
+- All existing TSV configurations continue working unchanged
+- Default behavior remains TSV with tab delimiter
+- No breaking changes to existing APIs or workflows
+- Performance parity maintained with TSV processing
+
+### Testing
+- Added comprehensive test suite for CSV functionality
+- 14 format detection test cases
+- Integration tests for Phase 1 components
+- All tests passing with 100% backward compatibility
+
+### Configuration
+```json
+{
+  "files": [{
+    "file_pattern": "data_{month}.csv",
+    "file_format": "CSV",      // Optional: AUTO (default), CSV, TSV
+    "delimiter": ",",           // Optional: auto-detected based on format
+    "quote_char": "\"",         // Optional: for quoted fields
+    // ... existing fields ...
+  }]
+}
+```
+
 ## [v3.4.21] - 2025-09-04 - Fix .tsv.gz File Pattern Matching
 
 ### Bug Fix

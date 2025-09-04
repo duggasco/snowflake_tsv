@@ -1,0 +1,58 @@
+{
+  "snowflake": {
+    "account": "your_account",
+    "user": "your_user",
+    "password": "your_password",
+    "warehouse": "your_warehouse",
+    "database": "your_database",
+    "schema": "your_schema",
+    "role": "your_role"
+  },
+  "files": [
+    {
+      "file_pattern": "sales_data_{month}.csv",
+      "table_name": "SALES_DATA",
+      "file_format": "CSV",
+      "delimiter": ",",
+      "quote_char": "\"",
+      "date_column": "sale_date",
+      "expected_columns": [
+        "sale_date",
+        "product_id",
+        "customer_id",
+        "quantity",
+        "unit_price",
+        "total_amount"
+      ],
+      "duplicate_key_columns": ["sale_date", "product_id", "customer_id"]
+    },
+    {
+      "file_pattern": "inventory_{date_range}.tsv",
+      "table_name": "INVENTORY_DATA",
+      "file_format": "TSV",
+      "delimiter": "\t",
+      "date_column": "inventory_date",
+      "expected_columns": [
+        "inventory_date",
+        "warehouse_id",
+        "product_id",
+        "quantity_on_hand",
+        "quantity_reserved"
+      ]
+    },
+    {
+      "file_pattern": "customer_data_{month}.txt",
+      "table_name": "CUSTOMER_DATA",
+      "file_format": "AUTO",
+      "date_column": "registration_date",
+      "expected_columns": [
+        "customer_id",
+        "registration_date",
+        "customer_name",
+        "email",
+        "country"
+      ],
+      "duplicate_key_columns": ["customer_id"]
+    }
+  ]
+}
