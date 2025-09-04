@@ -1,5 +1,34 @@
 # CHANGELOG.md
 
+## [v3.5.1] - 2025-09-04 - Enhanced Date Format Support
+
+### Bug Fixes
+- **Fixed date parsing errors in Snowflake validation**:
+  - Fixed "time data 'Apr 1 2024' does not match format '%Y-%m-%d'" error
+  - Added comprehensive multi-format date parsing to handle various date formats
+  - Now supports 20+ date formats including 'MMM d YYYY', ISO formats, and timestamps
+  - Normalizes dates with variable spacing (e.g., 'Apr  1 2024' with double space)
+
+### Improvements
+- **Flexible Date Parser**: New `_parse_flexible_date()` method that automatically detects and parses:
+  - Standard formats: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, YYYYMMDD
+  - Month name formats: Apr 1 2024, April 01 2024, 1 Apr 2024
+  - ISO formats: 2024-04-01T00:00:00, 2024-04-01T00:00:00Z
+  - Timestamps: 2024-04-01 00:00:00, 04/01/2024 12:30:45
+  - Gracefully handles multiple spaces and various delimiters
+  
+- **Enhanced Validation Robustness**: 
+  - Validation no longer fails when encountering non-standard date formats from Snowflake
+  - Improved error messages when date parsing fails
+  - Added fallback to python-dateutil parser for edge cases
+
+### Dependencies
+- Added `python-dateutil>=2.8.0` for improved date parsing capabilities
+
+### Testing
+- Created comprehensive test suite for date parsing with 21 test cases
+- All common date formats now validated and working correctly
+
 ## [v3.5.0] - 2025-09-04 - Full CSV Support Release
 
 ### 🎉 Major Release: Complete CSV File Support

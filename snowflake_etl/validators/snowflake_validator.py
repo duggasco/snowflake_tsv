@@ -519,28 +519,103 @@ class SnowflakeDataValidator:
         
         return f"WHERE {date_column} BETWEEN '{start_yyyymmdd}' AND '{end_yyyymmdd}'"
     
+    def _parse_flexible_date(self, date_value) -> Optional[datetime]:
+        """
+        Parse date from various formats into datetime object.
+        Handles multiple date formats commonly found in databases.
+        
+        Args:
+            date_value: Date value in various formats
+            
+        Returns:
+            datetime object or None if parsing fails
+        """
+        if not date_value:
+            return None
+            
+        # Convert to string and strip whitespace
+        date_str = str(date_value).strip()
+        
+        # Common date formats to try
+        date_formats = [
+            '%Y-%m-%d',           # 2024-04-01
+            '%Y/%m/%d',           # 2024/04/01
+            '%m/%d/%Y',           # 04/01/2024
+            '%m-%d-%Y',           # 04-01-2024
+            '%d/%m/%Y',           # 01/04/2024
+            '%d-%m-%Y',           # 01-04-2024
+            '%Y%m%d',             # 20240401
+            '%b %d %Y',           # Apr 01 2024
+            '%b %d, %Y',          # Apr 01, 2024
+            '%B %d %Y',           # April 01 2024
+            '%B %d, %Y',          # April 01, 2024
+            '%d %b %Y',           # 01 Apr 2024
+            '%d %B %Y',           # 01 April 2024
+            '%Y-%m-%d %H:%M:%S', # 2024-04-01 00:00:00
+            '%Y/%m/%d %H:%M:%S', # 2024/04/01 00:00:00
+            '%m/%d/%Y %H:%M:%S', # 04/01/2024 00:00:00
+            '%Y-%m-%dT%H:%M:%S', # 2024-04-01T00:00:00
+            '%Y-%m-%dT%H:%M:%SZ',# 2024-04-01T00:00:00Z
+        ]
+        
+        # Special handling for formats with variable spaces (like 'Apr  1 2024')
+        # Normalize multiple spaces to single space
+        date_str_normalized = ' '.join(date_str.split())
+        
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(date_str_normalized, fmt)
+            except ValueError:
+                continue
+        
+        # Try with dateutil parser as fallback (if available)
+        try:
+            from dateutil import parser
+            return parser.parse(date_str_normalized, fuzzy=False)
+        except (ImportError, ValueError, TypeError):
+            pass
+        
+        # Log warning for unparseable date
+        self.logger.warning(f"Could not parse date: '{date_str}'")
+        return None
+    
     def _format_date(self, date_value) -> str:
-        """Format date value to YYYY-MM-DD string."""
+        """
+        Format date value to YYYY-MM-DD string.
+        Handles multiple input formats.
+        """
         if not date_value:
             return None
         
-        date_str = str(date_value)
+        # Try to parse the date flexibly
+        parsed_date = self._parse_flexible_date(date_value)
         
-        # Handle YYYYMMDD format
+        if parsed_date:
+            return parsed_date.strftime('%Y-%m-%d')
+        
+        # Fallback for YYYYMMDD numeric format
+        date_str = str(date_value)
         if len(date_str) == 8 and date_str.isdigit():
             return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
         
-        # Already in correct format or other format
+        # Return as-is if we can't parse it
         return date_str
     
     def _calculate_expected_dates(self, start_date: str, end_date: str) -> int:
-        """Calculate number of expected dates in range."""
+        """
+        Calculate number of expected dates in range.
+        Handles multiple date formats.
+        """
         if not start_date or not end_date:
             return 0
         
-        # Parse dates
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
+        # Parse dates using flexible parser
+        start = self._parse_flexible_date(start_date)
+        end = self._parse_flexible_date(end_date)
+        
+        if not start or not end:
+            self.logger.warning(f"Could not parse date range: {start_date} to {end_date}")
+            return 0
         
         return (end - start).days + 1
     
@@ -606,10 +681,12 @@ class SnowflakeDataValidator:
                 
                 # Add individual missing dates (limit to prevent memory issues)
                 if missing_days <= 31:  # Only list individual dates for small gaps
-                    start = datetime.strptime(self._format_date(prev_date), '%Y-%m-%d')
-                    for i in range(1, missing_days + 1):
-                        missing_date = start + timedelta(days=i)
-                        missing_dates.append(missing_date.strftime('%Y-%m-%d'))
+                    # Use flexible parser for the date
+                    start = self._parse_flexible_date(prev_date)
+                    if start:
+                        for i in range(1, missing_days + 1):
+                            missing_date = start + timedelta(days=i)
+                            missing_dates.append(missing_date.strftime('%Y-%m-%d'))
             
             return missing_dates[:100], gaps  # Limit to prevent huge lists
             
