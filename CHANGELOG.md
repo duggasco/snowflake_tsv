@@ -1,5 +1,42 @@
 # CHANGELOG.md
 
+## [v3.4.15] - 2025-09-03 - Skip Virtual Environment and Installation Flags
+
+### New Features
+- **Added --no-venv flag**: Skip virtual environment setup and use system Python
+  - Useful for systems with pre-configured Python environments
+  - Prevents automatic venv creation and activation
+  - Can be set via environment variable: `SKIP_VENV=true`
+  
+- **Added --skip-install flag**: Skip automatic package installation
+  - Assumes all required packages are already installed
+  - Prevents pip install attempts during initialization
+  - Can be set via environment variable: `SKIP_INSTALL=true`
+  - Shows warning if packages are missing but continues anyway
+
+### Use Cases
+- Running on managed systems where Python is pre-configured
+- CI/CD pipelines with custom environments
+- Docker containers with pre-installed dependencies
+- Systems with restricted network access or package installation
+
+### Usage Examples
+```bash
+# Use system Python without venv
+./snowflake_etl.sh --no-venv
+
+# Skip all installation attempts
+./snowflake_etl.sh --skip-install
+
+# Combine both flags
+./snowflake_etl.sh --no-venv --skip-install
+
+# Set via environment variables
+export SKIP_VENV=true
+export SKIP_INSTALL=true
+./snowflake_etl.sh
+```
+
 ## [v3.4.14] - 2025-09-03 - Cross-Environment File Compression Support
 
 ### New Features

@@ -58,6 +58,32 @@ pip install -e .[dev]
 pip install snowflake-etl-pipeline
 ```
 
+### Running Without Virtual Environment
+
+If your system already has Python and required packages installed, you can skip the automatic virtual environment setup:
+
+```bash
+# Skip virtual environment setup
+./snowflake_etl.sh --no-venv
+
+# Skip package installation entirely
+./snowflake_etl.sh --skip-install
+
+# Both flags can be combined
+./snowflake_etl.sh --no-venv --skip-install
+
+# Or set via environment variables
+export SKIP_VENV=true
+export SKIP_INSTALL=true
+./snowflake_etl.sh
+```
+
+This is useful for:
+- Docker containers with pre-installed dependencies
+- CI/CD pipelines with managed environments
+- Systems where package installation is restricted
+- Environments with custom Python configurations
+
 ## Quick Start
 
 ### 1. Create Configuration File

@@ -12,7 +12,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.12"  # Added SSL/TLS handling for proxy environments
+VERSION="3.4.15"  # Added skip venv/install flags for existing environments
+
+# Skip flags (can be set via environment or command line)
+SKIP_VENV="${SKIP_VENV:-false}"
+SKIP_INSTALL="${SKIP_INSTALL:-false}"
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -801,8 +805,8 @@ check_dependencies() {
         python_cmd="python3"
         local current_version=$(python3 --version 2>&1 | awk '{print $2}')
         
-        # Only offer to install if running interactively
-        if [[ -t 0 ]] && [[ -t 1 ]]; then
+        # Only offer to install if running interactively and not skipping installation
+        if [[ -t 0 ]] && [[ -t 1 ]] && [[ "$SKIP_INSTALL" != "true" ]]; then
             echo -e "${YELLOW}Note: Python 3.11 preferred, found Python $current_version${NC}"
             # Offer to install Python 3.11
             if confirm_install_python "3.11"; then
@@ -814,8 +818,8 @@ check_dependencies() {
     else
         echo -e "${RED}Python 3 not found in system${NC}"
         
-        # Only offer to install if running interactively
-        if [[ -t 0 ]] && [[ -t 1 ]]; then
+        # Only offer to install if running interactively and not skipping installation
+        if [[ -t 0 ]] && [[ -t 1 ]] && [[ "$SKIP_INSTALL" != "true" ]]; then
             # Offer to install Python 3.11
             if confirm_install_python "3.11"; then
                 if install_python_311; then
@@ -840,10 +844,26 @@ check_dependencies() {
         exit 1
     fi
     
-    # Check if this is first run or venv doesn't exist
-    if [[ ! -f "$first_run_file" ]] || [[ ! -d "$venv_dir" ]]; then
-        echo -e "${CYAN}First run detected. Setting up Python environment...${NC}"
-        setup_python_environment "$python_cmd"
+    # Skip venv setup if flag is set
+    if [[ "$SKIP_VENV" == "true" ]]; then
+        echo -e "${YELLOW}Skipping virtual environment setup (--no-venv flag set)${NC}"
+    else
+        # Check if this is first run or venv doesn't exist
+        if [[ ! -f "$first_run_file" ]] || [[ ! -d "$venv_dir" ]]; then
+            if [[ "$SKIP_INSTALL" != "true" ]]; then
+                echo -e "${CYAN}First run detected. Setting up Python environment...${NC}"
+                setup_python_environment "$python_cmd"
+            else
+                echo -e "${YELLOW}Skipping package installation (--skip-install flag set)${NC}"
+            fi
+        fi
+        
+        # Activate venv if it exists
+        if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
+            source "$venv_dir/bin/activate"
+            export VIRTUAL_ENV="$venv_dir"
+            export PATH="$venv_dir/bin:$PATH"
+        fi
     fi
     
     # Load saved proxy configuration if it exists
@@ -856,17 +876,18 @@ check_dependencies() {
         export HTTPS_PROXY="$proxy"
     fi
     
-    # Activate venv if it exists
-    if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
-        source "$venv_dir/bin/activate"
-        export VIRTUAL_ENV="$venv_dir"
-        export PATH="$venv_dir/bin:$PATH"
-    fi
-    
-    # Verify required Python packages are installed
-    if ! python3 -c "import snowflake.connector" 2>/dev/null; then
-        echo -e "${YELLOW}Required Python packages not found. Installing...${NC}"
-        setup_python_environment "$python_cmd"
+    # Verify required Python packages are installed (unless skipping)
+    if [[ "$SKIP_INSTALL" != "true" ]] && [[ "$SKIP_VENV" != "true" ]]; then
+        if ! python3 -c "import snowflake.connector" 2>/dev/null; then
+            echo -e "${YELLOW}Required Python packages not found. Installing...${NC}"
+            setup_python_environment "$python_cmd"
+        fi
+    elif [[ "$SKIP_VENV" == "true" ]] || [[ "$SKIP_INSTALL" == "true" ]]; then
+        # When skipping venv/install, just check if packages exist without installing
+        if ! python3 -c "import snowflake.connector" 2>/dev/null; then
+            echo -e "${YELLOW}Warning: Required Python packages may not be installed.${NC}"
+            echo -e "${YELLOW}Proceeding anyway due to skip flags...${NC}"
+        fi
     fi
 }
 
@@ -3900,6 +3921,14 @@ clear_state() {
 parse_cli_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --no-venv)
+                export SKIP_VENV="true"
+                shift
+                ;;
+            --skip-install)
+                export SKIP_INSTALL="true"
+                shift
+                ;;
             load)
                 shift
                 if [[ "${1:-}" == "--month" ]] && [[ -n "${2:-}" ]]; then
@@ -3993,15 +4022,25 @@ show_help() {
 Snowflake ETL Pipeline Manager v$VERSION
 
 Usage:
-  $SCRIPT_NAME                          # Interactive menu mode
-  $SCRIPT_NAME load --month YYYY-MM     # Load data for a month
-  $SCRIPT_NAME load --file file.tsv     # Load specific file
-  $SCRIPT_NAME validate --month YYYY-MM # Validate data
-  $SCRIPT_NAME delete --table TABLE --month YYYY-MM # Delete data
-  $SCRIPT_NAME status                   # Show job status
-  $SCRIPT_NAME clean                    # Clean completed jobs
+  $SCRIPT_NAME [OPTIONS]                # Interactive menu mode
+  $SCRIPT_NAME [OPTIONS] load --month YYYY-MM     # Load data for a month
+  $SCRIPT_NAME [OPTIONS] load --file file.tsv     # Load specific file
+  $SCRIPT_NAME [OPTIONS] validate --month YYYY-MM # Validate data
+  $SCRIPT_NAME [OPTIONS] delete --table TABLE --month YYYY-MM # Delete data
+  $SCRIPT_NAME [OPTIONS] status         # Show job status
+  $SCRIPT_NAME [OPTIONS] clean          # Clean completed jobs
   $SCRIPT_NAME --help                   # Show this help
   $SCRIPT_NAME --version                # Show version
+
+Options:
+  --no-venv         Skip virtual environment setup (use system Python)
+  --skip-install    Skip package installation (assume requirements met)
+  --help, -h        Show this help message
+  --version, -v     Show version information
+
+Environment Variables:
+  SKIP_VENV=true    Same as --no-venv flag
+  SKIP_INSTALL=true Same as --skip-install flag
 
 Interactive Mode:
   Launch without arguments to enter the interactive menu system.
@@ -4011,8 +4050,8 @@ Command Line Mode:
 
 Examples:
   $SCRIPT_NAME                          # Launch interactive menu
-  $SCRIPT_NAME load --month 2024-01     # Load January 2024 data
-  $SCRIPT_NAME status                   # Check running jobs
+  $SCRIPT_NAME --no-venv load --month 2024-01  # Load without venv
+  $SCRIPT_NAME --skip-install status    # Check status, skip installs
   $SCRIPT_NAME clean                    # Remove completed job files
 
 Configuration:

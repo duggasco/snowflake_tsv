@@ -1,8 +1,14 @@
 # TODO.md - Task List
 *Last Updated: 2025-09-03*
-*Version: 3.4.14*
+*Version: 3.4.15*
 
 ## ✅ Recently Completed (2025-09-03)
+
+### Environment Flexibility
+- [x] Added --no-venv flag to skip virtual environment setup (v3.4.15)
+- [x] Added --skip-install flag to skip package installation
+- [x] Support for environment variables SKIP_VENV and SKIP_INSTALL
+- [x] Updated check_dependencies to respect skip flags
 
 ### Cross-Environment Support
 - [x] Added standalone file compression functionality (v3.4.14)
