@@ -17,8 +17,10 @@ class ValidationResult:
     """Data class for validation results."""
     valid: bool
     table_name: str
-    date_range_start: Optional[str] = None
-    date_range_end: Optional[str] = None
+    date_range_start: Optional[str] = None  # Requested range start
+    date_range_end: Optional[str] = None    # Requested range end
+    actual_date_start: Optional[str] = None  # Actual data range start
+    actual_date_end: Optional[str] = None    # Actual data range end
     total_rows: int = 0
     unique_dates: int = 0
     expected_dates: int = 0
@@ -702,6 +704,14 @@ class SnowflakeDataValidator:
         result.missing_dates = data['missing_dates']
         result.gaps = data['gaps']
         result.avg_rows_per_day = data['avg_rows_per_day']
+        
+        # Update with actual date range found in the table
+        # Keep the original requested range in date_range_start/end
+        # Add the actual found range
+        if 'min_date' in data and data['min_date']:
+            result.actual_date_start = data['min_date']
+        if 'max_date' in data and data['max_date']:
+            result.actual_date_end = data['max_date']
         
         if data['missing_dates']:
             result.failure_reasons.append(
