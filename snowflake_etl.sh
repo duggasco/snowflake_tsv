@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.20"  # Fixed Python 3.11 build failures - added verbose output and pyenv option
+VERSION="3.4.21"  # Fixed .tsv.gz file pattern matching in Python ETL module
 
 # Skip flags (can be set via environment or command line)
 SKIP_VENV="${SKIP_VENV:-false}"

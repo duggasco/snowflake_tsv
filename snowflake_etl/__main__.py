@@ -321,12 +321,17 @@ def main(args=None):
                     file_path = Path(file_path_str)
                     if file_path.exists() and file_path.is_file():
                         # Find matching config for this file
+                        matched = False
                         for file_config in config_data.get('files', []):
                             pattern = file_config.get('file_pattern', '')
                             # Extract just the pattern part without placeholders for matching
                             base_pattern = pattern.replace('{date_range}', '*').replace('{month}', '*')
                             
-                            if file_path.match(base_pattern):
+                            # Also check for .gz compressed version of the pattern
+                            base_pattern_gz = base_pattern + '.gz' if not base_pattern.endswith('.gz') else base_pattern
+                            
+                            # Check if file matches either the base pattern or the compressed pattern
+                            if file_path.match(base_pattern) or file_path.match(base_pattern_gz):
                                 # Extract date range from filename if possible
                                 filename = file_path.name
                                 expected_date_range = None
@@ -355,8 +360,14 @@ def main(args=None):
                                     expected_date_range=expected_date_range
                                 )
                                 files.append(config)
-                                logger.info(f"Added direct file: {file_path}")
+                                logger.info(f"Added direct file: {file_path} (matched pattern: {pattern})")
+                                matched = True
                                 break
+                        
+                        if not matched:
+                            logger.warning(f"File {file_path} does not match any configured patterns")
+                            logger.warning(f"Available patterns: {[fc.get('file_pattern', '') for fc in config_data.get('files', [])]}")
+                            logger.warning(f"Hint: For compressed files, ensure the pattern matches .tsv.gz extension")
                     else:
                         logger.warning(f"File not found or not a file: {file_path_str}")
                         
@@ -383,25 +394,30 @@ def main(args=None):
                     else:
                         continue
                     
-                    # Find matching files
-                    for file_path in base.glob(file_pattern):
-                        if file_path.is_file():
-                            year, mon = args.month.split('-')
-                            year_int = int(year)
-                            mon_int = int(mon)
-                            last_day = calendar.monthrange(year_int, mon_int)[1]
-                            config = FileConfig(
-                                file_path=str(file_path),
-                                table_name=file_config['table_name'],
-                                date_column=file_config.get('date_column'),
-                                expected_columns=file_config.get('expected_columns', []),
-                                duplicate_key_columns=file_config.get('duplicate_key_columns'),
-                                expected_date_range=(
-                                    datetime(year_int, mon_int, 1),
-                                    datetime(year_int, mon_int, last_day)
+                    # Find matching files (also check for .gz compressed versions)
+                    patterns_to_check = [file_pattern]
+                    if not file_pattern.endswith('.gz'):
+                        patterns_to_check.append(file_pattern + '.gz')
+                    
+                    for pattern_to_check in patterns_to_check:
+                        for file_path in base.glob(pattern_to_check):
+                            if file_path.is_file():
+                                year, mon = args.month.split('-')
+                                year_int = int(year)
+                                mon_int = int(mon)
+                                last_day = calendar.monthrange(year_int, mon_int)[1]
+                                config = FileConfig(
+                                    file_path=str(file_path),
+                                    table_name=file_config['table_name'],
+                                    date_column=file_config.get('date_column'),
+                                    expected_columns=file_config.get('expected_columns', []),
+                                    duplicate_key_columns=file_config.get('duplicate_key_columns'),
+                                    expected_date_range=(
+                                        datetime(year_int, mon_int, 1),
+                                        datetime(year_int, mon_int, last_day)
+                                    )
                                 )
-                            )
-                            files.append(config)
+                                files.append(config)
             
             if not files:
                 logger.error("No files found to process")

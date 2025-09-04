@@ -1,5 +1,30 @@
 # CHANGELOG.md
 
+## [v3.4.21] - 2025-09-04 - Fix .tsv.gz File Pattern Matching
+
+### Bug Fix
+- **Fixed "No files found" error for .tsv.gz files**:
+  - Pattern matching now checks for both `.tsv` and `.tsv.gz` extensions
+  - Direct file loading (--files) supports compressed files
+  - Month-based loading (--month) also checks for .gz versions
+  - Added better logging to show why files don't match patterns
+  
+### Technical Changes
+- Modified `__main__.py` to check both base pattern and `.gz` variant
+- Added pattern matching for `base_pattern + '.gz'` in file discovery
+- Improved error messages to show available patterns when no match found
+- Added hint about .tsv.gz extension requirements in warning messages
+
+### Usage
+Now you can load compressed files directly:
+```bash
+# Direct file loading
+./snowflake_etl.sh load --file /path/to/file.tsv.gz
+
+# Month-based loading finds both .tsv and .tsv.gz files
+./snowflake_etl.sh load --month 2024-01
+```
+
 ## [v3.4.20] - 2025-09-04 - Fix Python 3.11 Build Failures
 
 ### Improvements
