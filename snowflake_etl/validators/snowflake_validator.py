@@ -282,13 +282,23 @@ class SnowflakeDataValidator:
         range_result = cursor.fetchone()
         
         if not range_result or range_result[3] == 0:
+            # Calculate expected dates even when no data found
+            if start_date and end_date:
+                expected_dates_empty = self._calculate_expected_dates(start_date, end_date)
+            elif actual_min_date and actual_max_date:
+                expected_dates_empty = self._calculate_expected_dates(actual_min_date, actual_max_date)
+            else:
+                expected_dates_empty = 0
+                
             return {
                 'total_rows': 0,
                 'unique_dates': 0,
+                'expected_dates': expected_dates_empty,  # Include expected_dates
                 'min_date': actual_min_date,  # Use overall table min
                 'max_date': actual_max_date,  # Use overall table max
                 'missing_dates': [],
-                'gaps': []
+                'gaps': [],
+                'avg_rows_per_day': 0
             }
         
         min_date, max_date, unique_dates, total_rows = range_result
