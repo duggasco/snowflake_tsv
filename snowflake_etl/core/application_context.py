@@ -101,7 +101,6 @@ class ApplicationContext:
             # Import here to avoid circular dependencies
             from snowflake_etl.utils.snowflake_connection_v3 import SnowflakeConnectionManager, ConnectionConfig
             import os
-            from pathlib import Path
             
             # Create connection config from snowflake config
             sf_config = self.snowflake_config.copy()
