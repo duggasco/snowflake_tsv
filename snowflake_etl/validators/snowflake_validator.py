@@ -302,15 +302,24 @@ class SnowflakeDataValidator:
             expected_dates = self._calculate_expected_dates(start_date, end_date)
         else:
             # When no filter, use the actual table's full date range
-            expected_dates = self._calculate_expected_dates(actual_min_date, actual_max_date)
+            # But only if we have valid dates
+            if actual_min_date and actual_max_date:
+                expected_dates = self._calculate_expected_dates(actual_min_date, actual_max_date)
+            else:
+                expected_dates = 0
         
         # Find missing dates and gaps
         # Use actual table range when no filter is specified
-        missing_dates, gaps = self._find_missing_dates_and_gaps(
-            cursor, table_name, date_column, 
-            start_date or actual_min_date, 
-            end_date or actual_max_date
-        )
+        # Only check for gaps if we have valid date ranges
+        if (start_date and end_date) or (actual_min_date and actual_max_date):
+            missing_dates, gaps = self._find_missing_dates_and_gaps(
+                cursor, table_name, date_column, 
+                start_date or actual_min_date, 
+                end_date or actual_max_date
+            )
+        else:
+            missing_dates = []
+            gaps = []
         
         # When no date range is specified, we're validating all data
         # So return the actual table's full date range
