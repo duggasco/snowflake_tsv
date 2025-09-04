@@ -113,7 +113,7 @@ def create_parser() -> argparse.ArgumentParser:
     load_parser.add_argument('--base-path', type=str, help='Base path for CSV/TSV files')
     load_parser.add_argument('--month', type=str, help='Month to process (YYYY-MM)')
     load_parser.add_argument('--files', type=str, help='Comma-separated list of CSV/TSV files to process directly')
-    load_parser.add_argument('--file-pattern', type=str, help='Pattern to match files (supports .csv, .tsv, .gz)'))
+    load_parser.add_argument('--file-pattern', type=str, help='Pattern to match files (supports .csv, .tsv, .gz)')
     load_parser.add_argument('--skip-qc', action='store_true', help='Skip quality checks')
     load_parser.add_argument('--validate-in-snowflake', action='store_true', 
                             help='Validate in Snowflake instead of file QC')
