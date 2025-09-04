@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.19"  # Fixed venv recreation bug - now properly reuses existing venv
+VERSION="3.4.20"  # Fixed Python 3.11 build failures - added verbose output and pyenv option
 
 # Skip flags (can be set via environment or command line)
 SKIP_VENV="${SKIP_VENV:-false}"
@@ -387,11 +387,12 @@ install_python_311() {
     
     # Ask for installation method
     echo -e "${CYAN}Choose installation method:${NC}"
-    echo "  1. Install from source (recommended for custom path)"
+    echo "  1. Install from source (build Python - requires development tools)"
     echo "  2. Use system package manager (requires sudo)"
+    echo "  3. Use pyenv (automated Python installer)"
     echo ""
     
-    read -p "Select method [1-2]: " method
+    read -p "Select method [1-3]: " method
     
     if [[ "$method" == "1" ]]; then
         # Install from source
@@ -431,6 +432,13 @@ install_python_311() {
             echo "  macOS: Install Xcode Command Line Tools"
             return 1
         fi
+        
+        # Warn about additional dependencies that Python needs
+        echo -e "${YELLOW}Note: Python compilation requires additional libraries.${NC}"
+        echo -e "${YELLOW}If the build fails, you may need to install:${NC}"
+        echo "  Ubuntu/Debian: sudo apt-get install libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev"
+        echo "  RHEL/CentOS: sudo yum install openssl-devel zlib-devel bzip2-devel readline-devel sqlite-devel ncurses-devel tk-devel libffi-devel xz-devel"
+        echo ""
         
         # Download and compile Python 3.11
         local python_version="3.11.9"  # Latest 3.11 as of now
@@ -637,22 +645,28 @@ install_python_311() {
         echo -e "${CYAN}This will install to: $python_prefix${NC}"
         
         # Configure with optimizations and essential modules
+        echo -e "${YELLOW}Running configure (this may take a minute)...${NC}"
         if ! ./configure --prefix="$python_prefix" \
                         --enable-optimizations \
                         --with-ensurepip=install \
                         --enable-shared \
                         LDFLAGS="-Wl,-rpath,$python_prefix/lib" \
-                        >/dev/null 2>&1; then
-            echo -e "${RED}Configuration failed${NC}"
-            echo -e "${YELLOW}Trying without optimizations...${NC}"
+                        2>&1 | tee configure.log | grep -E "^checking|^creating|error:|warning:" ; then
+            echo -e "${RED}Configuration failed with optimizations${NC}"
+            echo -e "${YELLOW}Trying without optimizations (faster build)...${NC}"
             
             # Try without optimizations (faster but less optimal)
             if ! ./configure --prefix="$python_prefix" \
                             --with-ensurepip=install \
                             --enable-shared \
                             LDFLAGS="-Wl,-rpath,$python_prefix/lib" \
-                            >/dev/null 2>&1; then
+                            2>&1 | tee configure.log | grep -E "^checking|^creating|error:|warning:" ; then
                 echo -e "${RED}Configuration failed completely${NC}"
+                echo -e "${RED}Check configure.log for details. Common issues:${NC}"
+                echo "  - Missing development headers (libssl-dev, zlib1g-dev, etc.)"
+                echo "  - Insufficient permissions for installation directory"
+                echo "  - Incompatible compiler version"
+                tail -20 configure.log
                 cd - >/dev/null
                 rm -rf "$temp_dir"
                 return 1
@@ -664,8 +678,16 @@ install_python_311() {
         # Get number of CPU cores for parallel build
         local num_cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
         
-        if ! make -j"$num_cores" >/dev/null 2>&1; then
+        echo -e "${CYAN}Using $num_cores CPU core(s) for compilation${NC}"
+        if ! make -j"$num_cores" 2>&1 | tee make.log | grep -E "^(gcc|g\+\+|ar |building|error:|warning:)" ; then
             echo -e "${RED}Build failed${NC}"
+            echo -e "${RED}Check make.log for details. Last 20 lines:${NC}"
+            tail -20 make.log
+            echo ""
+            echo -e "${YELLOW}Common causes of build failure:${NC}"
+            echo "  - Missing development libraries (see dependencies above)"
+            echo "  - Out of memory (try with fewer cores: make -j1)"
+            echo "  - Disk space issues"
             cd - >/dev/null
             rm -rf "$temp_dir"
             return 1
@@ -673,8 +695,11 @@ install_python_311() {
         
         echo -e "${YELLOW}Installing Python to $python_prefix...${NC}"
         
-        if ! make install >/dev/null 2>&1; then
+        if ! make install 2>&1 | tee install.log | tail -20; then
             echo -e "${RED}Installation failed${NC}"
+            echo -e "${YELLOW}This usually means insufficient permissions for: $python_prefix${NC}"
+            echo -e "${YELLOW}Try using a different installation path or check install.log${NC}"
+            tail -10 install.log
             cd - >/dev/null
             rm -rf "$temp_dir"
             return 1
@@ -775,6 +800,89 @@ install_python_311() {
         else
             echo -e "${RED}Unable to detect operating system${NC}"
             echo -e "${CYAN}Please install Python 3.11 manually${NC}"
+            return 1
+        fi
+    elif [[ "$method" == "3" ]]; then
+        # Use pyenv
+        echo -e "${CYAN}Installing Python 3.11 using pyenv...${NC}"
+        echo ""
+        
+        # Check if pyenv is installed
+        if ! command -v pyenv >/dev/null 2>&1; then
+            echo -e "${YELLOW}pyenv is not installed. Installing pyenv first...${NC}"
+            echo ""
+            
+            # Install pyenv with automatic installer
+            echo -e "${YELLOW}Downloading and installing pyenv...${NC}"
+            if curl -L https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer | bash; then
+                echo -e "${GREEN}pyenv installed successfully${NC}"
+                
+                # Set up pyenv environment
+                export PYENV_ROOT="$HOME/.pyenv"
+                export PATH="$PYENV_ROOT/bin:$PATH"
+                eval "$(pyenv init -)"
+                
+                # Add to shell profile for future use
+                if [[ -f ~/.bashrc ]]; then
+                    echo '' >> ~/.bashrc
+                    echo '# pyenv setup' >> ~/.bashrc
+                    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+                    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+                    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+                fi
+            else
+                echo -e "${RED}Failed to install pyenv${NC}"
+                echo -e "${YELLOW}You can install it manually from: https://github.com/pyenv/pyenv#installation${NC}"
+                return 1
+            fi
+        else
+            echo -e "${GREEN}pyenv is already installed${NC}"
+            export PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}"
+            export PATH="$PYENV_ROOT/bin:$PATH"
+            eval "$(pyenv init -)" 2>/dev/null || true
+        fi
+        
+        # Show available Python 3.11 versions
+        echo -e "${CYAN}Checking available Python 3.11 versions...${NC}"
+        local py311_versions=$(pyenv install --list | grep -E '^\s*3\.11\.[0-9]+$' | tail -5)
+        echo "$py311_versions"
+        
+        # Install Python 3.11 with pyenv
+        local python_version="3.11.9"  # Latest stable 3.11
+        echo -e "${YELLOW}Installing Python $python_version (this may take 5-10 minutes)...${NC}"
+        echo -e "${YELLOW}Note: This will compile Python from source${NC}"
+        
+        # First, ensure build dependencies are noted
+        echo -e "${CYAN}If the build fails, ensure you have installed the build dependencies:${NC}"
+        echo "  Ubuntu/Debian: sudo apt-get install -y make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev xz-utils tk-dev libffi-dev liblzma-dev"
+        echo "  RHEL/CentOS: sudo yum install gcc zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel tk-devel libffi-devel xz-devel"
+        echo ""
+        
+        if PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install -v $python_version; then
+            echo -e "${GREEN}Python $python_version installed successfully${NC}"
+            
+            # Set as global version
+            pyenv global $python_version
+            
+            # Get the Python path
+            local python_path="$HOME/.pyenv/versions/$python_version/bin"
+            
+            # Save Python path
+            save_python_path "$python_path"
+            
+            echo ""
+            echo -e "${GREEN}=== Installation Complete ===${NC}"
+            echo -e "${GREEN}Python 3.11 is now available${NC}"
+            echo -e "${CYAN}Python path: $python_path/python3${NC}"
+            echo ""
+            
+            # Update PATH for current session
+            export PATH="$python_path:$PATH"
+            
+            return 0
+        else
+            echo -e "${RED}Failed to install Python $python_version with pyenv${NC}"
+            echo -e "${YELLOW}Check the error messages above for missing dependencies${NC}"
             return 1
         fi
     else

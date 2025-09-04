@@ -1,5 +1,38 @@
 # CHANGELOG.md
 
+## [v3.4.20] - 2025-09-04 - Fix Python 3.11 Build Failures
+
+### Improvements
+- **Fixed Python compilation issues**:
+  - Added verbose output for configure, make, and install steps
+  - Shows actual error messages instead of hiding them
+  - Saves logs (configure.log, make.log, install.log) for debugging
+  - Shows last 20 lines of output on failure
+  
+- **Added comprehensive dependency information**:
+  - Lists all required development libraries for Python compilation
+  - Platform-specific instructions for Ubuntu/Debian and RHEL/CentOS
+  - Common error causes and solutions
+  
+- **Added pyenv as installation option**:
+  - New option 3: Install using pyenv (automated installer)
+  - Handles pyenv installation if not present
+  - Shows available Python 3.11 versions
+  - More reliable than manual compilation for most users
+  
+### Technical Changes
+- Removed `>/dev/null 2>&1` redirects that were hiding error messages
+- Added `tee` to capture logs while showing filtered output
+- Configure now shows progress with grep filter for important lines
+- Make output filtered to show compilation progress
+- Install shows last 20 lines of activity
+
+### Usage
+When prompted for installation method:
+1. Build from source (requires all dev libraries)
+2. Use system package manager (requires sudo)
+3. **Use pyenv (NEW - recommended for most users)**
+
 ## [v3.4.19] - 2025-09-04 - Fix Virtual Environment Recreation Bug
 
 ### Bug Fix
