@@ -240,12 +240,30 @@ class SnowflakeDataValidator:
         Returns:
             Dictionary with completeness statistics
         """
-        # Build WHERE clause
+        # First, get the overall date range in the entire table (no WHERE clause)
+        overall_query = f"""
+        SELECT 
+            MIN({date_column}) as min_date,
+            MAX({date_column}) as max_date
+        FROM {table_name}
+        """
+        
+        self.logger.debug(f"Executing overall range query: {overall_query}")
+        cursor.execute(overall_query)
+        overall_result = cursor.fetchone()
+        
+        actual_min_date = None
+        actual_max_date = None
+        if overall_result and overall_result[0]:
+            actual_min_date = self._format_date(overall_result[0])
+            actual_max_date = self._format_date(overall_result[1])
+        
+        # Build WHERE clause for filtered query
         where_clause = self._build_date_where_clause(
             date_column, start_date, end_date
         )
         
-        # Get date range summary
+        # Get date range summary for the filtered data
         range_query = f"""
         SELECT 
             MIN({date_column}) as min_date,
@@ -256,7 +274,7 @@ class SnowflakeDataValidator:
         {where_clause}
         """
         
-        self.logger.debug(f"Executing range query: {range_query}")
+        self.logger.debug(f"Executing filtered range query: {range_query}")
         cursor.execute(range_query)
         range_result = cursor.fetchone()
         
@@ -264,8 +282,8 @@ class SnowflakeDataValidator:
             return {
                 'total_rows': 0,
                 'unique_dates': 0,
-                'min_date': None,
-                'max_date': None,
+                'min_date': actual_min_date,  # Use overall table min
+                'max_date': actual_max_date,  # Use overall table max
                 'missing_dates': [],
                 'gaps': []
             }
@@ -289,12 +307,18 @@ class SnowflakeDataValidator:
             end_date or max_date
         )
         
+        # When no date range is specified, we're validating all data
+        # So return the actual table's full date range
+        # When a date range IS specified, return both the requested range stats
+        # and the actual overall table range
         return {
             'total_rows': total_rows,
             'unique_dates': unique_dates,
             'expected_dates': expected_dates,
-            'min_date': min_date,
-            'max_date': max_date,
+            'min_date': actual_min_date,  # Always use overall table min
+            'max_date': actual_max_date,  # Always use overall table max
+            'filtered_min_date': min_date if start_date else None,  # Min within filter
+            'filtered_max_date': max_date if end_date else None,    # Max within filter
             'missing_dates': missing_dates,
             'gaps': gaps,
             'avg_rows_per_day': total_rows / unique_dates if unique_dates > 0 else 0

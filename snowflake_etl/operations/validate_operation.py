@@ -234,10 +234,10 @@ class ValidateOperation(BaseOperation):
         else:
             self.logger.info(f"  Date Range Requested: ALL DATA")
         
-        # Display actual date range found in the table
+        # Display actual date range found in the entire table
         if hasattr(validation_result, 'actual_date_start') and hasattr(validation_result, 'actual_date_end'):
             if validation_result.actual_date_start and validation_result.actual_date_end:
-                self.logger.info(f"  Date Range Found: {validation_result.actual_date_start} to {validation_result.actual_date_end}")
+                self.logger.info(f"  Date Range in Table: {validation_result.actual_date_start} to {validation_result.actual_date_end}")
         
         # Display row statistics
         if hasattr(validation_result, 'total_rows') and validation_result.total_rows:
