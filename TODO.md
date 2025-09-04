@@ -1,6 +1,14 @@
 # TODO.md - Task List
 *Last Updated: 2025-09-03*
-*Version: 3.4.16*
+*Version: 3.4.17*
+
+## ✅ Recently Completed (2025-09-04)
+
+### Pre-Compressed File Support
+- [x] Added support for loading .tsv.gz files directly (v3.4.17)
+- [x] Modified SnowflakeLoader to detect and skip compression for .gz files
+- [x] Validates gzip file integrity before processing
+- [x] Preserves original compressed files after loading
 
 ## ✅ Recently Completed (2025-09-03)
 
@@ -9,6 +17,7 @@
 - [x] Added --skip-install flag to skip package installation
 - [x] Support for environment variables SKIP_VENV and SKIP_INSTALL
 - [x] Updated check_dependencies to respect skip flags
+- [x] Fixed flag processing order to work before dependency checks (v3.4.16)
 
 ### Cross-Environment Support
 - [x] Added standalone file compression functionality (v3.4.14)

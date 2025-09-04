@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.16"  # Fixed skip flags to be processed before dependency checks
+VERSION="3.4.17"  # Added support for loading pre-compressed .tsv.gz files
 
 # Skip flags (can be set via environment or command line)
 SKIP_VENV="${SKIP_VENV:-false}"
@@ -2709,7 +2709,7 @@ quick_load_last_month() {
 
 # Quick load specific file
 quick_load_specific_file() {
-    local file_path=$(get_input "Load Specific File" "Enter TSV file path")
+    local file_path=$(get_input "Load Specific File" "Enter TSV or TSV.GZ file path")
     
     if [[ -z "$file_path" ]]; then
         show_message "Error" "No file path provided"
@@ -2719,6 +2719,16 @@ quick_load_specific_file() {
     if [[ ! -f "$file_path" ]]; then
         show_message "Error" "File not found: $file_path"
         return
+    fi
+    
+    # Check if it's a supported file type
+    if [[ ! "$file_path" =~ \.(tsv|tsv\.gz)$ ]]; then
+        show_message "Warning" "File should be .tsv or .tsv.gz format. Proceeding anyway..."
+    fi
+    
+    # If it's a .gz file, note it for the user
+    if [[ "$file_path" =~ \.gz$ ]]; then
+        echo -e "${YELLOW}Detected pre-compressed file (.gz). Will skip compression step.${NC}"
     fi
     
     # Ask for quality check preference

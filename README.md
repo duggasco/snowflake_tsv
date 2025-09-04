@@ -12,6 +12,7 @@ Enterprise-grade ETL pipeline for processing large TSV files into Snowflake with
 - **Monitoring**: Real-time progress tracking, detailed logging, and job management
 - **Flexibility**: Multiple validation modes, configurable processing options
 - **Cross-Environment Support**: Compress files for manual transfer across restricted environments
+- **Pre-Compressed File Support**: Load .tsv.gz files directly without recompression
 - **Architecture**: Clean dependency injection design for testability and maintainability
 
 ## Table of Contents
@@ -186,7 +187,7 @@ The pipeline provides a unified CLI with subcommands for different operations:
 
 #### Load Operation
 
-Load TSV files into Snowflake:
+Load TSV files into Snowflake (supports both .tsv and .tsv.gz files):
 
 ```bash
 snowflake-etl --config config.json load \
@@ -195,8 +196,13 @@ snowflake-etl --config config.json load \
   --max-workers 8 \
   --validate-in-snowflake
 
+# Load pre-compressed file directly
+snowflake-etl --config config.json load \
+  --file /data/compressed/file.tsv.gz
+
 # Options:
 #   --base-path PATH         Root directory containing TSV files (required)
+#   --file PATH             Load specific file (.tsv or .tsv.gz)
 #   --month YYYY-MM         Process files for specific month
 #   --skip-qc               Skip file-based quality checks
 #   --validate-in-snowflake Validate in Snowflake after loading

@@ -85,6 +85,7 @@ class SnowflakeLoader:
     def load_file(self, config: FileConfig) -> int:
         """
         Load a TSV file to Snowflake with streaming compression.
+        Supports both uncompressed (.tsv) and pre-compressed (.tsv.gz) files.
         
         Args:
             config: File configuration with path and table details
@@ -104,14 +105,30 @@ class SnowflakeLoader:
         
         compressed_file = None
         stage_name = None
+        file_already_compressed = False
         
         try:
-            # Report progress phase
-            if self.progress_tracker:
-                self.progress_tracker.update_phase(ProgressPhase.COMPRESSION)
-            
-            # Compress file
-            compressed_file = self._compress_file(config.file_path)
+            # Check if file is already compressed
+            if config.file_path.endswith('.gz'):
+                # File is already compressed, skip compression step
+                self.logger.info(f"File is already compressed: {config.file_path}")
+                compressed_file = config.file_path
+                file_already_compressed = True
+                
+                # Validate it's a valid gzip file
+                try:
+                    with gzip.open(compressed_file, 'rb') as f:
+                        # Try to read first few bytes to verify it's valid gzip
+                        f.read(1024)
+                except Exception as e:
+                    raise ValueError(f"Invalid gzip file: {compressed_file}. Error: {e}")
+            else:
+                # Report progress phase for compression
+                if self.progress_tracker:
+                    self.progress_tracker.update_phase(ProgressPhase.COMPRESSION)
+                
+                # Compress file
+                compressed_file = self._compress_file(config.file_path)
             
             # Upload to stage
             if self.progress_tracker:
@@ -138,10 +155,12 @@ class SnowflakeLoader:
             raise
             
         finally:
-            # Cleanup compressed file
-            if compressed_file and os.path.exists(compressed_file):
-                self.logger.debug(f"Removing compressed file: {compressed_file}")
+            # Cleanup compressed file (only if we created it)
+            if compressed_file and os.path.exists(compressed_file) and not file_already_compressed:
+                self.logger.debug(f"Removing temporary compressed file: {compressed_file}")
                 os.remove(compressed_file)
+            elif file_already_compressed:
+                self.logger.debug(f"Keeping pre-compressed file: {compressed_file}")
     
     def _compress_file(self, file_path: str) -> str:
         """

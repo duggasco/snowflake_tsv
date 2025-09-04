@@ -1,5 +1,39 @@
 # CHANGELOG.md
 
+## [v3.4.17] - 2025-09-04 - Support for Pre-Compressed TSV.GZ Files
+
+### New Features
+- **Added support for loading pre-compressed .tsv.gz files**:
+  - Automatically detects .gz file extension and skips compression step
+  - Validates gzip file integrity before processing
+  - Preserves original compressed files (doesn't delete after loading)
+  - Supports both uncompressed (.tsv) and pre-compressed (.tsv.gz) files seamlessly
+  
+### Technical Implementation
+- Modified `SnowflakeLoader.load_file()` to check file extension
+- Added gzip validation to ensure file integrity
+- Updated cleanup logic to preserve pre-compressed files
+- Enhanced menu prompts to indicate support for .gz files
+
+### Use Cases
+- Loading files that were pre-compressed for transfer
+- Saving time by skipping compression for already compressed files
+- Working with files compressed by external tools or processes
+- Cross-environment transfers where files are pre-compressed for efficiency
+
+### Usage
+```bash
+# Load a pre-compressed file via menu
+./snowflake_etl.sh
+# Navigate to Quick Load -> Load Specific File
+# Enter path to .tsv.gz file
+
+# The system will automatically detect the .gz extension and:
+# 1. Skip the compression step
+# 2. Upload the file directly to Snowflake
+# 3. Keep the original .gz file after loading
+```
+
 ## [v3.4.16] - 2025-09-03 - Fix Skip Flags Processing Order
 
 ### Bug Fix
