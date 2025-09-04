@@ -362,7 +362,7 @@ class GenerateConfigOperation:
             return []
         
         try:
-            conn_manager = self.context.get_connection_manager()
+            conn_manager = self.context.connection_manager
             with conn_manager.get_cursor() as cursor:
                 query = f"""
                 SELECT column_name 

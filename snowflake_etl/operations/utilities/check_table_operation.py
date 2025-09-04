@@ -46,7 +46,7 @@ class CheckTableOperation:
         self.logger.info(f"Checking table: {table_name}")
         
         # Get connection
-        conn_manager = self.context.get_connection_manager()
+        conn_manager = self.context.connection_manager
         
         try:
             with conn_manager.get_cursor() as cursor:

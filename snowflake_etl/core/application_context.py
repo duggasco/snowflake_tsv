@@ -185,6 +185,15 @@ class ApplicationContext:
             
         return self._connection_manager
     
+    def get_connection_manager(self):
+        """
+        Get connection manager - compatibility wrapper for property access.
+        
+        Returns:
+            SnowflakeConnectionManager instance
+        """
+        return self.connection_manager
+    
     def get_operation(self, operation_name: str):
         """
         Get an operation handler
