@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.17"  # Added support for loading pre-compressed .tsv.gz files
+VERSION="3.4.18"  # Fixed wget/curl proxy handling for Python downloads
 
 # Skip flags (can be set via environment or command line)
 SKIP_VENV="${SKIP_VENV:-false}"
@@ -478,14 +478,18 @@ install_python_311() {
             echo -e "${CYAN}Using proxy for download: ${https_proxy}${NC}"
             echo -e "${YELLOW}Attempting HTTPS download through proxy...${NC}"
             
-            # Try HTTPS first with wget
+            # wget should use environment variables automatically
+            # Ensure they are exported
+            export http_proxy="${http_proxy:-$https_proxy}"
+            export https_proxy="${https_proxy}"
+            export HTTP_PROXY="${HTTP_PROXY:-$https_proxy}"
+            export HTTPS_PROXY="${HTTPS_PROXY:-$https_proxy}"
+            
+            # Try HTTPS first with wget (uses env vars automatically)
             if wget --no-check-certificate \
-                    -e use_proxy=yes \
-                    -e https_proxy="${https_proxy}" \
-                    -e http_proxy="${http_proxy:-$https_proxy}" \
                     --tries=2 \
                     --timeout=30 \
-                    --show-progress \
+                    --progress=bar:force \
                     -O "$python_archive" \
                     "$python_url_https" 2>&1; then
                 download_success=1
@@ -495,18 +499,27 @@ install_python_311() {
                 
                 # Try HTTP as fallback for proxies that block HTTPS
                 if wget --no-check-certificate \
-                        -e use_proxy=yes \
-                        -e https_proxy="${https_proxy}" \
-                        -e http_proxy="${http_proxy:-$https_proxy}" \
                         --tries=2 \
                         --timeout=30 \
-                        --show-progress \
+                        --progress=bar:force \
                         -O "$python_archive" \
                         "$python_url_http" 2>&1; then
                     download_success=1
                     echo -e "${GREEN}✓ Downloaded via HTTP through proxy${NC}"
                 else
                     echo -e "${YELLOW}wget failed with both HTTPS and HTTP${NC}"
+                    
+                    # Try with explicit proxy URL for wget (older syntax)
+                    echo -e "${YELLOW}Trying wget with explicit proxy flag...${NC}"
+                    if wget --no-check-certificate \
+                            --proxy=on \
+                            --tries=2 \
+                            --timeout=30 \
+                            -O "$python_archive" \
+                            "$python_url_http" 2>&1; then
+                        download_success=1
+                        echo -e "${GREEN}✓ Downloaded via wget with explicit proxy flag${NC}"
+                    fi
                 fi
             fi
         else
@@ -514,7 +527,7 @@ install_python_311() {
             if wget --no-check-certificate \
                     --tries=3 \
                     --timeout=30 \
-                    --show-progress \
+                    --progress=bar:force \
                     -O "$python_archive" \
                     "$python_url" 2>&1; then
                 download_success=1
@@ -528,14 +541,18 @@ install_python_311() {
             echo -e "${YELLOW}Trying alternative download with curl...${NC}"
             
             if [[ -n "${https_proxy:-}" ]]; then
+                # Parse proxy URL to handle authentication
+                local proxy_url="${https_proxy}"
+                echo -e "${CYAN}Using proxy for curl: ${proxy_url}${NC}"
+                
                 # Try HTTPS with curl through proxy
                 echo -e "${YELLOW}Attempting curl with HTTPS...${NC}"
                 if curl -L \
                         --insecure \
-                        --proxy "${https_proxy}" \
-                        --proxy-insecure \
+                        --proxy "${proxy_url}" \
                         --retry 2 \
                         --connect-timeout 30 \
+                        --max-time 300 \
                         --progress-bar \
                         -o "$python_archive" \
                         "$python_url_https" 2>&1; then
@@ -547,32 +564,31 @@ install_python_311() {
                     # Try HTTP as fallback
                     if curl -L \
                             --insecure \
-                            --proxy "${https_proxy}" \
-                            --proxy-insecure \
+                            --proxy "${proxy_url}" \
                             --retry 2 \
                             --connect-timeout 30 \
+                            --max-time 300 \
                             --progress-bar \
                             -o "$python_archive" \
                             "$python_url_http" 2>&1; then
                         download_success=1
                         echo -e "${GREEN}✓ Downloaded via curl HTTP through proxy${NC}"
                     else
-                        echo -e "${RED}curl failed with both HTTPS and HTTP through proxy${NC}"
+                        echo -e "${YELLOW}Standard proxy failed, trying environment variable method...${NC}"
                         
-                        # Last resort: try proxy tunnel mode
-                        echo -e "${YELLOW}Trying curl with proxy tunnel mode...${NC}"
+                        # Try using environment variables (some curl versions prefer this)
+                        export http_proxy="${http_proxy:-$https_proxy}"
+                        export https_proxy="${https_proxy}"
                         if curl -L \
                                 --insecure \
-                                --proxy "${https_proxy}" \
-                                --proxy-insecure \
-                                --proxytunnel \
                                 --retry 2 \
                                 --connect-timeout 30 \
+                                --max-time 300 \
                                 --progress-bar \
                                 -o "$python_archive" \
                                 "$python_url_http" 2>&1; then
                             download_success=1
-                            echo -e "${GREEN}✓ Downloaded via curl with proxy tunnel${NC}"
+                            echo -e "${GREEN}✓ Downloaded via curl with environment proxy${NC}"
                         else
                             echo -e "${RED}All curl proxy methods failed${NC}"
                         fi

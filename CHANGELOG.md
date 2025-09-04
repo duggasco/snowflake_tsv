@@ -1,5 +1,27 @@
 # CHANGELOG.md
 
+## [v3.4.18] - 2025-09-04 - Fix wget/curl Proxy Handling
+
+### Bug Fixes
+- **Fixed proxy handling for Python downloads**:
+  - Removed problematic `-e use_proxy=yes` syntax from wget (not universally supported)
+  - wget now relies on properly exported environment variables
+  - Added fallback to `--proxy=on` flag for older wget versions
+  - Simplified curl proxy handling to use `--proxy` flag directly
+  - Added proper environment variable export before download attempts
+  - Removed unnecessary proxy-insecure and proxytunnel options
+  
+### Improvements
+- Created `test_proxy_download.sh` diagnostic script for debugging proxy issues
+- Better error messages and fallback methods for download failures
+- Properly exports all proxy environment variables (http_proxy, https_proxy, HTTP_PROXY, HTTPS_PROXY)
+
+### Technical Details
+- wget now uses environment variables automatically when exported
+- curl uses explicit `--proxy` flag with the proxy URL
+- Added `--max-time` to curl commands to prevent hanging
+- Removed `-e` syntax that caused issues on some wget versions
+
 ## [v3.4.17] - 2025-09-04 - Support for Pre-Compressed TSV.GZ Files
 
 ### New Features
