@@ -309,6 +309,12 @@ init_directories() {
 confirm_install_python() {
     local version="${1:-3.11}"
     
+    # Check if running in non-interactive mode
+    if [[ ! -t 0 ]] || [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+        # Non-interactive mode - skip installation prompt
+        return 1
+    fi
+    
     echo -e "${CYAN}=== Python $version Installation ===${NC}"
     echo -e "${CYAN}Python $version is recommended for optimal compatibility.${NC}"
     echo -e "${CYAN}Would you like to install it now?${NC}"
@@ -751,6 +757,13 @@ configure_proxy() {
         else
             echo -e "${YELLOW}Existing proxy setting didn't work${NC}"
         fi
+    fi
+    
+    # Check if running in non-interactive mode
+    if [[ ! -t 0 ]] || [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+        echo -e "${YELLOW}Running in non-interactive mode - skipping proxy configuration${NC}"
+        echo -e "${YELLOW}Set HTTPS_PROXY environment variable if needed${NC}"
+        return 1
     fi
     
     # Interactive proxy configuration
@@ -3697,32 +3710,46 @@ main_menu() {
 # ============================================================================
 
 main() {
-    # Initialize
+    # Initialize directories first (lightweight operation)
     init_directories
+    
+    # Parse CLI arguments BEFORE dependency check
+    # This allows --version, --help to work without dependencies
+    if [[ $# -gt 0 ]]; then
+        # Check if it's a help/version command that doesn't need dependencies
+        case "$1" in
+            --help|-h|--version|-v)
+                # These commands don't need dependencies or config
+                parse_cli_args "$@"
+                exit 0
+                ;;
+            status|jobs|clean)
+                # These might need basic setup but not Python
+                detect_ui_system
+                load_preferences
+                parse_cli_args "$@"
+                exit 0
+                ;;
+            *)
+                # Other commands need full setup
+                check_dependencies
+                detect_ui_system
+                load_preferences
+                health_check_jobs
+                
+                # Try to auto-select config if only one exists
+                select_config_file >/dev/null 2>&1 || true
+                parse_cli_args "$@"
+                exit 0
+                ;;
+        esac
+    fi
+    
+    # Interactive mode - need full setup
     check_dependencies
     detect_ui_system
     load_preferences
-    
-    # Run health check to clean up stale jobs
     health_check_jobs
-    
-    # Parse CLI arguments if provided
-    if [[ $# -gt 0 ]]; then
-        # Check if it's a help/version command that doesn't need config
-        case "$1" in
-            --help|-h|--version|-v|status|jobs|clean)
-                parse_cli_args "$@"
-                ;;
-            *)
-                # For other CLI commands, try to auto-select config if only one exists
-                select_config_file >/dev/null 2>&1 || true
-                parse_cli_args "$@"
-                ;;
-        esac
-        # If we get here, no valid CLI command was found
-        show_help
-        exit 1
-    fi
     
     # Interactive mode
     # Set up global trap for interactive mode to prevent accidental exits

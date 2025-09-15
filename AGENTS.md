@@ -21,6 +21,9 @@
 - Key features: Streaming processing, async COPY support, duplicate detection, parallel processing with tqdm progress bars
 - Testing approach includes pytest fixtures and comprehensive test suites
 
+## Cursor/Copilot Rules
+- This project does not use Cursor or Copilot tools
+
 ## Git Workflow
 - always use git add .
 
