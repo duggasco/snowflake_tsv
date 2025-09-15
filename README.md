@@ -1,16 +1,19 @@
 # Snowflake ETL Pipeline
 
-Enterprise-grade ETL pipeline for processing large TSV files into Snowflake with comprehensive data quality validation, parallel processing, and monitoring capabilities.
+Enterprise-grade ETL pipeline for processing large TSV and CSV files into Snowflake with comprehensive data quality validation, parallel processing, and monitoring capabilities.
 
-**🚀 Version 3.4.0**: Automatic virtual environment setup on first run - no manual Python configuration needed!
+**🚀 Version 3.5.0**: Full CSV support with automatic format detection - process both TSV and CSV files seamlessly!
 
 ## Features
 
-- **High Performance**: Process 50GB+ TSV files with streaming and parallel processing
+- **Multi-Format Support**: Process TSV, CSV (comma-separated values), and custom-delimited files with automatic format detection
+- **High Performance**: Process 50GB+ data files with streaming and parallel processing
 - **Data Quality**: Comprehensive validation including date completeness, duplicates detection, and schema validation
 - **Reliability**: Automatic retry, error recovery, and transaction management
-- **Monitoring**: Real-time progress tracking, detailed logging, and job management
-- **Flexibility**: Multiple validation modes, configurable processing options
+- **Monitoring**: Real-time progress tracking with format indicators, detailed logging, and job management
+- **Flexibility**: Multiple validation modes, configurable processing options, custom delimiters
+- **Cross-Environment Support**: Compress files for manual transfer across restricted environments
+- **Pre-Compressed File Support**: Load .tsv.gz and .csv.gz files directly without recompression
 - **Architecture**: Clean dependency injection design for testability and maintainability
 
 ## Table of Contents
@@ -57,6 +60,32 @@ pip install -e .[dev]
 pip install snowflake-etl-pipeline
 ```
 
+### Running Without Virtual Environment
+
+If your system already has Python and required packages installed, you can skip the automatic virtual environment setup:
+
+```bash
+# Skip virtual environment setup
+./snowflake_etl.sh --no-venv
+
+# Skip package installation entirely
+./snowflake_etl.sh --skip-install
+
+# Both flags can be combined
+./snowflake_etl.sh --no-venv --skip-install
+
+# Or set via environment variables
+export SKIP_VENV=true
+export SKIP_INSTALL=true
+./snowflake_etl.sh
+```
+
+This is useful for:
+- Docker containers with pre-installed dependencies
+- CI/CD pipelines with managed environments
+- Systems where package installation is restricted
+- Environments with custom Python configurations
+
 ## Quick Start
 
 ### 1. Create Configuration File
@@ -76,11 +105,21 @@ Create a `config.json` file with your Snowflake credentials and file mappings:
   },
   "files": [
     {
-      "file_pattern": "data_{date_range}.tsv",
-      "table_name": "TARGET_TABLE",
-      "date_column": "recordDate",
-      "expected_columns": ["recordDate", "col1", "col2", "col3"],
-      "duplicate_key_columns": ["recordDate", "col1"]
+      "file_pattern": "sales_{month}.csv",
+      "table_name": "SALES_DATA",
+      "file_format": "CSV",
+      "delimiter": ",",
+      "date_column": "sale_date",
+      "expected_columns": ["sale_date", "product_id", "customer_id", "amount"],
+      "duplicate_key_columns": ["sale_date", "product_id"]
+    },
+    {
+      "file_pattern": "inventory_{date_range}.tsv",
+      "table_name": "INVENTORY_DATA",
+      "file_format": "TSV",
+      "delimiter": "\t",
+      "date_column": "inventory_date",
+      "expected_columns": ["inventory_date", "warehouse_id", "product_id", "quantity"]
     }
   ]
 }
@@ -89,13 +128,18 @@ Create a `config.json` file with your Snowflake credentials and file mappings:
 ### 2. Load Data
 
 ```bash
-# Load TSV files for a specific month
+# Load data files for a specific month (auto-detects CSV/TSV)
 snowflake-etl --config config.json load \
-  --base-path /path/to/tsv/files \
+  --base-path /path/to/data/files \
   --month 2024-01
 
-# Or use the short alias
-sfe --config config.json load --base-path /data --month 2024-01
+# Load specific CSV file
+snowflake-etl --config config.json load \
+  --file /data/sales_2024-01.csv
+
+# Load compressed files directly
+snowflake-etl --config config.json load \
+  --file /data/inventory.tsv.gz
 ```
 
 ### 3. Validate Data
@@ -126,8 +170,11 @@ The pipeline uses JSON configuration files with the following structure:
   },
   "files": [
     {
-      "file_pattern": "pattern_{date_range}.tsv",
+      "file_pattern": "pattern_{date_range}.csv",
       "table_name": "SNOWFLAKE_TABLE_NAME",
+      "file_format": "CSV",         // Optional: AUTO (default), CSV, TSV
+      "delimiter": ",",              // Optional: auto-detected if not specified
+      "quote_char": "\"",            // Optional: quote character for fields
       "date_column": "date_column_name",
       "expected_columns": ["col1", "col2", "..."],
       "duplicate_key_columns": ["key1", "key2"]
@@ -140,6 +187,20 @@ The pipeline uses JSON configuration files with the following structure:
 
 - `{date_range}`: Matches YYYYMMDD-YYYYMMDD format
 - `{month}`: Matches YYYY-MM format
+
+### Supported File Formats
+
+The pipeline automatically detects and processes multiple file formats:
+
+- **CSV Files** (`.csv`, `.csv.gz`): Comma-separated values with optional quoted fields
+- **TSV Files** (`.tsv`, `.tsv.gz`): Tab-separated values  
+- **Custom Delimited** (`.txt`): Pipe, semicolon, or other delimiters
+- **Compressed Files**: Native support for gzip compressed files
+
+Format detection is automatic based on:
+1. File extension (`.csv` → CSV, `.tsv` → TSV)
+2. Content analysis for unknown extensions
+3. Explicit configuration via `file_format` field
 
 ### Environment Variables
 
@@ -159,22 +220,54 @@ The pipeline provides a unified CLI with subcommands for different operations:
 
 #### Load Operation
 
-Load TSV files into Snowflake:
+Load data files into Snowflake (supports CSV, TSV, and compressed files):
 
 ```bash
+# Auto-detect format and load files for a month
 snowflake-etl --config config.json load \
-  --base-path /data/tsv \
+  --base-path /data/files \
   --month 2024-01 \
   --max-workers 8 \
   --validate-in-snowflake
 
+# Load specific CSV file
+snowflake-etl --config config.json load \
+  --file /data/sales_2024.csv
+
+# Load pre-compressed files directly
+snowflake-etl --config config.json load \
+  --file /data/compressed/inventory.tsv.gz
+
 # Options:
-#   --base-path PATH         Root directory containing TSV files (required)
+#   --base-path PATH         Root directory containing data files (required)
+#   --file PATH             Load specific file (.csv, .tsv, .gz)
 #   --month YYYY-MM         Process files for specific month
 #   --skip-qc               Skip file-based quality checks
 #   --validate-in-snowflake Validate in Snowflake after loading
 #   --validate-only         Only validate existing data (no loading)
 #   --max-workers N         Number of parallel workers (default: auto)
+```
+
+#### Compress Operation (Standalone)
+
+Compress data files for cross-environment transfer without Snowflake upload:
+
+```bash
+# Compress single file (CSV or TSV)
+python compress_tsv.py data/sales.csv --level 9
+
+# Compress multiple files to directory
+python compress_tsv.py data/*.csv data/*.tsv --output-dir compressed/ --level 7
+
+# Compress with specific output path
+python compress_tsv.py data/inventory.csv -o /tmp/inventory.csv.gz
+
+# Options:
+#   -o, --output PATH       Output file path (single file only)
+#   -d, --output-dir DIR    Output directory for compressed files
+#   -l, --level N           Compression level 1-9 (default: 6)
+#   --no-progress           Disable progress display
+#   -f, --force             Overwrite without prompting
 ```
 
 #### Validate Operation
@@ -332,6 +425,70 @@ Safe deletion with:
 - **Audit Logging**: Complete deletion history
 - **Recovery Options**: Snowflake Time Travel for restoration
 
+## CSV/TSV Processing Examples
+
+### Processing CSV Files
+
+```bash
+# Load a month of CSV sales data
+snowflake-etl --config config.json load \
+  --base-path /data/sales \
+  --month 2024-01
+
+# Generate config from CSV files
+snowflake-etl --config config.json config-generate \
+  --files /data/*.csv \
+  --output new_config.json
+
+# Sample a CSV file to inspect structure
+snowflake-etl --config config.json sample \
+  --file /data/sales_2024.csv \
+  --rows 100
+```
+
+### Mixed Format Processing
+
+```bash
+# Process directory with both CSV and TSV files
+snowflake-etl --config mixed_config.json load \
+  --base-path /data/mixed \
+  --validate-in-snowflake
+
+# Config for mixed formats:
+{
+  "files": [
+    {
+      "file_pattern": "sales_{month}.csv",
+      "file_format": "CSV",
+      "table_name": "SALES"
+    },
+    {
+      "file_pattern": "inventory_{month}.tsv", 
+      "file_format": "TSV",
+      "table_name": "INVENTORY"
+    }
+  ]
+}
+```
+
+### Custom Delimiter Files
+
+```bash
+# Process pipe-delimited files
+snowflake-etl --config config.json load \
+  --file /data/custom.txt
+
+# Config for pipe delimiter:
+{
+  "files": [{
+    "file_pattern": "data_{date_range}.txt",
+    "delimiter": "|",
+    "file_format": "CSV",
+    "table_name": "CUSTOM_DATA"
+  }]
+}
+```
+
 ## Performance
 
 ### Performance Characteristics
@@ -480,6 +637,35 @@ snowflake-etl-pipeline/
 ```
 
 ## Troubleshooting
+
+### File Format Issues
+
+#### CSV/TSV Format Detection
+
+**Problem**: File format not detected correctly
+
+**Solution**: 
+1. Ensure file has correct extension (`.csv` for CSV, `.tsv` for TSV)
+2. Explicitly set format in config: `"file_format": "CSV"`
+3. For custom delimiters, specify: `"delimiter": "|"`
+
+#### Delimiter Conflicts
+
+**Problem**: Data contains delimiter character
+
+**Solution**: 
+- For CSV files with commas in data, ensure proper quoting: `"field,with,comma"`
+- Use TSV format if data contains many commas
+- Consider pipe delimiter for complex data: `"delimiter": "|"`
+
+#### Quote Character Issues
+
+**Problem**: CSV fields not properly quoted
+
+**Solution**: 
+- Specify quote character in config: `"quote_char": "\""`
+- Ensure fields with special characters are quoted
+- Use `FIELD_OPTIONALLY_ENCLOSED_BY` in Snowflake
 
 ### Common Issues
 

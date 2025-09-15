@@ -1,6 +1,32 @@
 # BUGS.md - Issue Tracking and Resolution
-*Last Updated: 2025-08-26*
-*Current Version: 3.0.3*
+*Last Updated: 2025-09-03*
+*Current Version: 3.4.4*
+
+## ✅ Recently Fixed Issues (2025-09-03)
+
+### Silent Script Failure (v3.4.4) ✅
+
+1. **Silent Exit on Non-Interactive Execution** ✅
+   - **Issue**: Script silently exited with no output when run non-interactively
+   - **Severity**: CRITICAL
+   - **Root Causes**: 
+     - `load_python_path()` returned 1 when custom path file didn't exist
+     - With `set -e`, this caused immediate script termination
+     - `confirm_install_python()` used `read` command which failed in non-TTY
+   - **Resolution**: 
+     - Changed `load_python_path()` to always return 0 (missing file is not an error)
+     - Added TTY checks before interactive prompts
+     - Skip Python installation offers in non-interactive mode
+   - **Files Fixed**: snowflake_etl.sh
+   - **Commit**: Fixed in v3.4.4
+
+2. **Unconditional Exit After CLI Parsing** ✅
+   - **Issue**: Script always executed `show_help` and `exit 1` after parsing any CLI args
+   - **Severity**: HIGH
+   - **Root Cause**: Logic error - help/exit code ran unconditionally after `parse_cli_args`
+   - **Resolution**: Removed unconditional exit code after case statement
+   - **Files Fixed**: snowflake_etl.sh (lines 3722-3724)
+   - **Commit**: Fixed in v3.4.4
 
 ## ✅ Recently Fixed Issues (2025-08-26 Session 2)
 

@@ -1,259 +1,174 @@
-# PLAN.md - Snowflake ETL Pipeline Development Plan
-*Last Updated: 2025-09-02 (End of Session)*
-*Current Status: 95% Consolidated - Nearly Complete!*
-*Last Updated: 2025-08-27 Session 4*
-*Version: 3.0.6*
+# PLAN.md - Project Development Plan
+*Last Updated: 2025-09-03*
+*Current Version: 3.4.13*
 
-## Project Status: PRODUCTION READY - 95% Consolidated
+## Project Overview
 
-## 🎯 Consolidation Status (2025-09-02)
+Snowflake ETL Pipeline Manager - A robust, enterprise-grade solution for loading large TSV files into Snowflake with comprehensive proxy support for restricted corporate environments.
 
-### ✅ Completed Phases:
-1. **Phase 1**: Core functions from run_loader.sh - COMPLETE
-2. **Phase 2**: Batch & parallel processing - COMPLETE  
-3. **Phase 3**: Config generation migration - COMPLETE
-4. **Phase 4**: Menu function updates - COMPLETE
-5. **Phase 5**: CLI mode support - COMPLETE
+## Current Status: Production Ready with Proxy Support
 
-### ⏳ Remaining:
-- **Phase 6**: Remove deprecated scripts (Final cleanup)
-- Handle 2 remaining minor dependencies:
-  - `recover_failed_load.sh` (deprecated, 2 calls)
-  - `tsv_sampler.sh` (1 call)
+The system has evolved from v3.0.0 to v3.4.13 with major improvements in:
+- Proxy handling for all network operations
+- SSL/TLS support for corporate environments
+- Script stability and error handling
+- Compatibility with older package versions
 
-### 📊 Dependency Elimination Progress:
-- `run_loader.sh`: 11 → 0 calls ✅
-- `drop_month.sh`: 2 → 0 calls ✅
-- `generate_config.sh`: 1 → 0 calls ✅
-- Total functions added: 18 new functions
-- Total lines: ~3100 (consolidated from multiple scripts)
+## Completed Phases (as of 2025-09-03)
 
-### Current State Summary
-The Snowflake ETL Pipeline Manager is in production use with comprehensive features:
-- **Architecture**: Fully refactored to dependency injection pattern
-- **Test Coverage**: Complete test suite covering all CLI operations
-- **User Interface**: Interactive menu system with quality check selection
-- **Performance**: Optimized for 50GB+ files with async operations
-- **Reliability**: All critical bugs fixed, robust error handling
+### Phase 1: Core Functionality ✅
+- Unified menu system (snowflake_etl.sh)
+- TSV loading with progress tracking
+- Data validation and quality checks
+- Parallel processing support
 
-## Recent Accomplishments (Session 4 - 2025-08-27)
+### Phase 2: Enterprise Features ✅
+- Proxy support for PyPI packages
+- Proxy support for Python downloads
+- Proxy support for Snowflake connections
+- SSL/TLS handling for corporate proxies
+- Support for pre-downloaded packages
 
-### Critical Timeout Fix
-1. ✅ **Fixed COPY validation timeout issue**
-   - Identified that COPY validation was timing out after 5 minutes for large files
-   - Validation was running synchronously without keepalive mechanism
-   - Completely removed redundant validation step
-   - Now relies solely on ON_ERROR='ABORT_STATEMENT' during COPY
-   - Files process successfully without timeouts
-
-2. 🚧 **Started menu enhancement for QC selection**
-   - User requested QC method prompts for all loading operations
-   - Need to add selection between file-based and Snowflake-based QC
-   - Partially started implementation
-
-## Previous Accomplishments (Session 3 - 2025-08-26)
-
-### Critical Bug Fixes
-1. ✅ **Fixed LoadOperation method error**
-   - Corrected non-existent `check_data_quality()` call to `validate_file()`
-   - Added proper error extraction from nested validation results
-   - Tested with various validation scenarios
-
-2. ✅ **Fixed test suite hanging**
-   - Removed problematic timeout command causing hangs
-   - Fixed arithmetic operations and string comparisons
-   - Test suite now completes successfully
-
-3. ✅ **Enhanced menu system**
-   - Added QC selection prompts to all load operations
-   - Users can choose: File-based, Snowflake-based, or Skip validation
-   - Simplified menu by removing redundant options
+### Phase 3: Stability & Compatibility ✅
+- Fixed silent script failures
+- Fixed unbound variable errors
+- Relaxed version requirements
+- Added fallback mechanisms
 
 ## Active Development Areas
 
-### Immediate Priorities
-1. **Complete Menu QC Selection Enhancement**
-   - Add `select_quality_check_method()` helper function
-   - Update all Quick Load functions with QC prompts
-   - Update normal Load Data menu with QC prompts
-   - Test all menu paths
+### Proxy & Network Optimization (In Progress)
+**Goal**: Ensure reliable operation in restricted corporate environments
 
-2. **Remote System Updates**
-   - Remote systems need to pull v3.0.6 for timeout fix
-   - Critical fix for COPY validation timeout issue
-   - Monitor large file loads on production
+**Completed**:
+- Unified proxy configuration across all components
+- SSL/TLS workarounds for intercepting proxies
+- HTTP/HTTPS protocol flexibility
+- Connection pooling optimizations
 
-2. **Performance Optimization**
-   - Continue monitoring async COPY performance
-   - Optimize memory usage for very large files
-   - Consider distributed processing for parallel loads
+**Next Steps**:
+- Test with various corporate proxy types
+- Add NTLM authentication support
+- Implement automatic proxy detection
+- Add proxy performance metrics
 
-3. **Testing & Validation**
-   - Run full regression tests on production data
-   - Validate QC selection in all menu paths
-   - Test with various file sizes and formats
+### Error Handling & Recovery
+**Goal**: Graceful handling of all failure scenarios
 
-## Architecture Overview
+**Planned**:
+- Exponential backoff for retries
+- Automatic fallback strategies
+- Better error messages
+- Connection diagnostic tools
 
-### Current Architecture (v3.0.5)
+## Technical Architecture
+
+### Core Components
+1. **snowflake_etl.sh** - Main entry point and menu system
+2. **snowflake_etl/** - Python package with core logic
+3. **Proxy Layer** - Unified proxy handling for all network operations
+4. **SSL/TLS Layer** - Flexible SSL verification for corporate environments
+
+### Proxy Architecture
 ```
-snowflake_etl/
-├── core/
-│   ├── application_context.py     # DI container
-│   ├── file_analyzer.py          # Fast file analysis
-│   ├── snowflake_loader.py       # Optimized loading
-│   └── progress.py                # Progress tracking
-├── operations/
-│   ├── load_operation.py         # Load orchestration (FIXED)
-│   ├── delete_operation.py       # Safe deletion
-│   ├── validate_operation.py     # Validation
-│   └── report_operation.py       # Reporting
-├── validators/
-│   ├── data_quality.py           # File validation (validate_file method)
-│   └── snowflake_validator.py    # DB validation
-└── cli/
-    └── main.py                    # Unified CLI entry point
+User → snowflake_etl.sh → Proxy Configuration
+                              ↓
+                    ┌─────────────────────┐
+                    │   Saved .proxy_config│
+                    │   Environment Vars   │
+                    └─────────────────────┘
+                              ↓
+            ┌─────────────────────────────────────┐
+            │         Applied To:                 │
+            ├─────────────────────────────────────┤
+            │ • PyPI Package Downloads            │
+            │ • Python Source Downloads           │
+            │ • Snowflake Connections             │
+            └─────────────────────────────────────┘
 ```
 
-### Key Design Principles
-- **Dependency Injection**: All components use ApplicationContext
-- **No Singletons**: Connection pooling without global state
-- **Progressive Enhancement**: Features degrade gracefully
-- **Stream Processing**: Never load full files into memory
+## Version History Highlights
 
-## Performance Characteristics
+- **v3.0.0-3.0.3**: Initial production release with bug fixes
+- **v3.4.0-3.4.3**: Proxy support for PyPI and Python
+- **v3.4.4-3.4.9**: Script stability fixes and pre-download support
+- **v3.4.10**: Relaxed Snowflake connector requirements
+- **v3.4.11-3.4.13**: Comprehensive Snowflake proxy support
 
-### Current Benchmarks (50GB file)
-- Row counting: ~16 seconds
-- File-based QC: ~2.5 hours (can be skipped)
-- Compression: ~35 minutes
-- Upload: ~3 hours
-- Snowflake COPY: ~15-30 minutes (with async)
-- Total: ~4 hours optimized (was 7-8 hours)
+## Next Milestone: v3.5.0
 
-### Optimization Strategies
-- Async execution for files >100MB
-- ABORT_STATEMENT for fast failure
-- Connection keepalive mechanism
-- Stage cleanup before upload
-- Auto-purge after successful load
+### Goals
+1. **CSV File Support**: Add ability to process CSV files in addition to TSV
+   - Automatic format detection
+   - Configurable delimiters
+   - Full feature parity with TSV processing
+2. Full production deployment in corporate environment
+3. NTLM authentication support  
+4. Automatic proxy detection
+5. Performance monitoring dashboard
+
+### Success Metrics
+- CSV processing with same performance as TSV (±5%)
+- Auto-detection accuracy >95% for standard files
+- Zero regression in existing TSV workflows
+- Zero proxy-related failures
+- <5 second connection establishment
+- 100% compatibility with corporate security policies
+- Successful loading of 50GB+ files
+
+## Risk Mitigation
+
+### Identified Risks
+1. **Proxy Compatibility**: Different proxy types may behave differently
+   - Mitigation: Multiple fallback strategies
+   
+2. **SSL Interception**: Corporate proxies may break SSL
+   - Mitigation: Insecure mode option with warnings
+   
+3. **Package Availability**: Restricted repos may lack packages
+   - Mitigation: Support for pre-downloaded packages
 
 ## Testing Strategy
 
-### Test Coverage
-- **Unit Tests**: Core components, validators, operations
-- **Integration Tests**: End-to-end workflows, error scenarios
-- **CLI Tests**: All 20+ subcommands and options
-- **Menu Tests**: Interactive navigation paths
-- **Performance Tests**: Large file handling
+### Integration Tests Needed
+1. Test with Squid proxy
+2. Test with corporate MITM proxy
+3. Test with NTLM authentication
+4. Test with restricted package repository
+5. Test with 50GB+ TSV files
 
-### Test Infrastructure
-- `run_all_tests.sh`: Master test orchestrator
-- Virtual environment detection
-- Offline/online mode switching
-- Comprehensive reporting (HTML, text, archive)
+### Performance Benchmarks
+- Connection establishment: <5 seconds
+- Proxy negotiation: <2 seconds
+- Package download: Within 20% of direct speed
+- Snowflake COPY: 100K rows/second minimum
 
-## Deployment Guidelines
+## Documentation Requirements
 
-### For Production Updates
-1. Pull latest changes from git
-2. Run test suite (`./run_all_tests.sh`)
-3. Verify configuration compatibility
-4. Test with sample data
-5. Deploy to production
+### To Be Created
+1. Comprehensive Proxy Setup Guide
+2. SSL/TLS Troubleshooting Guide
+3. Performance Tuning Guide
+4. Security Best Practices
 
-### For New Installations
-1. Clone repository
-2. Create virtual environment
-3. Install dependencies
-4. Configure Snowflake credentials
-5. Run system check
-6. Execute test suite
+### To Be Updated
+1. README with proxy instructions
+2. CLAUDE.md with new features
+3. API documentation
 
-## Next Session Priorities
+## Support & Maintenance
 
-### High Priority
-1. **Monitor Production Usage**
-   - Track performance metrics
-   - Collect user feedback
-   - Address any new issues
+### Known Issues to Monitor
+- Corporate proxies with non-standard authentication
+- SSL certificate pinning conflicts
+- Package version availability in restricted repos
 
-2. **Documentation Updates**
-   - Update README with QC selection
-   - Document troubleshooting steps
-   - Create migration guides
-
-3. **Performance Profiling**
-   - Profile memory usage patterns
-   - Optimize hot paths
-   - Consider caching strategies
-
-### Medium Priority
-1. **Enhanced Error Recovery**
-   - Checkpoint/resume for batch operations
-   - Better retry mechanisms
-   - Improved error messages
-
-2. **Advanced Features**
-   - Email notifications
-   - CSV/Excel export
-   - Historical tracking
-
-## Risk Management
-
-### Known Risks
-- Memory usage for 50GB+ files during file-based QC
-- Network interruptions during long uploads
-- Snowflake warehouse auto-suspend during operations
-
-### Mitigation Strategies
-- Offer Snowflake-based validation as alternative
-- Implement checkpoint/resume functionality
-- Add keepalive mechanisms (already done)
-- Monitor and alert on long-running operations
-
-## Success Metrics
-
-### Current Performance
-- ✅ 50GB files process in ~4 hours
-- ✅ Test suite covers all functionality
-- ✅ Zero critical bugs in production
-- ✅ User-friendly menu system
-
-### Target Goals
-- Process 50GB files in <3 hours
-- 100% test coverage with mocking
-- Automated deployment pipeline
-- Web dashboard for monitoring
-
-## Communication Plan
-
-### For Users
-- Clear error messages with solutions
-- Progress indicators for all operations
-- Confirmation prompts for destructive operations
-- Comprehensive help documentation
-
-### For Developers
-- Well-documented code with docstrings
-- Architecture diagrams
-- Contributing guidelines
-- Code review process
+### Future Enhancements
+1. Web UI for configuration
+2. Automated proxy detection
+3. Connection pool monitoring
+4. Real-time performance metrics
 
 ## Conclusion
 
-The Snowflake ETL Pipeline Manager is mature and production-ready with v3.0.5. Recent fixes have addressed all critical issues, and the enhanced menu system provides better user control over validation strategies. The project is well-positioned for continued enhancement while maintaining stability for production use.
-
-### Key Achievements
-- ✅ Complete refactoring to modern architecture
-- ✅ Comprehensive test coverage
-- ✅ All critical bugs fixed
-- ✅ User-friendly interface with flexible options
-- ✅ Optimized performance for large files
-
-### Next Steps
-- Monitor production usage
-- Gather user feedback
-- Continue performance optimization
-- Enhance documentation
-- Plan next feature releases
+The project has successfully evolved to handle corporate proxy environments. The next phase focuses on production deployment, performance optimization, and comprehensive documentation. Version 3.4.13 represents a stable, proxy-aware system ready for enterprise deployment.

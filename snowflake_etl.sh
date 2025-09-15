@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Snowflake ETL Pipeline Manager - Unified Wrapper Script
-# Version: 3.4.3 - Auto Python 3.11 installation with custom paths
+# Version: 3.4.12 - Added SSL/TLS handling for proxy environments
 # Description: Interactive menu system for all Snowflake ETL operations
 
 set -euo pipefail
@@ -12,7 +12,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
-VERSION="3.4.3"  # Auto Python 3.11 installation
+VERSION="3.5.0"  # Full CSV support with automatic format detection
+
+# Skip flags (can be set via environment or command line)
+SKIP_VENV="${SKIP_VENV:-false}"
+SKIP_INSTALL="${SKIP_INSTALL:-false}"
 
 # Source library files
 source "${SCRIPT_DIR}/lib/colors.sh"
@@ -309,12 +313,6 @@ init_directories() {
 confirm_install_python() {
     local version="${1:-3.11}"
     
-    # Check if running in non-interactive mode
-    if [[ ! -t 0 ]] || [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
-        # Non-interactive mode - skip installation prompt
-        return 1
-    fi
-    
     echo -e "${CYAN}=== Python $version Installation ===${NC}"
     echo -e "${CYAN}Python $version is recommended for optimal compatibility.${NC}"
     echo -e "${CYAN}Would you like to install it now?${NC}"
@@ -346,16 +344,55 @@ install_python_311() {
     local install_base=""
     local python_prefix=""
     
+    # Check if we need to configure proxy first
+    local proxy_file="$PREFS_DIR/.proxy_config"
+    if [[ -f "$proxy_file" ]]; then
+        local proxy=$(cat "$proxy_file")
+        echo -e "${CYAN}Using saved proxy for download: $proxy${NC}"
+        export http_proxy="$proxy"
+        export https_proxy="$proxy"
+        export HTTP_PROXY="$proxy"
+        export HTTPS_PROXY="$proxy"
+    elif [[ -n "${https_proxy:-}" ]] || [[ -n "${HTTPS_PROXY:-}" ]] || [[ -n "${http_proxy:-}" ]] || [[ -n "${HTTP_PROXY:-}" ]]; then
+        # Use existing proxy environment variables
+        local proxy="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-$HTTP_PROXY}}}"
+        echo -e "${CYAN}Using existing proxy for download: $proxy${NC}"
+    else
+        # Test if we can connect to python.org
+        echo -e "${YELLOW}Testing connection to python.org...${NC}"
+        if ! curl -s --connect-timeout 5 https://www.python.org >/dev/null 2>&1; then
+            echo -e "${YELLOW}Cannot connect to python.org directly.${NC}"
+            echo -e "${YELLOW}You may need to configure a proxy first.${NC}"
+            
+            # Try to configure proxy if in interactive mode
+            if [[ -t 0 ]] && [[ -t 1 ]]; then
+                configure_proxy
+                # Reload proxy settings if saved
+                if [[ -f "$proxy_file" ]]; then
+                    local proxy=$(cat "$proxy_file")
+                    export http_proxy="$proxy"
+                    export https_proxy="$proxy"
+                    export HTTP_PROXY="$proxy"
+                    export HTTPS_PROXY="$proxy"
+                fi
+            else
+                echo -e "${RED}Cannot download Python without proxy in non-interactive mode${NC}"
+                return 1
+            fi
+        fi
+    fi
+    
     echo -e "${CYAN}=== Installing Python 3.11 ===${NC}"
     echo ""
     
     # Ask for installation method
     echo -e "${CYAN}Choose installation method:${NC}"
-    echo "  1. Install from source (recommended for custom path)"
+    echo "  1. Install from source (build Python - requires development tools)"
     echo "  2. Use system package manager (requires sudo)"
+    echo "  3. Use pyenv (automated Python installer)"
     echo ""
     
-    read -p "Select method [1-2]: " method
+    read -p "Select method [1-3]: " method
     
     if [[ "$method" == "1" ]]; then
         # Install from source
@@ -396,46 +433,240 @@ install_python_311() {
             return 1
         fi
         
+        # Warn about additional dependencies that Python needs
+        echo -e "${YELLOW}Note: Python compilation requires additional libraries.${NC}"
+        echo -e "${YELLOW}If the build fails, you may need to install:${NC}"
+        echo "  Ubuntu/Debian: sudo apt-get install libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev"
+        echo "  RHEL/CentOS: sudo yum install openssl-devel zlib-devel bzip2-devel readline-devel sqlite-devel ncurses-devel tk-devel libffi-devel xz-devel"
+        echo ""
+        
         # Download and compile Python 3.11
         local python_version="3.11.9"  # Latest 3.11 as of now
-        local python_url="https://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz"
+        local python_url_https="https://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz"
+        local python_url_http="http://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz"
         local temp_dir="/tmp/python311_build_$$"
+        local python_archive="Python-${python_version}.tgz"
         
-        echo -e "${YELLOW}Downloading Python ${python_version}...${NC}"
         mkdir -p "$temp_dir"
         cd "$temp_dir"
         
-        if ! wget -q --show-progress "$python_url"; then
-            echo -e "${RED}Failed to download Python source${NC}"
+        # Check if user wants to use a pre-downloaded package
+        echo -e "${CYAN}Do you have a pre-downloaded Python ${python_version} package?${NC}"
+        echo -e "${CYAN}(Enter path to .tar.gz/.tgz file, or press Enter to download)${NC}"
+        read -p "Path to Python package (or Enter to download): " local_package
+        
+        local download_success=0
+        
+        if [[ -n "$local_package" ]]; then
+            # Expand tilde if used
+            local_package="${local_package/#\~/$HOME}"
+            
+            if [[ -f "$local_package" ]]; then
+                echo -e "${YELLOW}Using pre-downloaded package: $local_package${NC}"
+                
+                # Copy the file to our temp directory
+                if cp "$local_package" "$python_archive"; then
+                    download_success=1
+                    echo -e "${GREEN}✓ Using local Python package${NC}"
+                else
+                    echo -e "${RED}Failed to copy local package${NC}"
+                fi
+            else
+                echo -e "${RED}File not found: $local_package${NC}"
+                echo -e "${YELLOW}Will attempt to download instead...${NC}"
+            fi
+        fi
+        
+        # If no local package or copy failed, download it
+        if [[ $download_success -eq 0 ]]; then
+            echo -e "${YELLOW}Downloading Python ${python_version}...${NC}"
+            local python_url="$python_url_https"
+        
+        if [[ -n "${https_proxy:-}" ]]; then
+            echo -e "${CYAN}Using proxy for download: ${https_proxy}${NC}"
+            echo -e "${YELLOW}Attempting HTTPS download through proxy...${NC}"
+            
+            # wget should use environment variables automatically
+            # Ensure they are exported
+            export http_proxy="${http_proxy:-$https_proxy}"
+            export https_proxy="${https_proxy}"
+            export HTTP_PROXY="${HTTP_PROXY:-$https_proxy}"
+            export HTTPS_PROXY="${HTTPS_PROXY:-$https_proxy}"
+            
+            # Try HTTPS first with wget (uses env vars automatically)
+            if wget --no-check-certificate \
+                    --tries=2 \
+                    --timeout=30 \
+                    --progress=bar:force \
+                    -O "$python_archive" \
+                    "$python_url_https" 2>&1; then
+                download_success=1
+                echo -e "${GREEN}✓ Downloaded via HTTPS through proxy${NC}"
+            else
+                echo -e "${YELLOW}HTTPS failed, trying HTTP (proxy may block HTTPS tunneling)...${NC}"
+                
+                # Try HTTP as fallback for proxies that block HTTPS
+                if wget --no-check-certificate \
+                        --tries=2 \
+                        --timeout=30 \
+                        --progress=bar:force \
+                        -O "$python_archive" \
+                        "$python_url_http" 2>&1; then
+                    download_success=1
+                    echo -e "${GREEN}✓ Downloaded via HTTP through proxy${NC}"
+                else
+                    echo -e "${YELLOW}wget failed with both HTTPS and HTTP${NC}"
+                    
+                    # Try with explicit proxy URL for wget (older syntax)
+                    echo -e "${YELLOW}Trying wget with explicit proxy flag...${NC}"
+                    if wget --no-check-certificate \
+                            --proxy=on \
+                            --tries=2 \
+                            --timeout=30 \
+                            -O "$python_archive" \
+                            "$python_url_http" 2>&1; then
+                        download_success=1
+                        echo -e "${GREEN}✓ Downloaded via wget with explicit proxy flag${NC}"
+                    fi
+                fi
+            fi
+        else
+            # Try without proxy
+            if wget --no-check-certificate \
+                    --tries=3 \
+                    --timeout=30 \
+                    --progress=bar:force \
+                    -O "$python_archive" \
+                    "$python_url" 2>&1; then
+                download_success=1
+            else
+                echo -e "${YELLOW}wget failed, trying curl...${NC}"
+            fi
+        fi
+        
+        # If wget failed, try curl
+        if [[ $download_success -eq 0 ]]; then
+            echo -e "${YELLOW}Trying alternative download with curl...${NC}"
+            
+            if [[ -n "${https_proxy:-}" ]]; then
+                # Parse proxy URL to handle authentication
+                local proxy_url="${https_proxy}"
+                echo -e "${CYAN}Using proxy for curl: ${proxy_url}${NC}"
+                
+                # Try HTTPS with curl through proxy
+                echo -e "${YELLOW}Attempting curl with HTTPS...${NC}"
+                if curl -L \
+                        --insecure \
+                        --proxy "${proxy_url}" \
+                        --retry 2 \
+                        --connect-timeout 30 \
+                        --max-time 300 \
+                        --progress-bar \
+                        -o "$python_archive" \
+                        "$python_url_https" 2>&1; then
+                    download_success=1
+                    echo -e "${GREEN}✓ Downloaded via curl HTTPS through proxy${NC}"
+                else
+                    echo -e "${YELLOW}HTTPS failed, trying HTTP with curl...${NC}"
+                    
+                    # Try HTTP as fallback
+                    if curl -L \
+                            --insecure \
+                            --proxy "${proxy_url}" \
+                            --retry 2 \
+                            --connect-timeout 30 \
+                            --max-time 300 \
+                            --progress-bar \
+                            -o "$python_archive" \
+                            "$python_url_http" 2>&1; then
+                        download_success=1
+                        echo -e "${GREEN}✓ Downloaded via curl HTTP through proxy${NC}"
+                    else
+                        echo -e "${YELLOW}Standard proxy failed, trying environment variable method...${NC}"
+                        
+                        # Try using environment variables (some curl versions prefer this)
+                        export http_proxy="${http_proxy:-$https_proxy}"
+                        export https_proxy="${https_proxy}"
+                        if curl -L \
+                                --insecure \
+                                --retry 2 \
+                                --connect-timeout 30 \
+                                --max-time 300 \
+                                --progress-bar \
+                                -o "$python_archive" \
+                                "$python_url_http" 2>&1; then
+                            download_success=1
+                            echo -e "${GREEN}✓ Downloaded via curl with environment proxy${NC}"
+                        else
+                            echo -e "${RED}All curl proxy methods failed${NC}"
+                        fi
+                    fi
+                fi
+            else
+                # Curl without proxy
+                if curl -L \
+                        --insecure \
+                        --retry 3 \
+                        --connect-timeout 30 \
+                        --progress-bar \
+                        -o "$python_archive" \
+                        "$python_url" 2>&1; then
+                    download_success=1
+                else
+                    echo -e "${RED}curl also failed${NC}"
+                fi
+            fi
+        fi
+        fi  # Close the download block
+        
+        if [[ $download_success -eq 0 ]]; then
+            echo -e "${RED}Failed to download Python source with both wget and curl${NC}"
+            echo -e "${YELLOW}Please check your network connection and proxy settings${NC}"
+            echo -e "${YELLOW}Proxy being used: ${https_proxy:-none}${NC}"
+            echo ""
+            echo -e "${CYAN}Troubleshooting tips:${NC}"
+            echo -e "${CYAN}1. If you see 'proxy tunneling failed: Forbidden'${NC}"
+            echo -e "${CYAN}   Your proxy may block HTTPS tunneling. HTTP fallback was attempted.${NC}"
+            echo -e "${CYAN}2. Try setting both http_proxy and https_proxy to the same value${NC}"
+            echo -e "${CYAN}3. Some proxies require authentication: http://user:pass@proxy:port${NC}"
+            echo -e "${CYAN}4. You can manually download Python from:${NC}"
+            echo -e "${CYAN}   ${python_url_http}${NC}"
+            echo -e "${CYAN}   Then run this script again and provide the path to the downloaded file${NC}"
             cd - >/dev/null
             rm -rf "$temp_dir"
             return 1
         fi
         
         echo -e "${YELLOW}Extracting Python source...${NC}"
-        tar -xzf "Python-${python_version}.tgz"
+        tar -xzf "$python_archive"
         cd "Python-${python_version}"
         
         echo -e "${YELLOW}Configuring Python build...${NC}"
         echo -e "${CYAN}This will install to: $python_prefix${NC}"
         
         # Configure with optimizations and essential modules
+        echo -e "${YELLOW}Running configure (this may take a minute)...${NC}"
         if ! ./configure --prefix="$python_prefix" \
                         --enable-optimizations \
                         --with-ensurepip=install \
                         --enable-shared \
                         LDFLAGS="-Wl,-rpath,$python_prefix/lib" \
-                        >/dev/null 2>&1; then
-            echo -e "${RED}Configuration failed${NC}"
-            echo -e "${YELLOW}Trying without optimizations...${NC}"
+                        2>&1 | tee configure.log | grep -E "^checking|^creating|error:|warning:" ; then
+            echo -e "${RED}Configuration failed with optimizations${NC}"
+            echo -e "${YELLOW}Trying without optimizations (faster build)...${NC}"
             
             # Try without optimizations (faster but less optimal)
             if ! ./configure --prefix="$python_prefix" \
                             --with-ensurepip=install \
                             --enable-shared \
                             LDFLAGS="-Wl,-rpath,$python_prefix/lib" \
-                            >/dev/null 2>&1; then
+                            2>&1 | tee configure.log | grep -E "^checking|^creating|error:|warning:" ; then
                 echo -e "${RED}Configuration failed completely${NC}"
+                echo -e "${RED}Check configure.log for details. Common issues:${NC}"
+                echo "  - Missing development headers (libssl-dev, zlib1g-dev, etc.)"
+                echo "  - Insufficient permissions for installation directory"
+                echo "  - Incompatible compiler version"
+                tail -20 configure.log
                 cd - >/dev/null
                 rm -rf "$temp_dir"
                 return 1
@@ -447,8 +678,16 @@ install_python_311() {
         # Get number of CPU cores for parallel build
         local num_cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
         
-        if ! make -j"$num_cores" >/dev/null 2>&1; then
+        echo -e "${CYAN}Using $num_cores CPU core(s) for compilation${NC}"
+        if ! make -j"$num_cores" 2>&1 | tee make.log | grep -E "^(gcc|g\+\+|ar |building|error:|warning:)" ; then
             echo -e "${RED}Build failed${NC}"
+            echo -e "${RED}Check make.log for details. Last 20 lines:${NC}"
+            tail -20 make.log
+            echo ""
+            echo -e "${YELLOW}Common causes of build failure:${NC}"
+            echo "  - Missing development libraries (see dependencies above)"
+            echo "  - Out of memory (try with fewer cores: make -j1)"
+            echo "  - Disk space issues"
             cd - >/dev/null
             rm -rf "$temp_dir"
             return 1
@@ -456,8 +695,11 @@ install_python_311() {
         
         echo -e "${YELLOW}Installing Python to $python_prefix...${NC}"
         
-        if ! make install >/dev/null 2>&1; then
+        if ! make install 2>&1 | tee install.log | tail -20; then
             echo -e "${RED}Installation failed${NC}"
+            echo -e "${YELLOW}This usually means insufficient permissions for: $python_prefix${NC}"
+            echo -e "${YELLOW}Try using a different installation path or check install.log${NC}"
+            tail -10 install.log
             cd - >/dev/null
             rm -rf "$temp_dir"
             return 1
@@ -560,6 +802,89 @@ install_python_311() {
             echo -e "${CYAN}Please install Python 3.11 manually${NC}"
             return 1
         fi
+    elif [[ "$method" == "3" ]]; then
+        # Use pyenv
+        echo -e "${CYAN}Installing Python 3.11 using pyenv...${NC}"
+        echo ""
+        
+        # Check if pyenv is installed
+        if ! command -v pyenv >/dev/null 2>&1; then
+            echo -e "${YELLOW}pyenv is not installed. Installing pyenv first...${NC}"
+            echo ""
+            
+            # Install pyenv with automatic installer
+            echo -e "${YELLOW}Downloading and installing pyenv...${NC}"
+            if curl -L https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer | bash; then
+                echo -e "${GREEN}pyenv installed successfully${NC}"
+                
+                # Set up pyenv environment
+                export PYENV_ROOT="$HOME/.pyenv"
+                export PATH="$PYENV_ROOT/bin:$PATH"
+                eval "$(pyenv init -)"
+                
+                # Add to shell profile for future use
+                if [[ -f ~/.bashrc ]]; then
+                    echo '' >> ~/.bashrc
+                    echo '# pyenv setup' >> ~/.bashrc
+                    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+                    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+                    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+                fi
+            else
+                echo -e "${RED}Failed to install pyenv${NC}"
+                echo -e "${YELLOW}You can install it manually from: https://github.com/pyenv/pyenv#installation${NC}"
+                return 1
+            fi
+        else
+            echo -e "${GREEN}pyenv is already installed${NC}"
+            export PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}"
+            export PATH="$PYENV_ROOT/bin:$PATH"
+            eval "$(pyenv init -)" 2>/dev/null || true
+        fi
+        
+        # Show available Python 3.11 versions
+        echo -e "${CYAN}Checking available Python 3.11 versions...${NC}"
+        local py311_versions=$(pyenv install --list | grep -E '^\s*3\.11\.[0-9]+$' | tail -5)
+        echo "$py311_versions"
+        
+        # Install Python 3.11 with pyenv
+        local python_version="3.11.9"  # Latest stable 3.11
+        echo -e "${YELLOW}Installing Python $python_version (this may take 5-10 minutes)...${NC}"
+        echo -e "${YELLOW}Note: This will compile Python from source${NC}"
+        
+        # First, ensure build dependencies are noted
+        echo -e "${CYAN}If the build fails, ensure you have installed the build dependencies:${NC}"
+        echo "  Ubuntu/Debian: sudo apt-get install -y make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev xz-utils tk-dev libffi-dev liblzma-dev"
+        echo "  RHEL/CentOS: sudo yum install gcc zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel tk-devel libffi-devel xz-devel"
+        echo ""
+        
+        if PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install -v $python_version; then
+            echo -e "${GREEN}Python $python_version installed successfully${NC}"
+            
+            # Set as global version
+            pyenv global $python_version
+            
+            # Get the Python path
+            local python_path="$HOME/.pyenv/versions/$python_version/bin"
+            
+            # Save Python path
+            save_python_path "$python_path"
+            
+            echo ""
+            echo -e "${GREEN}=== Installation Complete ===${NC}"
+            echo -e "${GREEN}Python 3.11 is now available${NC}"
+            echo -e "${CYAN}Python path: $python_path/python3${NC}"
+            echo ""
+            
+            # Update PATH for current session
+            export PATH="$python_path:$PATH"
+            
+            return 0
+        else
+            echo -e "${RED}Failed to install Python $python_version with pyenv${NC}"
+            echo -e "${YELLOW}Check the error messages above for missing dependencies${NC}"
+            return 1
+        fi
     else
         echo -e "${YELLOW}Invalid choice${NC}"
         return 1
@@ -574,10 +899,10 @@ load_python_path() {
         local python_bin_path=$(cat "$python_path_file")
         if [[ -d "$python_bin_path" ]]; then
             export PATH="$python_bin_path:$PATH"
-            return 0
         fi
     fi
-    return 1
+    # Always return success - missing file is not an error
+    return 0
 }
 
 # Check dependencies
@@ -603,27 +928,36 @@ check_dependencies() {
     elif command -v python3 >/dev/null 2>&1; then
         python_cmd="python3"
         local current_version=$(python3 --version 2>&1 | awk '{print $2}')
-        echo -e "${YELLOW}Note: Python 3.11 preferred, found Python $current_version${NC}"
         
-        # Offer to install Python 3.11
-        if confirm_install_python "3.11"; then
-            if install_python_311; then
-                python_cmd="python3.11"
+        # Only offer to install if running interactively and not skipping installation
+        if [[ -t 0 ]] && [[ -t 1 ]] && [[ "$SKIP_INSTALL" != "true" ]]; then
+            echo -e "${YELLOW}Note: Python 3.11 preferred, found Python $current_version${NC}"
+            # Offer to install Python 3.11
+            if confirm_install_python "3.11"; then
+                if install_python_311; then
+                    python_cmd="python3.11"
+                fi
             fi
         fi
     else
         echo -e "${RED}Python 3 not found in system${NC}"
         
-        # Offer to install Python 3.11
-        if confirm_install_python "3.11"; then
-            if install_python_311; then
-                python_cmd="python3.11"
+        # Only offer to install if running interactively and not skipping installation
+        if [[ -t 0 ]] && [[ -t 1 ]] && [[ "$SKIP_INSTALL" != "true" ]]; then
+            # Offer to install Python 3.11
+            if confirm_install_python "3.11"; then
+                if install_python_311; then
+                    python_cmd="python3.11"
+                else
+                    echo -e "${RED}Failed to install Python 3.11${NC}"
+                    exit 1
+                fi
             else
-                echo -e "${RED}Failed to install Python 3.11${NC}"
+                echo -e "${RED}Python is required to continue${NC}"
                 exit 1
             fi
         else
-            echo -e "${RED}Python is required to continue${NC}"
+            echo -e "${RED}Python is required to continue. Please install Python 3 and try again.${NC}"
             exit 1
         fi
     fi
@@ -634,10 +968,36 @@ check_dependencies() {
         exit 1
     fi
     
-    # Check if this is first run or venv doesn't exist
-    if [[ ! -f "$first_run_file" ]] || [[ ! -d "$venv_dir" ]]; then
-        echo -e "${CYAN}First run detected. Setting up Python environment...${NC}"
-        setup_python_environment "$python_cmd"
+    # Skip venv setup if flag is set
+    if [[ "$SKIP_VENV" == "true" ]]; then
+        echo -e "${YELLOW}Skipping virtual environment setup (--no-venv flag set)${NC}"
+    else
+        # Check if this is first run or venv doesn't exist
+        if [[ ! -f "$first_run_file" ]] || [[ ! -d "$venv_dir" ]]; then
+            if [[ "$SKIP_INSTALL" != "true" ]]; then
+                echo -e "${CYAN}First run detected. Setting up Python environment...${NC}"
+                setup_python_environment "$python_cmd"
+                # After setup, the venv is already activated by setup_python_environment
+            else
+                echo -e "${YELLOW}Skipping package installation (--skip-install flag set)${NC}"
+            fi
+        fi
+        
+        # Activate venv if it exists (and wasn't just created/activated by setup)
+        if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
+            source "$venv_dir/bin/activate"
+            export VIRTUAL_ENV="$venv_dir"
+            export PATH="$venv_dir/bin:$PATH"
+        fi
+        
+        # Verify required Python packages are installed AFTER venv is activated
+        # This check should happen inside the venv context
+        if [[ "$SKIP_INSTALL" != "true" ]]; then
+            if ! python3 -c "import snowflake.connector" 2>/dev/null; then
+                echo -e "${YELLOW}Required Python packages not found in virtual environment. Installing...${NC}"
+                setup_python_environment "$python_cmd"
+            fi
+        fi
     fi
     
     # Load saved proxy configuration if it exists
@@ -650,17 +1010,12 @@ check_dependencies() {
         export HTTPS_PROXY="$proxy"
     fi
     
-    # Activate venv if it exists
-    if [[ -d "$venv_dir" ]] && [[ -f "$venv_dir/bin/activate" ]]; then
-        source "$venv_dir/bin/activate"
-        export VIRTUAL_ENV="$venv_dir"
-        export PATH="$venv_dir/bin:$PATH"
-    fi
-    
-    # Verify required Python packages are installed
-    if ! python3 -c "import snowflake.connector" 2>/dev/null; then
-        echo -e "${YELLOW}Required Python packages not found. Installing...${NC}"
-        setup_python_environment "$python_cmd"
+    # When skipping venv entirely, warn about packages but don't install
+    if [[ "$SKIP_VENV" == "true" ]] || [[ "$SKIP_INSTALL" == "true" ]]; then
+        if ! python3 -c "import snowflake.connector" 2>/dev/null; then
+            echo -e "${YELLOW}Warning: Required Python packages may not be installed.${NC}"
+            echo -e "${YELLOW}Proceeding anyway due to skip flags...${NC}"
+        fi
     fi
 }
 
@@ -746,7 +1101,7 @@ configure_proxy() {
     echo ""
     
     # Check for existing proxy environment variables
-    if [[ -n "$https_proxy" ]] || [[ -n "$HTTPS_PROXY" ]] || [[ -n "$http_proxy" ]] || [[ -n "$HTTP_PROXY" ]]; then
+    if [[ -n "${https_proxy:-}" ]] || [[ -n "${HTTPS_PROXY:-}" ]] || [[ -n "${http_proxy:-}" ]] || [[ -n "${HTTP_PROXY:-}" ]]; then
         proxy="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-$HTTP_PROXY}}}"
         echo -e "${CYAN}Found existing proxy setting: $proxy${NC}"
         
@@ -757,13 +1112,6 @@ configure_proxy() {
         else
             echo -e "${YELLOW}Existing proxy setting didn't work${NC}"
         fi
-    fi
-    
-    # Check if running in non-interactive mode
-    if [[ ! -t 0 ]] || [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
-        echo -e "${YELLOW}Running in non-interactive mode - skipping proxy configuration${NC}"
-        echo -e "${YELLOW}Set HTTPS_PROXY environment variable if needed${NC}"
-        return 1
     fi
     
     # Interactive proxy configuration
@@ -806,6 +1154,37 @@ configure_proxy() {
             export HTTPS_PROXY="$proxy"
             
             echo -e "${GREEN}Proxy configuration saved${NC}"
+            
+            # Check if SSL issues are likely with this proxy
+            echo ""
+            echo -e "${CYAN}=== SSL Configuration ===${NC}"
+            echo -e "${YELLOW}Corporate proxies often intercept SSL connections.${NC}"
+            echo -e "${YELLOW}If you encounter SSL handshake errors with Snowflake:${NC}"
+            echo ""
+            echo "  1. Normal mode (recommended) - Try first"
+            echo "  2. Insecure mode - Disable SSL verification (use with caution)"
+            echo ""
+            read -p "Select SSL mode [1-2] (default: 1): " ssl_choice
+            
+            if [[ "$ssl_choice" == "2" ]]; then
+                echo -e "${YELLOW}⚠ WARNING: Disabling SSL verification${NC}"
+                echo -e "${YELLOW}This should only be used in trusted environments${NC}"
+                read -p "Are you sure? [y/N]: " confirm
+                
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    touch "$PREFS_DIR/.insecure_mode"
+                    export SNOWFLAKE_INSECURE_MODE=1
+                    echo -e "${YELLOW}Insecure mode enabled for Snowflake connections${NC}"
+                else
+                    echo -e "${GREEN}Keeping SSL verification enabled (recommended)${NC}"
+                fi
+            else
+                # Remove insecure mode flag if it exists
+                rm -f "$PREFS_DIR/.insecure_mode"
+                unset SNOWFLAKE_INSECURE_MODE
+                echo -e "${GREEN}SSL verification enabled (recommended)${NC}"
+            fi
+            
             return 0
         else
             echo -e "${RED}✗ Could not connect through proxy${NC}"
@@ -2134,7 +2513,7 @@ EOF
     fi
 }
 
-# Generate config from TSV files
+# Generate config from data files (TSV/CSV)
 generate_config_from_files() {
     local files="$1"
     local output_file="${2:-}"
@@ -2142,7 +2521,7 @@ generate_config_from_files() {
     local column_headers="${4:-}"
     local date_column="${5:-RECORDDATEID}"
     
-    echo -e "${CYAN}Generating configuration for TSV files${NC}"
+    echo -e "${CYAN}Generating configuration for TSV/CSV files${NC}"
     
     # Start building config
     local config_json='{"files": ['
@@ -2335,12 +2714,13 @@ menu_file_tools() {
     push_menu "File Tools"
     while true; do
         local choice=$(show_menu "$MENU_PATH" \
-            "Sample TSV File" \
+            "Sample Data File (TSV/CSV)" \
             "Generate Config" \
             "Analyze File Structure" \
             "Check for Issues" \
             "View File Stats" \
-            "Compare Files")
+            "Compare Files" \
+            "Compress Data File (No Upload)")
         
         case "$choice" in
             1) sample_tsv_file ;;
@@ -2349,6 +2729,7 @@ menu_file_tools() {
             4) check_file_issues ;;
             5) view_file_stats ;;
             6) compare_files ;;
+            7) compress_tsv_file ;;
             0|"") pop_menu; break ;;
             *) show_message "Error" "Invalid option" ;;
         esac
@@ -2456,7 +2837,7 @@ quick_load_last_month() {
 
 # Quick load specific file
 quick_load_specific_file() {
-    local file_path=$(get_input "Load Specific File" "Enter TSV file path")
+    local file_path=$(get_input "Load Specific File" "Enter data file path (TSV/CSV/GZ)")
     
     if [[ -z "$file_path" ]]; then
         show_message "Error" "No file path provided"
@@ -2466,6 +2847,16 @@ quick_load_specific_file() {
     if [[ ! -f "$file_path" ]]; then
         show_message "Error" "File not found: $file_path"
         return
+    fi
+    
+    # Check if it's a supported file type
+    if [[ ! "$file_path" =~ \.(tsv|csv|txt|tsv\.gz|csv\.gz)$ ]]; then
+        show_message "Warning" "File should be .tsv, .csv, .txt or .gz format. Proceeding anyway..."
+    fi
+    
+    # If it's a .gz file, note it for the user
+    if [[ "$file_path" =~ \.gz$ ]]; then
+        echo -e "${YELLOW}Detected pre-compressed file (.gz). Will skip compression step.${NC}"
     fi
     
     # Ask for quality check preference
@@ -2523,7 +2914,7 @@ quick_load_custom_month() {
 menu_load_data() {
     # First, ask user to choose method
     local choice=$(show_menu "Load Data Method" \
-        "Browse for TSV files interactively" \
+        "Browse for TSV/CSV files interactively" \
         "Specify base path and month" \
         "Load all months from base path")
     
@@ -2534,7 +2925,7 @@ menu_load_data() {
             ;;
         2)
             # Traditional month-based loading - prompt for both base path and month
-            local base_path=$(get_input "Load Data" "Enter base path for TSV files" "$BASE_PATH")
+            local base_path=$(get_input "Load Data" "Enter base path for TSV/CSV files" "$BASE_PATH")
             
             if [[ ! -d "$base_path" ]]; then
                 show_message "Error" "Base path does not exist: $base_path"
@@ -2954,9 +3345,9 @@ compare_files() {
     fi
 }
 
-# Sample TSV file
+# Sample data file (TSV/CSV)
 sample_tsv_file() {
-    local file_path=$(get_input "Sample TSV File" "Enter TSV file path")
+    local file_path=$(get_input "Sample Data File" "Enter TSV/CSV file path")
     
     if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
         show_message "Error" "Invalid file path"
@@ -2973,8 +3364,8 @@ sample_tsv_file() {
     local total_rows=$(wc -l < "$file_path")
     local total_cols=$(head -1 "$file_path" | awk -F'\t' '{print NF}')
     
-    output+="TSV File Analysis\n"
-    output+="================\n"
+    output+="Data File Analysis\n"
+    output+="==================\n"
     output+="File: $filename\n"
     output+="Size: $filesize\n"
     output+="Rows: $total_rows\n"
@@ -3004,7 +3395,133 @@ sample_tsv_file() {
         col_num=$((col_num + 1))
     done
     
-    show_message "TSV Sample Results" "$output"
+    show_message "Data File Sample Results" "$output"
+}
+
+# Compress data file for cross-environment transfer
+compress_tsv_file() {
+    echo -e "${BLUE}Compress Data File (No Snowflake Upload)${NC}"
+    echo -e "${YELLOW}This will compress TSV/CSV files for manual transfer across environments${NC}"
+    echo ""
+    
+    # Get file path
+    local file_path=$(get_input "Data File" "Enter TSV/CSV file path to compress")
+    
+    if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
+        show_message "Error" "Invalid file path: $file_path"
+        return
+    fi
+    
+    # Get compression level
+    local compression_level=$(get_input "Compression Level" "Enter gzip compression level (1=fastest, 9=best, 6=default)" "6")
+    
+    if ! [[ "$compression_level" =~ ^[1-9]$ ]]; then
+        show_message "Error" "Invalid compression level. Must be 1-9."
+        return
+    fi
+    
+    # Get output directory
+    local output_dir=$(get_input "Output Directory" "Enter output directory for compressed file" "$(dirname "$file_path")")
+    
+    if [[ ! -d "$output_dir" ]]; then
+        mkdir -p "$output_dir" 2>/dev/null
+        if [[ $? -ne 0 ]]; then
+            show_message "Error" "Cannot create output directory: $output_dir"
+            return
+        fi
+    fi
+    
+    # Generate output filename
+    local basename=$(basename "$file_path")
+    local compressed_file="$output_dir/${basename}.gz"
+    
+    # Check if output file already exists
+    if [[ -f "$compressed_file" ]]; then
+        if ! confirm_action "File $compressed_file already exists. Overwrite?"; then
+            return
+        fi
+    fi
+    
+    # Get file size for progress display
+    local file_size=$(stat -c%s "$file_path" 2>/dev/null || stat -f%z "$file_path" 2>/dev/null)
+    local file_size_mb=$((file_size / 1048576))
+    
+    echo -e "${BLUE}File Information:${NC}"
+    echo -e "  Source: $file_path"
+    echo -e "  Size: ${file_size_mb} MB"
+    echo -e "  Output: $compressed_file"
+    echo -e "  Compression Level: $compression_level"
+    echo ""
+    
+    if confirm_action "Compress this file?"; then
+        echo -e "${YELLOW}Compressing file...${NC}"
+        
+        # Use pv for progress if available, otherwise use plain gzip
+        if command -v pv >/dev/null 2>&1; then
+            pv -cN "Compressing" "$file_path" | gzip -$compression_level > "$compressed_file"
+            local result=$?
+        else
+            # Use Python for compression with progress
+            python3 -c "
+import sys
+import gzip
+import os
+from pathlib import Path
+
+def compress_file(input_path, output_path, level=$compression_level):
+    file_size = os.path.getsize(input_path)
+    bytes_read = 0
+    chunk_size = 10 * 1024 * 1024  # 10MB chunks
+    
+    with open(input_path, 'rb') as f_in:
+        with gzip.open(output_path, 'wb', compresslevel=level) as f_out:
+            while True:
+                chunk = f_in.read(chunk_size)
+                if not chunk:
+                    break
+                f_out.write(chunk)
+                bytes_read += len(chunk)
+                progress = (bytes_read / file_size) * 100
+                print(f'\\rProgress: {progress:.1f}%', end='', file=sys.stderr)
+    print('\\rProgress: 100.0%', file=sys.stderr)
+    print('', file=sys.stderr)
+
+try:
+    compress_file('$file_path', '$compressed_file')
+    print('Compression completed successfully')
+    sys.exit(0)
+except Exception as e:
+    print(f'Error: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+            local result=$?
+        fi
+        
+        if [[ $result -eq 0 ]]; then
+            # Get compressed file size
+            local compressed_size=$(stat -c%s "$compressed_file" 2>/dev/null || stat -f%z "$compressed_file" 2>/dev/null)
+            local compressed_size_mb=$((compressed_size / 1048576))
+            local compression_ratio=$(echo "scale=1; 100 - ($compressed_size * 100 / $file_size)" | bc)
+            
+            echo ""
+            echo -e "${GREEN}Compression completed successfully!${NC}"
+            echo -e "  Original size: ${file_size_mb} MB"
+            echo -e "  Compressed size: ${compressed_size_mb} MB"
+            echo -e "  Compression ratio: ${compression_ratio}%"
+            echo -e "  Output file: $compressed_file"
+            echo ""
+            echo -e "${YELLOW}This file can now be transferred to another environment and loaded using:${NC}"
+            echo -e "  1. Copy the compressed file to the target environment"
+            echo -e "  2. Place it in the appropriate data directory"
+            echo -e "  3. Use the 'Load Data' menu to process it (it will be automatically decompressed)"
+            
+            show_message "Success" "File compressed successfully to:\n$compressed_file\n\nSize reduction: ${compression_ratio}%"
+        else
+            show_message "Error" "Compression failed. Check the file path and permissions."
+            # Clean up partial file if it exists
+            [[ -f "$compressed_file" ]] && rm -f "$compressed_file"
+        fi
+    fi
 }
 
 # Generate config
@@ -3272,7 +3789,7 @@ clean_stage_files() {
     fi
     
     if [[ "$table" == "all" ]]; then
-        if confirm_action "Clean ALL stage files? This will remove all uploaded TSV files from Snowflake stages."; then
+        if confirm_action "Clean ALL stage files? This will remove all uploaded TSV/CSV files from Snowflake stages."; then
             show_message "Running" "Cleaning all stage files..."
             local output=$(python3 -m snowflake_etl --config "$CONFIG_FILE" check-stage 2>&1 | grep -E "(Found|Total|Would)" | head -20)
             show_message "Stage Status" "$output\n\nRun 'python3 -m snowflake_etl --config $CONFIG_FILE check-stage' to clean interactively."
@@ -3414,7 +3931,7 @@ toggle_colors() {
 
 # Set base path
 set_base_path() {
-    local new_path=$(get_input "Set Base Path" "Enter base path for TSV files" "$BASE_PATH")
+    local new_path=$(get_input "Set Base Path" "Enter base path for TSV/CSV files" "$BASE_PATH")
     
     if [[ -d "$new_path" ]]; then
         BASE_PATH="$new_path"
@@ -3542,6 +4059,14 @@ clear_state() {
 parse_cli_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --no-venv)
+                export SKIP_VENV="true"
+                shift
+                ;;
+            --skip-install)
+                export SKIP_INSTALL="true"
+                shift
+                ;;
             load)
                 shift
                 if [[ "${1:-}" == "--month" ]] && [[ -n "${2:-}" ]]; then
@@ -3635,15 +4160,25 @@ show_help() {
 Snowflake ETL Pipeline Manager v$VERSION
 
 Usage:
-  $SCRIPT_NAME                          # Interactive menu mode
-  $SCRIPT_NAME load --month YYYY-MM     # Load data for a month
-  $SCRIPT_NAME load --file file.tsv     # Load specific file
-  $SCRIPT_NAME validate --month YYYY-MM # Validate data
-  $SCRIPT_NAME delete --table TABLE --month YYYY-MM # Delete data
-  $SCRIPT_NAME status                   # Show job status
-  $SCRIPT_NAME clean                    # Clean completed jobs
+  $SCRIPT_NAME [OPTIONS]                # Interactive menu mode
+  $SCRIPT_NAME [OPTIONS] load --month YYYY-MM     # Load data for a month
+  $SCRIPT_NAME [OPTIONS] load --file file.tsv     # Load specific file
+  $SCRIPT_NAME [OPTIONS] validate --month YYYY-MM # Validate data
+  $SCRIPT_NAME [OPTIONS] delete --table TABLE --month YYYY-MM # Delete data
+  $SCRIPT_NAME [OPTIONS] status         # Show job status
+  $SCRIPT_NAME [OPTIONS] clean          # Clean completed jobs
   $SCRIPT_NAME --help                   # Show this help
   $SCRIPT_NAME --version                # Show version
+
+Options:
+  --no-venv         Skip virtual environment setup (use system Python)
+  --skip-install    Skip package installation (assume requirements met)
+  --help, -h        Show this help message
+  --version, -v     Show version information
+
+Environment Variables:
+  SKIP_VENV=true    Same as --no-venv flag
+  SKIP_INSTALL=true Same as --skip-install flag
 
 Interactive Mode:
   Launch without arguments to enter the interactive menu system.
@@ -3653,8 +4188,8 @@ Command Line Mode:
 
 Examples:
   $SCRIPT_NAME                          # Launch interactive menu
-  $SCRIPT_NAME load --month 2024-01     # Load January 2024 data
-  $SCRIPT_NAME status                   # Check running jobs
+  $SCRIPT_NAME --no-venv load --month 2024-01  # Load without venv
+  $SCRIPT_NAME --skip-install status    # Check status, skip installs
   $SCRIPT_NAME clean                    # Remove completed job files
 
 Configuration:
@@ -3710,46 +4245,42 @@ main_menu() {
 # ============================================================================
 
 main() {
-    # Initialize directories first (lightweight operation)
-    init_directories
-    
-    # Parse CLI arguments BEFORE dependency check
-    # This allows --version, --help to work without dependencies
-    if [[ $# -gt 0 ]]; then
-        # Check if it's a help/version command that doesn't need dependencies
-        case "$1" in
-            --help|-h|--version|-v)
-                # These commands don't need dependencies or config
-                parse_cli_args "$@"
-                exit 0
+    # Parse skip flags FIRST before any dependency checks
+    # This needs to happen before check_dependencies is called
+    for arg in "$@"; do
+        case "$arg" in
+            --no-venv)
+                export SKIP_VENV="true"
                 ;;
-            status|jobs|clean)
-                # These might need basic setup but not Python
-                detect_ui_system
-                load_preferences
-                parse_cli_args "$@"
-                exit 0
-                ;;
-            *)
-                # Other commands need full setup
-                check_dependencies
-                detect_ui_system
-                load_preferences
-                health_check_jobs
-                
-                # Try to auto-select config if only one exists
-                select_config_file >/dev/null 2>&1 || true
-                parse_cli_args "$@"
-                exit 0
+            --skip-install)
+                export SKIP_INSTALL="true"
                 ;;
         esac
-    fi
+    done
     
-    # Interactive mode - need full setup
+    # Initialize
+    init_directories
     check_dependencies
     detect_ui_system
     load_preferences
+    
+    # Run health check to clean up stale jobs
     health_check_jobs
+    
+    # Parse CLI arguments if provided
+    if [[ $# -gt 0 ]]; then
+        # Check if it's a help/version command that doesn't need config
+        case "$1" in
+            --help|-h|--version|-v|status|jobs|clean)
+                parse_cli_args "$@"
+                ;;
+            *)
+                # For other CLI commands, try to auto-select config if only one exists
+                select_config_file >/dev/null 2>&1 || true
+                parse_cli_args "$@"
+                ;;
+        esac
+    fi
     
     # Interactive mode
     # Set up global trap for interactive mode to prevent accidental exits

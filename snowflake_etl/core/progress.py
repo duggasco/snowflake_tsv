@@ -35,6 +35,7 @@ class ProgressStats:
     start_time: float = None
     current_phase: ProgressPhase = None
     current_file: str = None
+    current_file_format: str = None  # CSV, TSV, or other format
     errors: int = 0
     
     def __post_init__(self):
@@ -87,7 +88,7 @@ class ProgressTracker(ABC):
         pass
     
     @abstractmethod
-    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0):
+    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0, file_format: str = None):
         """
         Start processing a new file
         
@@ -95,6 +96,7 @@ class ProgressTracker(ABC):
             filename: Name of the file being processed
             file_size: Size of file in bytes
             row_count: Number of rows in file
+            file_format: Format of the file (CSV, TSV, etc.)
         """
         pass
     
@@ -154,8 +156,9 @@ class NoOpProgressTracker(ProgressTracker):
         self.stats.total_rows = total_rows
         self.logger.debug(f"Initialized for {total_files} files")
     
-    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0):
+    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0, file_format: str = None):
         self.stats.current_file = filename
+        self.stats.current_file_format = file_format
         self.logger.debug(f"Starting file: {filename}")
     
     def update_phase(self, phase: ProgressPhase, **kwargs):
@@ -203,10 +206,12 @@ class LoggingProgressTracker(ProgressTracker):
         rows_str = f", {total_rows:,} rows" if total_rows > 0 else ""
         self.logger.info(f"Starting processing: {total_files} files{size_str}{rows_str}")
     
-    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0):
+    def start_file(self, filename: str, file_size: int = 0, row_count: int = 0, file_format: str = None):
         self.stats.current_file = filename
+        self.stats.current_file_format = file_format
         size_str = f" ({file_size / (1024**2):.1f} MB)" if file_size > 0 else ""
-        self.logger.info(f"Processing file {self.stats.processed_files + 1}/{self.stats.total_files}: {filename}{size_str}")
+        format_str = f" [{file_format}]" if file_format else ""
+        self.logger.info(f"Processing file {self.stats.processed_files + 1}/{self.stats.total_files}: {filename}{format_str}{size_str}")
     
     def update_phase(self, phase: ProgressPhase, **kwargs):
         self.stats.current_phase = phase

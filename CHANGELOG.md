@@ -1,5 +1,590 @@
 # CHANGELOG.md
 
+## [v3.5.1] - 2025-09-04 - Enhanced Date Format Support
+
+### Bug Fixes
+- **Fixed date parsing errors in Snowflake validation**:
+  - Fixed "time data 'Apr 1 2024' does not match format '%Y-%m-%d'" error
+  - Added comprehensive multi-format date parsing to handle various date formats
+  - Now supports 20+ date formats including 'MMM d YYYY', ISO formats, and timestamps
+  - Normalizes dates with variable spacing (e.g., 'Apr  1 2024' with double space)
+
+### Improvements
+- **Flexible Date Parser**: New `_parse_flexible_date()` method that automatically detects and parses:
+  - Standard formats: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, YYYYMMDD
+  - Month name formats: Apr 1 2024, April 01 2024, 1 Apr 2024
+  - ISO formats: 2024-04-01T00:00:00, 2024-04-01T00:00:00Z
+  - Timestamps: 2024-04-01 00:00:00, 04/01/2024 12:30:45
+  - Gracefully handles multiple spaces and various delimiters
+  
+- **Enhanced Validation Robustness**: 
+  - Validation no longer fails when encountering non-standard date formats from Snowflake
+  - Improved error messages when date parsing fails
+  - Added fallback to python-dateutil parser for edge cases
+
+### Dependencies
+- Added `python-dateutil>=2.8.0` for improved date parsing capabilities
+
+### Testing
+- Created comprehensive test suite for date parsing with 21 test cases
+- All common date formats now validated and working correctly
+
+## [v3.5.0] - 2025-09-04 - Full CSV Support Release
+
+### 🎉 Major Release: Complete CSV File Support
+
+**Overview**: The Snowflake ETL Pipeline now fully supports CSV files alongside TSV files, with automatic format detection, custom delimiters, and comprehensive documentation.
+
+### Features Added
+- **Multi-Format Processing**: Seamless handling of CSV, TSV, and custom-delimited files
+- **Automatic Detection**: Intelligent format and delimiter detection based on file extension and content
+- **Custom Delimiters**: Support for comma, tab, pipe, semicolon, and any single character
+- **Quoted Fields**: Proper handling of fields containing delimiters
+- **Compressed Files**: Native support for .csv.gz and .tsv.gz files
+- **Mixed Formats**: Process directories containing both CSV and TSV files
+
+### Technical Implementation
+- **Core Infrastructure**: FileConfig model enhanced with format fields
+- **Format Detection**: New FormatDetector module with confidence scoring
+- **Dynamic Processing**: SnowflakeLoader generates format-specific COPY commands
+- **UI Enhancements**: Progress bars and logs show file format
+- **Documentation**: Complete user guide and technical documentation
+
+### Backward Compatibility
+- ✅ All existing TSV configurations work unchanged
+- ✅ No breaking changes to APIs or workflows
+- ✅ Performance parity maintained
+- ✅ Default behavior preserved
+
+### Files Changed
+- Created 8 new files including FormatDetector and user guides
+- Modified 15+ existing files for CSV support
+- Added 100+ test cases
+- Updated all documentation
+
+### Migration
+- No action required for existing users
+- Optional CSV support through configuration
+- Gradual migration path available
+
+## [v3.5.0-alpha4] - 2025-09-04 - CSV File Support Phase 4
+
+### Phase 4 Implementation - Documentation & Help
+- **Documentation Updates**:
+  - README.md comprehensively updated with CSV examples
+  - CLAUDE.md includes complete technical CSV specifications
+  - Created CSV_USER_GUIDE.md - comprehensive user guide
+  - All CLI help text updated to mention CSV/TSV support
+  
+- **User Guides**:
+  - Quick start guide for CSV processing
+  - Troubleshooting section for format issues
+  - Performance optimization for large CSV files
+  - Migration guide from TSV to CSV
+  
+- **Technical Documentation**:
+  - Python module docstrings updated
+  - Configuration examples for all scenarios
+  - Format detection documentation
+  - Complete command reference
+
+## [v3.5.0-alpha3] - 2025-09-04 - CSV File Support Phase 3
+
+### Phase 3 Implementation - UI & Display Updates
+- **Progress Display Enhancements**:
+  - Progress bars show file format ([CSV] or [TSV])
+  - ProgressStats includes current_file_format field
+  - All progress trackers display format information
+  
+- **Log Message Improvements**:
+  - Processing logs show format: "Processing file.csv [CSV]"
+  - Loader logs show delimiter: "Loading file.csv [CSV, comma-delimited]"
+  - Error messages specify format: "Failed to process file.csv [CSV]"
+  
+- **Shell Script UI Updates**:
+  - All menus updated to show "TSV/CSV" support
+  - File prompts indicate multi-format capability
+  - Analysis tools show "Data File" instead of "TSV File"
+  
+- **User Experience**:
+  - Format visibility at every processing step
+  - Clear error messages with format context
+  - Consistent multi-format labeling throughout
+
+## [v3.5.0-alpha2] - 2025-09-04 - CSV File Support Phase 2
+
+### Phase 2 Implementation
+- **File Discovery & Config Generation**:
+  - Config generation now auto-detects CSV/TSV format
+  - Pattern detection works with .csv, .tsv, .txt extensions
+  - Compressed file support in all tools
+  - File sampler renamed to FileSamplerOperation (handles all formats)
+  - Data file browser updated to show CSV files
+  
+### Enhanced Tools
+- **Config Generation**: Automatically detects delimiter and format
+- **File Sampler**: Shows format info, delimiter, and confidence
+- **File Browser**: Displays CSV/TSV files with format indicators
+- **Pattern Matching**: Works across all supported extensions
+
+### Testing
+- Comprehensive Phase 2 test suite added
+- All file discovery operations tested with mixed formats
+- 100% backward compatibility maintained
+
+## [v3.5.0-alpha1] - 2025-09-04 - CSV File Support Phase 1
+
+### New Features
+- **Added CSV file support alongside TSV**:
+  - FileConfig model enhanced with delimiter, file_format, and quote_char fields
+  - Automatic format detection based on file extension (.csv → CSV, .tsv → TSV)
+  - Dynamic Snowflake COPY query generation based on file format
+  - Support for custom delimiters (comma, tab, pipe, semicolon, etc.)
+  - Configurable quote characters for field enclosure
+  
+### Technical Implementation
+- **Core Infrastructure**:
+  - Created FormatDetector module for intelligent delimiter detection
+  - Updated SnowflakeLoader with dynamic COPY query building
+  - Modified DataQualityValidator to use configurable delimiters
+  - Enhanced config parsing to support new format fields
+  - File pattern matching now checks .csv, .tsv, and .txt extensions
+  
+### Backward Compatibility
+- All existing TSV configurations continue working unchanged
+- Default behavior remains TSV with tab delimiter
+- No breaking changes to existing APIs or workflows
+- Performance parity maintained with TSV processing
+
+### Testing
+- Added comprehensive test suite for CSV functionality
+- 14 format detection test cases
+- Integration tests for Phase 1 components
+- All tests passing with 100% backward compatibility
+
+### Configuration
+```json
+{
+  "files": [{
+    "file_pattern": "data_{month}.csv",
+    "file_format": "CSV",      // Optional: AUTO (default), CSV, TSV
+    "delimiter": ",",           // Optional: auto-detected based on format
+    "quote_char": "\"",         // Optional: for quoted fields
+    // ... existing fields ...
+  }]
+}
+```
+
+## [v3.4.21] - 2025-09-04 - Fix .tsv.gz File Pattern Matching
+
+### Bug Fix
+- **Fixed "No files found" error for .tsv.gz files**:
+  - Pattern matching now checks for both `.tsv` and `.tsv.gz` extensions
+  - Direct file loading (--files) supports compressed files
+  - Month-based loading (--month) also checks for .gz versions
+  - Added better logging to show why files don't match patterns
+  
+### Technical Changes
+- Modified `__main__.py` to check both base pattern and `.gz` variant
+- Added pattern matching for `base_pattern + '.gz'` in file discovery
+- Improved error messages to show available patterns when no match found
+- Added hint about .tsv.gz extension requirements in warning messages
+
+### Usage
+Now you can load compressed files directly:
+```bash
+# Direct file loading
+./snowflake_etl.sh load --file /path/to/file.tsv.gz
+
+# Month-based loading finds both .tsv and .tsv.gz files
+./snowflake_etl.sh load --month 2024-01
+```
+
+## [v3.4.20] - 2025-09-04 - Fix Python 3.11 Build Failures
+
+### Improvements
+- **Fixed Python compilation issues**:
+  - Added verbose output for configure, make, and install steps
+  - Shows actual error messages instead of hiding them
+  - Saves logs (configure.log, make.log, install.log) for debugging
+  - Shows last 20 lines of output on failure
+  
+- **Added comprehensive dependency information**:
+  - Lists all required development libraries for Python compilation
+  - Platform-specific instructions for Ubuntu/Debian and RHEL/CentOS
+  - Common error causes and solutions
+  
+- **Added pyenv as installation option**:
+  - New option 3: Install using pyenv (automated installer)
+  - Handles pyenv installation if not present
+  - Shows available Python 3.11 versions
+  - More reliable than manual compilation for most users
+  
+### Technical Changes
+- Removed `>/dev/null 2>&1` redirects that were hiding error messages
+- Added `tee` to capture logs while showing filtered output
+- Configure now shows progress with grep filter for important lines
+- Make output filtered to show compilation progress
+- Install shows last 20 lines of activity
+
+### Usage
+When prompted for installation method:
+1. Build from source (requires all dev libraries)
+2. Use system package manager (requires sudo)
+3. **Use pyenv (NEW - recommended for most users)**
+
+## [v3.4.19] - 2025-09-04 - Fix Virtual Environment Recreation Bug
+
+### Bug Fix
+- **Fixed venv being recreated every time**:
+  - Package check was happening before venv activation in some cases
+  - Moved package verification inside the venv context block
+  - Now properly checks for packages AFTER activating the venv
+  - Eliminates unnecessary reinstallation when venv already exists
+  
+### Performance Impact
+- Significantly faster startup time (no pip install on every run)
+- Properly reuses existing virtual environment
+- Only recreates venv when `.venv_setup_complete` file or `etl_venv` directory is missing
+
+### Technical Details
+- The bug was caused by checking `import snowflake.connector` outside the venv activation block
+- Package check now happens after venv is activated, ensuring it checks the right Python environment
+- Skip flags (`--no-venv`, `--skip-install`) are properly handled separately
+
+## [v3.4.18] - 2025-09-04 - Fix wget/curl Proxy Handling
+
+### Bug Fixes
+- **Fixed proxy handling for Python downloads**:
+  - Removed problematic `-e use_proxy=yes` syntax from wget (not universally supported)
+  - wget now relies on properly exported environment variables
+  - Added fallback to `--proxy=on` flag for older wget versions
+  - Simplified curl proxy handling to use `--proxy` flag directly
+  - Added proper environment variable export before download attempts
+  - Removed unnecessary proxy-insecure and proxytunnel options
+  
+### Improvements
+- Created `test_proxy_download.sh` diagnostic script for debugging proxy issues
+- Better error messages and fallback methods for download failures
+- Properly exports all proxy environment variables (http_proxy, https_proxy, HTTP_PROXY, HTTPS_PROXY)
+
+### Technical Details
+- wget now uses environment variables automatically when exported
+- curl uses explicit `--proxy` flag with the proxy URL
+- Added `--max-time` to curl commands to prevent hanging
+- Removed `-e` syntax that caused issues on some wget versions
+
+## [v3.4.17] - 2025-09-04 - Support for Pre-Compressed TSV.GZ Files
+
+### New Features
+- **Added support for loading pre-compressed .tsv.gz files**:
+  - Automatically detects .gz file extension and skips compression step
+  - Validates gzip file integrity before processing
+  - Preserves original compressed files (doesn't delete after loading)
+  - Supports both uncompressed (.tsv) and pre-compressed (.tsv.gz) files seamlessly
+  
+### Technical Implementation
+- Modified `SnowflakeLoader.load_file()` to check file extension
+- Added gzip validation to ensure file integrity
+- Updated cleanup logic to preserve pre-compressed files
+- Enhanced menu prompts to indicate support for .gz files
+
+### Use Cases
+- Loading files that were pre-compressed for transfer
+- Saving time by skipping compression for already compressed files
+- Working with files compressed by external tools or processes
+- Cross-environment transfers where files are pre-compressed for efficiency
+
+### Usage
+```bash
+# Load a pre-compressed file via menu
+./snowflake_etl.sh
+# Navigate to Quick Load -> Load Specific File
+# Enter path to .tsv.gz file
+
+# The system will automatically detect the .gz extension and:
+# 1. Skip the compression step
+# 2. Upload the file directly to Snowflake
+# 3. Keep the original .gz file after loading
+```
+
+## [v3.4.16] - 2025-09-03 - Fix Skip Flags Processing Order
+
+### Bug Fix
+- **Fixed --no-venv and --skip-install flags not working**: 
+  - Flags were being parsed after `check_dependencies` was called
+  - Moved flag parsing to the very beginning of main() function
+  - Flags are now processed before any Python environment checks
+  - Ensures flags work correctly in remote environments
+
+## [v3.4.15] - 2025-09-03 - Skip Virtual Environment and Installation Flags
+
+### New Features
+- **Added --no-venv flag**: Skip virtual environment setup and use system Python
+  - Useful for systems with pre-configured Python environments
+  - Prevents automatic venv creation and activation
+  - Can be set via environment variable: `SKIP_VENV=true`
+  
+- **Added --skip-install flag**: Skip automatic package installation
+  - Assumes all required packages are already installed
+  - Prevents pip install attempts during initialization
+  - Can be set via environment variable: `SKIP_INSTALL=true`
+  - Shows warning if packages are missing but continues anyway
+
+### Use Cases
+- Running on managed systems where Python is pre-configured
+- CI/CD pipelines with custom environments
+- Docker containers with pre-installed dependencies
+- Systems with restricted network access or package installation
+
+### Usage Examples
+```bash
+# Use system Python without venv
+./snowflake_etl.sh --no-venv
+
+# Skip all installation attempts
+./snowflake_etl.sh --skip-install
+
+# Combine both flags
+./snowflake_etl.sh --no-venv --skip-install
+
+# Set via environment variables
+export SKIP_VENV=true
+export SKIP_INSTALL=true
+./snowflake_etl.sh
+```
+
+## [v3.4.14] - 2025-09-03 - Cross-Environment File Compression Support
+
+### New Features
+- **Standalone TSV Compression**: Added ability to compress TSV files without Snowflake upload
+  - New menu option in File Tools: "Compress TSV File (No Upload)"
+  - Standalone Python utility `compress_tsv.py` for CLI usage
+  - Configurable compression levels (1-9) for speed vs size trade-offs
+  - Progress tracking with speed and ETA display
+  - Batch compression support for multiple files
+  - Designed for transferring files across restricted environments
+
+### Use Cases
+- Transfer large TSV files between environments with restrictive access policies
+- Pre-compress files for manual deployment to production environments
+- Create compressed backups of TSV files before processing
+- Share data files with external teams without Snowflake access
+
+### Technical Details
+- Uses gzip compression with chunked streaming (10MB chunks)
+- Preserves original files (non-destructive compression)
+- Shows compression statistics (ratio, speed, time)
+- Compatible with Snowflake's automatic decompression on load
+- Python utility supports wildcards and batch operations
+
+## [v3.4.13] - 2025-09-03 - Enhanced Proxy Support for HTTP/HTTPS Snowflake Traffic
+
+### Enhancement
+- **Improved proxy handling for all Snowflake HTTP/HTTPS requests**
+  - Now sets proxy environment variables globally when proxy is detected
+  - Uses HTTP protocol when insecure mode is enabled
+  - Disables request pooling to avoid proxy connection issues
+  - Clears NO_PROXY variables that might bypass proxy
+  - Ensures both HTTP and HTTPS traffic goes through proxy
+
+### Bug Fixes
+- Fixed issue where some Snowflake requests bypassed proxy
+- HTTP protocol now properly used in insecure mode
+- Connection pooling disabled to prevent proxy conflicts
+
+### Technical Details
+- When insecure mode is enabled:
+  - Sets `protocol='http'` for plain HTTP connections
+  - Sets `disable_request_pooling=True` to avoid connection reuse issues
+- Environment variables set for all requests:
+  - `http_proxy`, `https_proxy`, `HTTP_PROXY`, `HTTPS_PROXY`
+- Removes `NO_PROXY` and `no_proxy` to prevent bypass
+
+### Debug Tool
+- Added `test_snowflake_proxy.py` script for troubleshooting
+- Tests various connection modes and configurations
+- Shows current proxy settings and connection attempts
+
+## [v3.4.12] - 2025-09-03 - Added SSL/TLS Handling for Proxy Environments
+
+### Enhancement
+- **Fixed SSL handshake errors with Snowflake through proxies**
+  - Added `insecure_mode` option to disable SSL verification when needed
+  - Added `ocsp_fail_open` to continue when OCSP responder is unavailable
+  - Added `validate_default_parameters=False` to skip parameter validation
+  - Interactive SSL configuration during proxy setup
+  - Option to enable insecure mode for problematic corporate proxies
+
+### User Experience
+- Proxy configuration now asks about SSL verification mode
+- Clear warnings about insecure mode risks
+- Settings saved in `.insecure_mode` file for persistence
+- Can also set `SNOWFLAKE_INSECURE_MODE=1` environment variable
+
+### Technical Details
+- SSL options automatically applied when proxy is detected:
+  - `ocsp_fail_open=True` - Handles OCSP responder timeouts
+  - `validate_default_parameters=False` - Skips strict validation
+  - `insecure_mode=True` - Only when explicitly enabled by user
+- Works with corporate proxies that perform SSL interception
+- Maintains security by default, insecure mode requires confirmation
+
+### Security Note
+- Insecure mode should only be used in trusted corporate environments
+- Disables SSL certificate verification for Snowflake connections
+- Recommended to try normal mode first
+
+## [v3.4.11] - 2025-09-03 - Added Proxy Support for Snowflake Connections
+
+### Enhancement
+- **Snowflake connector now uses proxy settings automatically**
+  - Detects saved proxy configuration from `.proxy_config` file
+  - Falls back to environment variables (https_proxy, http_proxy)
+  - Parses proxy URL to extract host, port, username, and password
+  - Configures Snowflake connections to route through corporate proxy
+  - Same proxy used for PyPI, Python downloads, and now Snowflake
+
+### Technical Details
+- Added proxy fields to `ConnectionConfig` dataclass:
+  - `proxy_host`, `proxy_port`, `proxy_user`, `proxy_password`, `use_proxy`
+- ApplicationContext automatically detects and configures proxy
+- Supports proxy URLs in format: `http://[user:pass@]host:port`
+- Snowflake connector v2.7.5+ supports these proxy parameters
+- Logging shows when proxy is being used for connections
+
+## [v3.4.10] - 2025-09-03 - Relaxed Snowflake Connector Version Requirements
+
+### Compatibility Update
+- **Lowered minimum snowflake-connector-python version to 2.7.5**
+  - Previously required >=3.0.0, now accepts >=2.7.5
+  - Version 2.7.5 fully supports all features we use:
+    - `execute_async()` for asynchronous COPY operations
+    - `get_results_from_sfqid()` for keepalive and result retrieval
+    - Connection pooling and cursor management
+  - Helps with restricted environments where only older versions are available
+  - Tested and confirmed working with version 2.7.5
+
+### Technical Details
+- Async features were added in snowflake-connector-python 2.2.0
+- Version 2.7.5 is stable and widely available in corporate repositories
+- No functionality loss with older version
+- All ETL features remain fully operational
+
+## [v3.4.9] - 2025-09-03 - Support Pre-Downloaded Python Packages
+
+### Enhancement
+- **Added support for using pre-downloaded Python packages**
+  - Prompts user to provide path to local Python .tar.gz or .tgz file
+  - User can press Enter to skip and download normally
+  - Accepts absolute paths or paths with tilde (~) expansion
+  - Copies the local package to temp directory for installation
+  - Falls back to download if local file not found or copy fails
+  - Useful for air-gapped systems or when downloads are problematic
+
+### User Experience
+- Clear prompts asking if user has a pre-downloaded package
+- Validates file existence before attempting to use it
+- Success message confirms when local package is being used
+- Automatically proceeds with compilation after extraction
+
+### Technical Details
+- Supports any Python 3.11.x .tar.gz or .tgz package
+- Package must match expected version (currently 3.11.9)
+- File is copied to temp build directory to avoid modifying original
+- Same build and installation process after extraction
+
+## [v3.4.8] - 2025-09-03 - Added HTTP Fallback for Proxy Tunneling Failures
+
+### Enhancement
+- **Added HTTP fallback for proxies that block HTTPS tunneling**
+  - Now tries both HTTPS and HTTP URLs when downloading Python
+  - Specifically handles "proxy tunneling failed: Forbidden" errors
+  - wget tries HTTPS first, then falls back to HTTP if proxy blocks tunneling
+  - curl tries HTTPS, HTTP, and finally HTTP with --proxytunnel mode
+  - Added `--proxy-insecure` flag for curl to handle proxy SSL issues
+  - Better error messages with troubleshooting tips
+
+### Troubleshooting Support
+- Added detailed error messages explaining proxy tunneling failures
+- Provides manual download instructions as last resort
+- Shows which proxy is being used in error messages
+- Suggests authentication format for proxies requiring credentials
+
+### Technical Details
+- Python URLs: tries both https:// and http://www.python.org/ftp/python/
+- Multiple download strategies to work around restrictive proxies:
+  1. HTTPS through proxy (standard)
+  2. HTTP through proxy (for HTTPS-blocking proxies)
+  3. HTTP with --proxytunnel (for specific proxy configurations)
+- Each method gets 2 retry attempts to reduce false failures
+
+## [v3.4.7] - 2025-09-03 - Fixed Python Download with Proper Proxy Handling
+
+### Bug Fix
+- **Fixed Python source download failures with proxy**
+  - Removed problematic `eval` commands that broke with special characters in proxy URLs
+  - Now uses direct command execution instead of eval
+  - Added `--no-check-certificate` / `--insecure` flags for corporate proxies
+  - Increased timeout and retry settings for reliability
+  - Added proper error messages showing which proxy is being used
+  - Both wget and curl now properly handle proxy authentication
+  - Shows detailed output (2>&1) to help diagnose connection issues
+
+### Technical Details
+- wget uses: `-e use_proxy=yes -e https_proxy="${https_proxy}"` with proper quoting
+- curl uses: `--proxy "${https_proxy}"` with proper quoting
+- Added explicit `-O` flag for wget to specify output filename
+- Added `--tries=3` and `--retry 3` for better reliability
+- Timeout increased to 30 seconds for slower connections
+
+## [v3.4.6] - 2025-09-03 - Added Proxy Support for Python Downloads
+
+### Enhancement
+- **Python installation now uses proxy settings**
+  - Detects and uses saved proxy configuration from PyPI setup
+  - Respects existing proxy environment variables (http_proxy, https_proxy)
+  - Tests connection to python.org before attempting download
+  - Offers proxy configuration if needed in interactive mode
+  - wget and curl commands now properly use proxy settings
+  - Fallback from wget to curl if download fails
+  - Sets both http_proxy and https_proxy for compatibility
+
+### Technical Details
+- Proxy configuration is loaded at start of `install_python_311()`
+- Both wget and curl are configured with appropriate proxy flags
+- Same proxy used for Python download as for PyPI packages
+- Ensures consistency across all network operations
+
+## [v3.4.5] - 2025-09-03 - Fixed Unbound Variable Error
+
+### Bug Fix
+- **Fixed unbound variable error in proxy detection**
+  - Line 752 was checking `$https_proxy` without proper variable expansion protection
+  - With `set -u`, this caused "unbound variable" error when proxy variables weren't set
+  - Fixed by using `${var:-}` syntax for all proxy variable checks
+  - Ensures script doesn't fail when proxy environment variables are undefined
+
+## [v3.4.4] - 2025-09-03 - Fixed Silent Failure Issues
+
+### Bug Fixes
+- **Fixed silent script failure when run non-interactively**
+  - `load_python_path()` was returning 1 when no custom path exists, causing exit with `set -e`
+  - Changed to always return 0 as missing path file is not an error condition
+- **Fixed interactive prompt failures in non-TTY environments**  
+  - Added TTY checks before calling `confirm_install_python()`
+  - Script now skips Python installation prompts when not interactive
+  - Provides clear error message when Python is missing in non-interactive mode
+- **Removed unconditional exit bug in main function**
+  - Lines 3722-3724 were executing `show_help` and `exit 1` after ANY CLI arguments
+  - This prevented valid commands from executing properly
+
+### Technical Details
+- Script now properly handles both interactive and non-interactive execution modes
+- TTY detection prevents `read` command failures in automated environments
+- Function return values properly handled to work with `set -e` 
+- CLI argument parsing logic corrected to only show help for invalid commands
+
 ## [v3.4.3] - 2025-09-02 - Automatic Python 3.11 Installation
 
 ### New Features

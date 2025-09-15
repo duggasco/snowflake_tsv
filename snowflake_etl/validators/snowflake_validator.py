@@ -17,8 +17,10 @@ class ValidationResult:
     """Data class for validation results."""
     valid: bool
     table_name: str
-    date_range_start: Optional[str] = None
-    date_range_end: Optional[str] = None
+    date_range_start: Optional[str] = None  # Requested range start
+    date_range_end: Optional[str] = None    # Requested range end
+    actual_date_start: Optional[str] = None  # Actual data range start
+    actual_date_end: Optional[str] = None    # Actual data range end
     total_rows: int = 0
     unique_dates: int = 0
     expected_dates: int = 0
@@ -238,34 +240,65 @@ class SnowflakeDataValidator:
         Returns:
             Dictionary with completeness statistics
         """
-        # Build WHERE clause
+        # First, get the overall date range in the entire table (no WHERE clause)
+        # Use TRY_TO_DATE to handle various date formats including 'MMM DD YYYY'
+        overall_query = f"""
+        SELECT 
+            MIN(TRY_TO_DATE({date_column})) as min_date,
+            MAX(TRY_TO_DATE({date_column})) as max_date
+        FROM {table_name}
+        WHERE TRY_TO_DATE({date_column}) IS NOT NULL
+        """
+        
+        self.logger.debug(f"Executing overall range query: {overall_query}")
+        cursor.execute(overall_query)
+        overall_result = cursor.fetchone()
+        
+        actual_min_date = None
+        actual_max_date = None
+        if overall_result and overall_result[0]:
+            actual_min_date = self._format_date(overall_result[0])
+            actual_max_date = self._format_date(overall_result[1])
+        
+        # Build WHERE clause for filtered query
         where_clause = self._build_date_where_clause(
             date_column, start_date, end_date
         )
         
-        # Get date range summary
+        # Get date range summary for the filtered data
+        # Convert date strings to actual dates for proper comparison
         range_query = f"""
         SELECT 
-            MIN({date_column}) as min_date,
-            MAX({date_column}) as max_date,
-            COUNT(DISTINCT {date_column}) as unique_dates,
+            MIN(TRY_TO_DATE({date_column})) as min_date,
+            MAX(TRY_TO_DATE({date_column})) as max_date,
+            COUNT(DISTINCT TRY_TO_DATE({date_column})) as unique_dates,
             COUNT(*) as total_rows
         FROM {table_name}
-        {where_clause}
+        {where_clause if where_clause else f"WHERE TRY_TO_DATE({date_column}) IS NOT NULL"}
         """
         
-        self.logger.debug(f"Executing range query: {range_query}")
+        self.logger.debug(f"Executing filtered range query: {range_query}")
         cursor.execute(range_query)
         range_result = cursor.fetchone()
         
         if not range_result or range_result[3] == 0:
+            # Calculate expected dates even when no data found
+            if start_date and end_date:
+                expected_dates_empty = self._calculate_expected_dates(start_date, end_date)
+            elif actual_min_date and actual_max_date:
+                expected_dates_empty = self._calculate_expected_dates(actual_min_date, actual_max_date)
+            else:
+                expected_dates_empty = 0
+                
             return {
                 'total_rows': 0,
                 'unique_dates': 0,
-                'min_date': None,
-                'max_date': None,
+                'expected_dates': expected_dates_empty,  # Include expected_dates
+                'min_date': actual_min_date,  # Use overall table min
+                'max_date': actual_max_date,  # Use overall table max
                 'missing_dates': [],
-                'gaps': []
+                'gaps': [],
+                'avg_rows_per_day': 0
             }
         
         min_date, max_date, unique_dates, total_rows = range_result
@@ -278,21 +311,38 @@ class SnowflakeDataValidator:
         if start_date and end_date:
             expected_dates = self._calculate_expected_dates(start_date, end_date)
         else:
-            expected_dates = self._calculate_expected_dates(min_date, max_date)
+            # When no filter, use the actual table's full date range
+            # But only if we have valid dates
+            if actual_min_date and actual_max_date:
+                expected_dates = self._calculate_expected_dates(actual_min_date, actual_max_date)
+            else:
+                expected_dates = 0
         
         # Find missing dates and gaps
-        missing_dates, gaps = self._find_missing_dates_and_gaps(
-            cursor, table_name, date_column, 
-            start_date or min_date, 
-            end_date or max_date
-        )
+        # Use actual table range when no filter is specified
+        # Only check for gaps if we have valid date ranges
+        if (start_date and end_date) or (actual_min_date and actual_max_date):
+            missing_dates, gaps = self._find_missing_dates_and_gaps(
+                cursor, table_name, date_column, 
+                start_date or actual_min_date, 
+                end_date or actual_max_date
+            )
+        else:
+            missing_dates = []
+            gaps = []
         
+        # When no date range is specified, we're validating all data
+        # So return the actual table's full date range
+        # When a date range IS specified, return both the requested range stats
+        # and the actual overall table range
         return {
             'total_rows': total_rows,
             'unique_dates': unique_dates,
             'expected_dates': expected_dates,
-            'min_date': min_date,
-            'max_date': max_date,
+            'min_date': actual_min_date,  # Always use overall table min
+            'max_date': actual_max_date,  # Always use overall table max
+            'filtered_min_date': min_date if start_date else None,  # Min within filter
+            'filtered_max_date': max_date if end_date else None,    # Max within filter
             'missing_dates': missing_dates,
             'gaps': gaps,
             'avg_rows_per_day': total_rows / unique_dates if unique_dates > 0 else 0
@@ -315,14 +365,15 @@ class SnowflakeDataValidator:
         )
         
         # Query with statistical analysis
+        # Use TRY_TO_DATE to properly handle date strings
         anomaly_query = f"""
         WITH daily_counts AS (
             SELECT 
-                {date_column} as date_value,
+                TRY_TO_DATE({date_column}) as date_value,
                 COUNT(*) as row_count
             FROM {table_name}
-            {where_clause}
-            GROUP BY {date_column}
+            {where_clause if where_clause else f"WHERE TRY_TO_DATE({date_column}) IS NOT NULL"}
+            GROUP BY TRY_TO_DATE({date_column})
         ),
         stats AS (
             SELECT 
@@ -409,7 +460,15 @@ class SnowflakeDataValidator:
         Returns:
             Dictionary with duplicate statistics and samples
         """
-        key_cols_str = ", ".join(key_columns)
+        # Build column string, converting date columns if needed
+        key_cols_converted = []
+        for col in key_columns:
+            if col == date_column:
+                key_cols_converted.append(f"TRY_TO_DATE({col})")
+            else:
+                key_cols_converted.append(col)
+        key_cols_str = ", ".join(key_cols_converted)
+        
         where_clause = self._build_date_where_clause(
             date_column, start_date, end_date
         )
@@ -513,34 +572,109 @@ class SnowflakeDataValidator:
         if not start_date or not end_date:
             return ""
         
-        # Convert to YYYYMMDD format for comparison
-        start_yyyymmdd = start_date.replace('-', '')
-        end_yyyymmdd = end_date.replace('-', '')
+        # Use TRY_TO_DATE to convert string dates and compare as actual dates
+        # This handles various formats including 'MMM DD YYYY'
+        return f"""WHERE TRY_TO_DATE({date_column}) BETWEEN 
+                   TRY_TO_DATE('{start_date}', 'YYYY-MM-DD') AND 
+                   TRY_TO_DATE('{end_date}', 'YYYY-MM-DD')"""
+    
+    def _parse_flexible_date(self, date_value) -> Optional[datetime]:
+        """
+        Parse date from various formats into datetime object.
+        Handles multiple date formats commonly found in databases.
         
-        return f"WHERE {date_column} BETWEEN '{start_yyyymmdd}' AND '{end_yyyymmdd}'"
+        Args:
+            date_value: Date value in various formats
+            
+        Returns:
+            datetime object or None if parsing fails
+        """
+        if not date_value:
+            return None
+            
+        # Convert to string and strip whitespace
+        date_str = str(date_value).strip()
+        
+        # Common date formats to try
+        date_formats = [
+            '%Y-%m-%d',           # 2024-04-01
+            '%Y/%m/%d',           # 2024/04/01
+            '%m/%d/%Y',           # 04/01/2024
+            '%m-%d-%Y',           # 04-01-2024
+            '%d/%m/%Y',           # 01/04/2024
+            '%d-%m-%Y',           # 01-04-2024
+            '%Y%m%d',             # 20240401
+            '%b %d %Y',           # Apr 01 2024
+            '%b %d, %Y',          # Apr 01, 2024
+            '%B %d %Y',           # April 01 2024
+            '%B %d, %Y',          # April 01, 2024
+            '%d %b %Y',           # 01 Apr 2024
+            '%d %B %Y',           # 01 April 2024
+            '%Y-%m-%d %H:%M:%S', # 2024-04-01 00:00:00
+            '%Y/%m/%d %H:%M:%S', # 2024/04/01 00:00:00
+            '%m/%d/%Y %H:%M:%S', # 04/01/2024 00:00:00
+            '%Y-%m-%dT%H:%M:%S', # 2024-04-01T00:00:00
+            '%Y-%m-%dT%H:%M:%SZ',# 2024-04-01T00:00:00Z
+        ]
+        
+        # Special handling for formats with variable spaces (like 'Apr  1 2024')
+        # Normalize multiple spaces to single space
+        date_str_normalized = ' '.join(date_str.split())
+        
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(date_str_normalized, fmt)
+            except ValueError:
+                continue
+        
+        # Try with dateutil parser as fallback (if available)
+        try:
+            from dateutil import parser
+            return parser.parse(date_str_normalized, fuzzy=False)
+        except (ImportError, ValueError, TypeError):
+            pass
+        
+        # Log warning for unparseable date
+        self.logger.warning(f"Could not parse date: '{date_str}'")
+        return None
     
     def _format_date(self, date_value) -> str:
-        """Format date value to YYYY-MM-DD string."""
+        """
+        Format date value to YYYY-MM-DD string.
+        Handles multiple input formats.
+        """
         if not date_value:
             return None
         
-        date_str = str(date_value)
+        # Try to parse the date flexibly
+        parsed_date = self._parse_flexible_date(date_value)
         
-        # Handle YYYYMMDD format
+        if parsed_date:
+            return parsed_date.strftime('%Y-%m-%d')
+        
+        # Fallback for YYYYMMDD numeric format
+        date_str = str(date_value)
         if len(date_str) == 8 and date_str.isdigit():
             return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
         
-        # Already in correct format or other format
+        # Return as-is if we can't parse it
         return date_str
     
     def _calculate_expected_dates(self, start_date: str, end_date: str) -> int:
-        """Calculate number of expected dates in range."""
+        """
+        Calculate number of expected dates in range.
+        Handles multiple date formats.
+        """
         if not start_date or not end_date:
             return 0
         
-        # Parse dates
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
+        # Parse dates using flexible parser
+        start = self._parse_flexible_date(start_date)
+        end = self._parse_flexible_date(end_date)
+        
+        if not start or not end:
+            self.logger.warning(f"Could not parse date range: {start_date} to {end_date}")
+            return 0
         
         return (end - start).days + 1
     
@@ -556,13 +690,22 @@ class SnowflakeDataValidator:
         Returns:
             Tuple of (missing_dates, gaps)
         """
+        # Build WHERE clause only if we have valid dates
+        where_clause = ""
+        if start_date and end_date:
+            where_clause = f"""WHERE TRY_TO_DATE({date_column}) BETWEEN 
+                              TRY_TO_DATE('{start_date}', 'YYYY-MM-DD') AND 
+                              TRY_TO_DATE('{end_date}', 'YYYY-MM-DD')"""
+        else:
+            where_clause = f"WHERE TRY_TO_DATE({date_column}) IS NOT NULL"
+        
         # Query to find gaps using window functions
+        # Convert all date strings to proper dates for comparison
         gap_query = f"""
         WITH date_sequence AS (
-            SELECT DISTINCT {date_column} as date_value
+            SELECT DISTINCT TRY_TO_DATE({date_column}) as date_value
             FROM {table_name}
-            WHERE {date_column} BETWEEN '{start_date.replace("-", "")}' 
-                AND '{end_date.replace("-", "")}'
+            {where_clause}
             ORDER BY date_value
         ),
         gaps AS (
@@ -570,8 +713,8 @@ class SnowflakeDataValidator:
                 date_value as current_date,
                 LAG(date_value) OVER (ORDER BY date_value) as prev_date,
                 DATEDIFF('day', 
-                    TO_DATE(LAG(date_value) OVER (ORDER BY date_value), 'YYYYMMDD'),
-                    TO_DATE(date_value, 'YYYYMMDD')
+                    LAG(date_value) OVER (ORDER BY date_value),
+                    date_value
                 ) as gap_days
             FROM date_sequence
         )
@@ -606,10 +749,12 @@ class SnowflakeDataValidator:
                 
                 # Add individual missing dates (limit to prevent memory issues)
                 if missing_days <= 31:  # Only list individual dates for small gaps
-                    start = datetime.strptime(self._format_date(prev_date), '%Y-%m-%d')
-                    for i in range(1, missing_days + 1):
-                        missing_date = start + timedelta(days=i)
-                        missing_dates.append(missing_date.strftime('%Y-%m-%d'))
+                    # Use flexible parser for the date
+                    start = self._parse_flexible_date(prev_date)
+                    if start:
+                        for i in range(1, missing_days + 1):
+                            missing_date = start + timedelta(days=i)
+                            missing_dates.append(missing_date.strftime('%Y-%m-%d'))
             
             return missing_dates[:100], gaps  # Limit to prevent huge lists
             
@@ -625,6 +770,14 @@ class SnowflakeDataValidator:
         result.missing_dates = data['missing_dates']
         result.gaps = data['gaps']
         result.avg_rows_per_day = data['avg_rows_per_day']
+        
+        # Update with actual date range found in the table
+        # Keep the original requested range in date_range_start/end
+        # Add the actual found range
+        if 'min_date' in data and data['min_date']:
+            result.actual_date_start = data['min_date']
+        if 'max_date' in data and data['max_date']:
+            result.actual_date_end = data['max_date']
         
         if data['missing_dates']:
             result.failure_reasons.append(

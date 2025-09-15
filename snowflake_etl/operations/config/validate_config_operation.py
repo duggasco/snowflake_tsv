@@ -218,7 +218,7 @@ class ValidateConfigOperation:
                     return
             
             # Test connection
-            conn_manager = self.context.get_connection_manager()
+            conn_manager = self.context.connection_manager
             with conn_manager.get_cursor() as cursor:
                 cursor.execute("SELECT CURRENT_VERSION()")
                 version = cursor.fetchone()[0]

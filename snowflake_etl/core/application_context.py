@@ -100,15 +100,98 @@ class ApplicationContext:
         if self._connection_manager is None:
             # Import here to avoid circular dependencies
             from snowflake_etl.utils.snowflake_connection_v3 import SnowflakeConnectionManager, ConnectionConfig
+            import os
             
             # Create connection config from snowflake config
-            conn_config = ConnectionConfig(**self.snowflake_config)
+            sf_config = self.snowflake_config.copy()
+            
+            # Check for proxy configuration
+            # First check saved proxy config file
+            proxy_file = Path.home() / '.snowflake_etl' / '.proxy_config'
+            if not proxy_file.exists():
+                # Try alternative location
+                proxy_file = Path(os.path.dirname(__file__)).parent.parent / '.etl_state' / '.proxy_config'
+            
+            proxy_url = None
+            if proxy_file.exists():
+                try:
+                    proxy_url = proxy_file.read_text().strip()
+                    self.logger.info(f"Using saved proxy configuration for Snowflake connection")
+                except:
+                    pass
+            
+            # Check environment variables as fallback
+            if not proxy_url:
+                proxy_url = os.environ.get('https_proxy') or os.environ.get('HTTPS_PROXY') or \
+                           os.environ.get('http_proxy') or os.environ.get('HTTP_PROXY')
+            
+            # Parse and add proxy settings if available
+            if proxy_url:
+                self.logger.info(f"Configuring Snowflake connection with proxy")
+                
+                # Ensure proxy is set in environment for ALL requests
+                os.environ['http_proxy'] = proxy_url
+                os.environ['https_proxy'] = proxy_url
+                os.environ['HTTP_PROXY'] = proxy_url
+                os.environ['HTTPS_PROXY'] = proxy_url
+                
+                # Parse proxy URL (format: http://[user:pass@]host:port)
+                import urllib.parse
+                parsed = urllib.parse.urlparse(proxy_url)
+                
+                if parsed.hostname:
+                    sf_config['proxy_host'] = parsed.hostname
+                    sf_config['use_proxy'] = True
+                    
+                    if parsed.port:
+                        sf_config['proxy_port'] = parsed.port
+                    
+                    if parsed.username:
+                        sf_config['proxy_user'] = parsed.username
+                    
+                    if parsed.password:
+                        sf_config['proxy_password'] = parsed.password
+                    
+                    self.logger.debug(f"Proxy host: {parsed.hostname}, port: {parsed.port}")
+                    
+                    # Enable SSL workarounds for proxy environments
+                    # These help with corporate proxies that intercept SSL
+                    sf_config['ocsp_fail_open'] = True  # Continue if OCSP responder fails
+                    sf_config['validate_default_parameters'] = False  # Skip parameter validation
+                    sf_config['disable_request_pooling'] = True  # Helps with proxy issues
+                    
+                    # Check for insecure mode flag (use with caution)
+                    insecure_mode_file = proxy_file.parent / '.insecure_mode'
+                    if insecure_mode_file.exists() or os.environ.get('SNOWFLAKE_INSECURE_MODE'):
+                        self.logger.warning("SSL verification disabled for Snowflake connection (insecure mode)")
+                        self.logger.warning("Using HTTP protocol for Snowflake connection")
+                        sf_config['insecure_mode'] = True
+                        sf_config['protocol'] = 'http'  # Use HTTP instead of HTTPS
+                    
+                    # Ensure NO_PROXY doesn't interfere (clear it for Snowflake)
+                    if 'NO_PROXY' in os.environ:
+                        del os.environ['NO_PROXY']
+                    if 'no_proxy' in os.environ:
+                        del os.environ['no_proxy']
+                    
+                    self.logger.info("Applied proxy and SSL workarounds for Snowflake connection")
+            
+            conn_config = ConnectionConfig(**sf_config)
             # Use larger pool size to handle parallel operations (default was 5)
             pool_size = self._config.get('connection_pool_size', 10) if self._config else 10
             self._connection_manager = SnowflakeConnectionManager(config=conn_config, pool_size=pool_size)
             self.logger.info(f"Initialized Snowflake connection pool (size: {pool_size})")
             
         return self._connection_manager
+    
+    def get_connection_manager(self):
+        """
+        Get connection manager - compatibility wrapper for property access.
+        
+        Returns:
+            SnowflakeConnectionManager instance
+        """
+        return self.connection_manager
     
     def get_operation(self, operation_name: str):
         """

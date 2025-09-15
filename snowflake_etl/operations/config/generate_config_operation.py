@@ -10,6 +10,7 @@ import csv
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+from ...utils.format_detector import FormatDetector
 
 
 class GenerateConfigOperation:
@@ -152,10 +153,10 @@ class GenerateConfigOperation:
                      base_path: str,
                      date_column: str) -> Optional[Dict[str, Any]]:
         """
-        Analyze a TSV file and generate its configuration
+        Analyze a data file and generate its configuration
         
         Args:
-            file_path: Path to TSV file
+            file_path: Path to data file (TSV/CSV/TXT)
             table_name: Snowflake table name
             column_headers: Manual column headers
             base_path: Base path for patterns
@@ -169,6 +170,15 @@ class GenerateConfigOperation:
             self.logger.warning(f"File not found: {file_path}")
             return None
         
+        # Detect file format and delimiter
+        format_info = FormatDetector.detect_format(str(file_path))
+        file_format = format_info['format']
+        delimiter = format_info['delimiter']
+        quote_char = format_info.get('quote_char', '"')
+        
+        self.logger.info(f"Detected format: {file_format}, delimiter: {repr(delimiter)} "
+                        f"(confidence: {format_info['confidence']:.2f})")
+        
         # Detect file pattern
         pattern = self._detect_pattern(file_path.name)
         if not pattern:
@@ -181,7 +191,7 @@ class GenerateConfigOperation:
         elif table_name:
             columns = self._get_columns_from_table(table_name)
         else:
-            columns = self._detect_columns_from_file(file_path)
+            columns = self._detect_columns_from_file(file_path, delimiter)
         
         # Extract table name from file if not provided
         if not table_name:
@@ -191,8 +201,14 @@ class GenerateConfigOperation:
             "file_pattern": pattern,
             "table_name": table_name.upper() if table_name else "UNKNOWN_TABLE",
             "expected_columns": columns,
-            "date_column": date_column
+            "date_column": date_column,
+            "file_format": file_format,
+            "delimiter": delimiter
         }
+        
+        # Add quote_char if it's CSV format
+        if file_format == "CSV" and quote_char:
+            config["quote_char"] = quote_char
         
         # Add duplicate key columns if we can detect them
         if columns:
@@ -212,25 +228,31 @@ class GenerateConfigOperation:
         Returns:
             Pattern with placeholders or None
         """
-        # Remove .tsv extension
-        base_name = filename.replace('.tsv', '')
+        # Extract extension (handle .gz compression)
+        path = Path(filename)
+        if path.suffix == '.gz':
+            extension = path.suffixes[-2] + path.suffixes[-1] if len(path.suffixes) > 1 else '.gz'
+            base_name = filename.replace(extension, '')
+        else:
+            extension = path.suffix
+            base_name = path.stem
         
         # Check for date range pattern (YYYYMMDD-YYYYMMDD)
         date_range_pattern = r'(\d{8})-(\d{8})'
         if re.search(date_range_pattern, base_name):
-            pattern = re.sub(date_range_pattern, '{date_range}', base_name) + '.tsv'
+            pattern = re.sub(date_range_pattern, '{date_range}', base_name) + extension
             return pattern
         
         # Check for month pattern (YYYY-MM)
         month_pattern = r'\d{4}-\d{2}'
         if re.search(month_pattern, base_name):
-            pattern = re.sub(month_pattern, '{month}', base_name) + '.tsv'
+            pattern = re.sub(month_pattern, '{month}', base_name) + extension
             return pattern
         
         # Check for YYYYMM pattern
         yyyymm_pattern = r'\d{6}'
         if re.search(yyyymm_pattern, base_name):
-            pattern = re.sub(yyyymm_pattern, '{month}', base_name) + '.tsv'
+            pattern = re.sub(yyyymm_pattern, '{month}', base_name) + extension
             return pattern
         
         return None
@@ -245,8 +267,13 @@ class GenerateConfigOperation:
         Returns:
             Extracted table name
         """
-        # Remove extension and date patterns
-        base_name = filename.replace('.tsv', '')
+        # Remove extensions (.csv, .tsv, .txt, .gz)
+        path = Path(filename)
+        base_name = path.stem
+        if base_name.endswith('.tsv') or base_name.endswith('.csv') or base_name.endswith('.txt'):
+            base_name = Path(base_name).stem
+        
+        # Remove date patterns
         base_name = re.sub(r'_?\d{8}-\d{8}', '', base_name)
         base_name = re.sub(r'_?\d{4}-\d{2}', '', base_name)
         base_name = re.sub(r'_?\d{6}', '', base_name)
@@ -256,31 +283,37 @@ class GenerateConfigOperation:
         
         return base_name.upper()
     
-    def _detect_columns_from_file(self, file_path: Path) -> List[str]:
+    def _detect_columns_from_file(self, file_path: Path, delimiter: str = '\t') -> List[str]:
         """
-        Detect columns from TSV file
+        Detect columns from data file
         
         Args:
-            file_path: Path to TSV file
+            file_path: Path to data file
+            delimiter: Field delimiter to use
             
         Returns:
             List of column names
         """
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            # Handle compressed files
+            if file_path.suffix == '.gz':
+                import gzip
+                opener = gzip.open
+                mode = 'rt'
+            else:
+                opener = open
+                mode = 'r'
+                
+            with opener(file_path, mode, encoding='utf-8', errors='ignore') as f:
                 # Read first line
                 first_line = f.readline().strip()
                 
-                # Try to detect delimiter
-                sniffer = csv.Sniffer()
-                delimiter = sniffer.sniff(first_line).delimiter
-                
-                # Parse columns
+                # Parse columns using provided delimiter
                 reader = csv.reader([first_line], delimiter=delimiter)
                 columns = next(reader)
                 
                 # Check if these look like headers or data
-                if all(self._looks_like_header(col) for col in columns[:5]):
+                if columns and all(self._looks_like_header(col) for col in columns[:min(5, len(columns))]):
                     return columns
                 else:
                     # No headers, generate generic column names
@@ -329,7 +362,7 @@ class GenerateConfigOperation:
             return []
         
         try:
-            conn_manager = self.context.get_connection_manager()
+            conn_manager = self.context.connection_manager
             with conn_manager.get_cursor() as cursor:
                 query = f"""
                 SELECT column_name 

@@ -230,7 +230,14 @@ class ValidateOperation(BaseOperation):
         """Display detailed validation results for a single table."""
         # Display date range information
         if validation_result.date_range_start and validation_result.date_range_end:
-            self.logger.info(f"  Date Range: {validation_result.date_range_start} to {validation_result.date_range_end}")
+            self.logger.info(f"  Date Range Requested: {validation_result.date_range_start} to {validation_result.date_range_end}")
+        else:
+            self.logger.info(f"  Date Range Requested: ALL DATA")
+        
+        # Display actual date range found in the entire table
+        if hasattr(validation_result, 'actual_date_start') and hasattr(validation_result, 'actual_date_end'):
+            if validation_result.actual_date_start and validation_result.actual_date_end:
+                self.logger.info(f"  Date Range in Table: {validation_result.actual_date_start} to {validation_result.actual_date_end}")
         
         # Display row statistics
         if hasattr(validation_result, 'total_rows') and validation_result.total_rows:
